@@ -2,9 +2,12 @@
 	import { appState, pushToast } from '$lib/stores';
 	import { postJSON, requestJSON, deleteJSON, fetchJSON } from '$lib/api';
 	import { slugifySegment } from '$lib/utils';
-  import { Drawer, Button, Label, Input, Select, Helper } from 'flowbite-svelte';
-  import { ArchiveOutline, TrashBinOutline, CheckOutline, CloseOutline, GlobeOutline } from 'flowbite-svelte-icons';
+  import { Drawer, Button } from 'flowbite-svelte';
+  import { ArchiveOutline, TrashBinOutline, CheckOutline, CloseOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
+  import ProjectBasicsSection from '$lib/components/ProjectBasicsSection.svelte';
+  import ProjectAuthSection from '$lib/components/ProjectAuthSection.svelte';
+  import ProjectRuntimeSection from '$lib/components/ProjectRuntimeSection.svelte';
 
 	interface Props {
 		open: boolean;
@@ -23,9 +26,7 @@
 	let githubUser = $state('');
 	let githubCredential = $state('');
 	let runtimeImage = $state('');
-	let runtimePullPolicy = $state('IfNotPresent');
 	let skillsImage = $state('');
-	let skillsPullPolicy = $state('IfNotPresent');
 	let busy = $state(false);
 
   // Use bind:hidden for drawer control
@@ -47,9 +48,7 @@
 				repoUrl = projectToEdit.repo_url || '';
 				githubUser = projectToEdit.github_user || '';
 				runtimeImage = projectToEdit.runtime_image || '';
-				runtimePullPolicy = projectToEdit.runtime_pull_policy || 'IfNotPresent';
 				skillsImage = projectToEdit.skills_image || '';
-				skillsPullPolicy = projectToEdit.skills_pull_policy || 'IfNotPresent';
 				githubCredential = '';
 			} else {
 				id = '';
@@ -58,9 +57,7 @@
 				githubUser = '';
 				githubCredential = '';
 				runtimeImage = '';
-				runtimePullPolicy = 'IfNotPresent';
 				skillsImage = '';
-				skillsPullPolicy = 'IfNotPresent';
 			}
 		}
 	});
@@ -78,9 +75,9 @@
 			repo_url: repoUrl,
 			github_user: githubUser,
 			runtime_image: runtimeImage,
-			runtime_pull_policy: runtimePullPolicy,
 			skills_image: skillsImage,
-			skills_pull_policy: skillsPullPolicy
+			runtime_pull_policy: 'IfNotPresent',
+			skills_pull_policy: 'IfNotPresent'
 		};
 		try {
 			if (isEditing) {
@@ -153,53 +150,33 @@
     <!-- Body -->
     <form class="flex-1 p-8 space-y-8" onsubmit={(e) => { e.preventDefault(); saveProject(); }}>
       <div class="space-y-6">
-        <div>
-          <Label for="name" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Project Name</Label>
-          <Input type="text" id="name" placeholder="Project Alpha" bind:value={name} disabled={busy} required class="bg-black border-gray-800 text-white font-bold rounded-none focus:border-[#86BC25]" />
-          <Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">This will be used to generate the system ID.</Helper>
-        </div>
-        
-        <div>
-          <Label for="repo" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Repository URL</Label>
-          <div class="flex">
-            <span class="inline-flex items-center px-3 bg-slate-900 border border-r-0 border-gray-800 text-gray-500">
-              <GlobeOutline size="sm" />
-            </span>
-            <Input type="url" id="repo" placeholder="https://github.com/org/repo.git" bind:value={repoUrl} disabled={busy} required class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]" />
-          </div>
-        </div>
+        <ProjectBasicsSection
+          {name}
+          {repoUrl}
+          {busy}
+          onNameChange={(value) => name = value}
+          onRepoUrlChange={(value) => repoUrl = value}
+        />
 
         <div class="my-8 border-t border-gray-900"></div>
 
-        <div class="space-y-6">
-          <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-[#86BC25]">Authentication</h4>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <Label for="user" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Git User</Label>
-              <Input type="text" id="user" placeholder="username" bind:value={githubUser} disabled={busy} class="bg-black border-gray-800 text-white font-bold rounded-none focus:border-[#86BC25]" />
-            </div>
-            <div>
-              <Label for="token" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Secret Token</Label>
-              <Input type="password" id="token" placeholder="••••••••" bind:value={githubCredential} disabled={busy} class="bg-black border-gray-800 text-white rounded-none focus:border-[#86BC25]" />
-            </div>
-          </div>
-        </div>
+        <ProjectAuthSection
+          {githubUser}
+          {githubCredential}
+          {busy}
+          onGitHubUserChange={(value) => githubUser = value}
+          onGitHubCredentialChange={(value) => githubCredential = value}
+        />
 
         <div class="my-8 border-t border-gray-900"></div>
 
-        <div class="space-y-6">
-          <h4 class="text-[10px] font-bold uppercase tracking-[0.3em] text-[#86BC25]">Runtime & Skills</h4>
-          <div class="grid grid-cols-1 gap-4">
-            <div>
-              <Label for="r-image" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Replica Image</Label>
-              <Input type="text" id="r-image" placeholder="smith-replica:latest" bind:value={runtimeImage} disabled={busy} class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]" />
-            </div>
-            <div>
-              <Label for="s-image" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Skills Image</Label>
-              <Input type="text" id="s-image" placeholder="smith-skills:latest" bind:value={skillsImage} disabled={busy} class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]" />
-            </div>
-          </div>
-        </div>
+        <ProjectRuntimeSection
+          {runtimeImage}
+          {skillsImage}
+          {busy}
+          onRuntimeImageChange={(value) => runtimeImage = value}
+          onSkillsImageChange={(value) => skillsImage = value}
+        />
       </div>
 
       <!-- Footer Actions -->

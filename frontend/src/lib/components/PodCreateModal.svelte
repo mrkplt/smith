@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
 	import { fetchJSON, postJSON } from '$lib/api';
-	import { onMount, onDestroy } from 'svelte';
-	import { slugifySegment, normalizeBranchName } from '$lib/utils';
-  import { Modal, Button, Label, Input, Select, Textarea, Badge } from 'flowbite-svelte';
-  import { ArrowLeftOutline, ArrowRightOutline, RocketOutline, PaperPlaneOutline } from 'flowbite-svelte-icons';
+	import { onDestroy } from 'svelte';
+	import { slugifySegment } from '$lib/utils';
+  import { Modal, Button, Badge } from 'flowbite-svelte';
+  import { ArrowLeftOutline, ArrowRightOutline, RocketOutline } from 'flowbite-svelte-icons';
+  import PodCreateMethodStep from '$lib/components/PodCreateMethodStep.svelte';
+  import PodCreateProjectStep from '$lib/components/PodCreateProjectStep.svelte';
+  import PodCreateDetailsStep from '$lib/components/PodCreateDetailsStep.svelte';
+  import PodCreatePRDChatStep from '$lib/components/PodCreatePRDChatStep.svelte';
 
 	interface Props {
 		open: boolean;
@@ -177,108 +181,43 @@
     </div>
 
     {#if step === 1}
-      <div class="space-y-4">
-        <p class="text-gray-400 text-sm">Choose how you want to start this development loop.</p>
-        <div class="grid grid-cols-1 gap-3">
-          <button 
-            class="p-4 rounded-none border text-left transition-all {method === 'issue' ? 'bg-[#86BC25]/10 border-[#86BC25] text-[#86BC25]' : 'bg-slate-900 border-gray-800 text-gray-400 hover:border-gray-600'}"
-            onclick={() => method = 'issue'}
-          >
-            <div class="font-bold uppercase text-xs tracking-widest">Create from Issue</div>
-            <div class="text-[10px] opacity-70 mt-1 uppercase">Import requirements from a GitHub issue.</div>
-          </button>
-          <button 
-            class="p-4 rounded-none border text-left transition-all {method === 'generate_prd' ? 'bg-[#86BC25]/10 border-[#86BC25] text-[#86BC25]' : 'bg-slate-900 border-gray-800 text-gray-400 hover:border-gray-600'}"
-            onclick={() => method = 'generate_prd'}
-          >
-            <div class="font-bold uppercase text-xs tracking-widest">Generate a PRD</div>
-            <div class="text-[10px] opacity-70 mt-1 uppercase">Chat with an agent to build a new document.</div>
-          </button>
-          <button 
-            class="p-4 rounded-none border text-left transition-all {method === 'load_prd' ? 'bg-[#86BC25]/10 border-[#86BC25] text-[#86BC25]' : 'bg-slate-900 border-gray-800 text-gray-400 hover:border-gray-600'}"
-            onclick={() => method = 'load_prd'}
-          >
-            <div class="font-bold uppercase text-xs tracking-widest">Load a PRD</div>
-            <div class="text-[10px] opacity-70 mt-1 uppercase">Paste raw JSON or a manual prompt.</div>
-          </button>
-        </div>
-      </div>
+      <PodCreateMethodStep
+        {method}
+        onSelectMethod={(value) => method = value}
+      />
     {:else if step === 2}
-      <div class="space-y-4">
-        <div>
-          <Label for="project" class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">Target Project</Label>
-          <Select id="project" bind:value={projectID} onchange={loadIssues} class="bg-slate-900 border-gray-800 text-white rounded-none">
-            <option value="">Select a project</option>
-            {#each projects as p}
-              <option value={p.id}>{p.name}</option>
-            {/each}
-          </Select>
-        </div>
-        {#if method === 'issue'}
-          <div>
-            <Label for="issue" class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">GitHub Issue</Label>
-            <Select id="issue" bind:value={issueNumber} disabled={issues.length === 0} class="bg-slate-900 border-gray-800 text-white rounded-none">
-              <option value="">{issues.length === 0 ? 'No issues found' : 'Select an issue'}</option>
-              {#each issues as issue}
-                <option value={issue.number}>#{issue.number} {issue.title}</option>
-              {/each}
-            </Select>
-          </div>
-        {/if}
-      </div>
+      <PodCreateProjectStep
+        {method}
+        {projectID}
+        {issueNumber}
+        {projects}
+        {issues}
+        onProjectChange={async (value) => {
+          projectID = value;
+          issueNumber = '';
+          await loadIssues();
+        }}
+        onIssueChange={(value) => issueNumber = value}
+      />
     {:else if step === 3}
-      <div class="space-y-4">
-        <div>
-          <Label for="loop-name" class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">Loop Identifier</Label>
-          <Input type="text" id="loop-name" placeholder="fix-authentication-bug" bind:value={loopName} class="bg-slate-900 border-gray-800 text-white rounded-none" />
-        </div>
-        <div>
-          <Label for="branch" class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">Branch Name</Label>
-          <Input type="text" id="branch" placeholder="feature/auth-fix" bind:value={branch} class="bg-slate-900 border-gray-800 text-white rounded-none" />
-        </div>
-        {#if method === 'load_prd'}
-          <div>
-            <Label for="prompt" class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">PRD Content / Prompt</Label>
-            <Textarea id="prompt" rows={6} placeholder="Paste JSON or instructions..." bind:value={prompt} class="bg-slate-900 border-gray-800 text-white rounded-none" />
-          </div>
-        {/if}
-      </div>
+      <PodCreateDetailsStep
+        {method}
+        {loopName}
+        {branch}
+        {prompt}
+        onLoopNameChange={(value) => loopName = value}
+        onBranchChange={(value) => branch = value}
+        onPromptChange={(value) => prompt = value}
+      />
     {:else if step === 4}
-      <div class="flex flex-col h-[400px]">
-        <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-black rounded-none border border-gray-800 mb-4">
-          {#each chatMessages as msg}
-            {#if msg.type !== 'system' || msg.text}
-              <div class="flex {msg.type === 'user' ? 'justify-end' : 'justify-start'}">
-                <div class="max-w-[85%] px-3 py-2 rounded-none text-xs {msg.type === 'user' ? 'bg-[#86BC25] text-black font-bold' : 'bg-slate-900 text-gray-200 border border-gray-800'}">
-                  <div style="white-space: pre-wrap;">{msg.text || msg.error || ""}</div>
-                </div>
-              </div>
-            {/if}
-          {:else}
-            <div class="flex justify-center items-center h-full text-gray-500 italic text-sm">
-              Initializing PRD chat...
-            </div>
-          {/each}
-        </div>
-
-        {#if finalPRD}
-          <Badge color="green" class="mb-4 py-2 rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px]">PRD Finalized</Badge>
-        {/if}
-
-        <div class="flex gap-2">
-          <Input 
-            type="text" 
-            placeholder="Refine requirements..." 
-            bind:value={chatInput}
-            disabled={!chatSocket}
-            onkeydown={(e) => e.key === 'Enter' && sendChatMessage()}
-            class="bg-slate-900 border-gray-800 text-white rounded-none"
-          />
-          <Button color="alternative" class="bg-[#86BC25] text-black px-4 rounded-none" onclick={sendChatMessage} disabled={!chatSocket || !chatInput}>
-            <PaperPlaneOutline size="sm" />
-          </Button>
-        </div>
-      </div>
+      <PodCreatePRDChatStep
+        {chatMessages}
+        {finalPRD}
+        {chatSocket}
+        {chatInput}
+        onChatInputChange={(value) => chatInput = value}
+        onSendChatMessage={sendChatMessage}
+      />
     {/if}
   </div>
 
