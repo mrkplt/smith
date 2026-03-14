@@ -31,6 +31,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,10 +51,16 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
+      - name: Go analyzer
+        run: golangci-lint run ./...
+
       - name: Install dependencies
         run: |
           npm install --silent
           cd frontend && npm install --silent
+
+      - name: TypeScript analyzer
+        run: cd frontend && npm run lint
 
       - name: Svelte check
         run: cd frontend && npx svelte-kit sync && npm run check

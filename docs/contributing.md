@@ -88,8 +88,15 @@ npm --prefix frontend install
 Common frontend validation commands:
 
 ```bash
+npm --prefix frontend run lint
 npm --prefix frontend run build
 npm --prefix frontend run check
+```
+
+Go analyzer command:
+
+```bash
+golangci-lint run ./...
 ```
 
 For frontend or browser-driven tests, use the repo `make` targets where available so artifact paths and environment setup stay consistent with the rest of the project.

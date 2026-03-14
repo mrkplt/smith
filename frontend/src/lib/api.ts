@@ -5,6 +5,7 @@ const config = (typeof window !== 'undefined' ? (window as any).__SMITH_CONFIG__
 export const apiBaseUrl = (config.apiBaseUrl || "/api").replace(/\/+$/, "");
 export const chatBaseUrl = (config.chatBaseUrl || "/chat").replace(/\/+$/, "");
 
+/** Fetches a resource and aborts when the timeout elapses. */
 export async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 20000, label?: string) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -20,6 +21,7 @@ export async function fetchWithTimeout(url: string, options: any = {}, timeoutMs
   }
 }
 
+/** Fetches JSON from the Smith API and throws on non-success responses. */
 export async function fetchJSON(path: string) {
   const res = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
     headers: { Accept: "application/json" }
@@ -30,18 +32,22 @@ export async function fetchJSON(path: string) {
   return res.json();
 }
 
+/** Sends a JSON POST request to the Smith API. */
 export async function postJSON(path: string, payload: any) {
   return requestJSON(path, "POST", payload);
 }
 
+/** Sends a JSON GET request to the Smith API. */
 export async function getJSON(path: string) {
   return requestJSON(path, "GET");
 }
 
+/** Sends a JSON DELETE request to the Smith API. */
 export async function deleteJSON(path: string) {
   return requestJSON(path, "DELETE");
 }
 
+/** Sends a JSON request to the Smith API and returns the decoded payload. */
 export async function requestJSON(path: string, method: string, payload?: any) {
   const res = await fetchWithTimeout(`${apiBaseUrl}${path}`, {
     method,

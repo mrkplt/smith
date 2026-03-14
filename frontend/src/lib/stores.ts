@@ -113,6 +113,7 @@ export interface ToastMessage {
 
 export const toastMessages = writable<ToastMessage[]>([]);
 
+/** Adds a transient toast notification to the shared UI state. */
 export function pushToast(message: string, level: 'ok' | 'err' | 'muted' = 'muted') {
   const id = Math.random().toString(36).substring(2);
   toastMessages.update(messages => [...messages, { id, message, level, show: true }]);

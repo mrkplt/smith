@@ -22,7 +22,7 @@ export interface ChatEvent {
     data: any;
 }
 
-// Svelte 5 Chat Store using Runes
+/** Manages frontend chat session state and streaming events. */
 export class ChatSession {
     sessionId = $state<string | null>(null);
     messages = $state<Message[]>([]);
