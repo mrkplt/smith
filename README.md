@@ -72,9 +72,7 @@ The platform direction is informed by upstream tooling, [marcus/sidecar](https:/
 
 ## Installation and Usage
 
-`smithctl` is the primary command-line tool for interacting with Smith. For detailed installation instructions and usage examples, see:
-
-- [smithctl Installation and Usage](docs/smithctl-installation-and-usage.md)
+`smithctl` is the primary CLI for interacting with Smith. Installation, usage examples, and operator workflows are documented in [docs/smithctl-installation-and-usage.md](docs/smithctl-installation-and-usage.md).
 
 ## Architecture Summary
 
@@ -103,74 +101,12 @@ Smith is split into control-plane and data-plane components.
 - Supporting docs: `docs/`
 - Make-first local workflow: `make help` (doctor/bootstrap/cluster/deploy/test/teardown)
 
-### Key API Endpoints
+API contracts, ingress flows, terminal control details, and contributor workflows are documented in:
 
-Implemented today:
-- `POST /v1/loops` single/batch direct loop creation.
-- `POST /v1/loops` supports environment profiles (`preset`, `mise`, `container_image`, `dockerfile`) with server-side validation/defaulting.
-- `POST /v1/ingress/github/issues` ingest one or more GitHub issues into loop specs.
-- `POST /v1/ingress/prd` ingest markdown/json PRD inputs into loop specs.
-- `GET /v1/loops/{id}` and `GET /v1/loops/{id}/journal` for state and traceability.
-- `GET /v1/loops/{id}/trace` for end-to-end execution evidence.
-- `GET /v1/loops/{id}/runtime` to resolve namespace/pod/container attachability for console terminal control.
-- `POST /v1/loops/{id}/control/attach`, `/command`, and `/detach` for authenticated operator interactive terminal control.
-- `POST /v1/control/override` for operator state overrides with reason/audit trail.
-- `POST /v1/auth/codex/connect/start|complete`, `GET /v1/auth/codex/status`, and `POST /v1/auth/codex/disconnect` for provider auth lifecycle.
-- `GET /v1/reporting/cost?loop_id={id}` for loop token/cost aggregation from journal metadata.
-- `/swagger/` Interactive Swagger UI.
-- gRPC API on port 8081 (see `proto/v1/smith.proto`).
-
-Aspirational (planned, not implemented yet):
-- `GET /v1/loops/{id}/handoffs` and `GET /v1/loops/{id}/overrides`.
-- `GET /v1/audit?loop_id={id}` for immutable operator/auth action audit records.
-
-
-Terminal control API contracts, required auth/RBAC permissions, and troubleshooting are documented in:
-- [`docs/loop-ingress-and-cli.md`](docs/loop-ingress-and-cli.md)
-
-## Local Git Hooks
-
-Install repo-managed hooks:
-
-```bash
-make hooks-install
-```
-
-Hook behavior:
-- `pre-commit`: quick checks (`go test ./cmd/...`)
-- `pre-push`: full gate (`make build` + `make test`)
-
-Temporarily bypass hooks if needed:
-
-```bash
-SKIP_GIT_HOOKS=1 git commit -m "..."
-SKIP_GIT_HOOKS=1 git push
-```
-
-## Frontend Playwright Tests
-
-Install frontend test dependencies:
-
-```bash
-npm install
-```
-
-Run Playwright tests for the console UI:
-
-```bash
-npm run test:frontend
-# or
-make test-frontend
-```
-
-Artifacts are written under `output/playwright/` (HTML report + failure artifacts).
-
-Run tests against a deployed, port-forwarded console UI:
-
-```bash
-kubectl -n smith-system port-forward svc/smith-smith-console 3000:3000
-npm run test:frontend:live
-```
+- [docs/loop-ingress-and-cli.md](docs/loop-ingress-and-cli.md)
+- [docs/contributing.md](docs/contributing.md)
+- [docs/local-dev-make-workflow.md](docs/local-dev-make-workflow.md)
+- [docs/index.md](docs/index.md)
 
 ## Technology Stack and Thanks
 
@@ -182,7 +118,7 @@ Reference: [docs/technology-stack-and-thanks.md](docs/technology-stack-and-thank
 
 ## PRD-First Loop Workflow
 
-Generate a PRD JSON (interactive agent session):
+Generate a PRD JSON:
 
 ```bash
 smith --prd "Build issue-driven loop execution with terminal attach support" --out .agents/tasks/prd.json
@@ -190,4 +126,4 @@ smith --prd "Build issue-driven loop execution with terminal attach support" --o
 
 If a PRD already exists at `.agents/tasks/prd.json`, replica issue/prompt workflows skip PRD generation and move straight to iterative build.
 
-For the canonical markdown import, JSON validation, markdown export, and ingress workflow, see [docs/prd-authoring-workflow.md](docs/prd-authoring-workflow.md).
+For canonical markdown import, JSON validation, markdown export, and ingress workflow details, see [docs/prd-authoring-workflow.md](docs/prd-authoring-workflow.md).

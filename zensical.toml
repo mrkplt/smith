@@ -11,6 +11,7 @@ extra_javascript = ["javascripts/sidecar-smith.js"]
 
 nav = [
   { "Getting Started" = "index.md" },
+  { "Contributing" = "contributing.md" },
   { "Architecture" = "distributed-autonomous-orchestration-mvp.md" },
   { "Requirements (FR/NFR)" = "requirements-fr-nfr.md" },
   { "Traceability Matrix" = "requirements-traceability.md" },

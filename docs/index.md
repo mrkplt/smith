@@ -21,10 +21,19 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 ## Getting Started
 
 - [Distributed Autonomous Orchestration MVP](distributed-autonomous-orchestration-mvp.md)
+- [Contributing to Smith](contributing.md)
 - [MVP Boundary and Release Gates](mvp-boundary-and-release-gates.md)
 - [Pre-Release System Gate](pre-release-system-gate.md)
 - [Local Make Quickstart](make-local-quickstart.md)
-- [Local Development and Deployment Workflow](local-dev-make-workflow.md)
+- [Local Development Reference](local-dev-make-workflow.md)
+
+## Contributor Guide
+
+- [Contributing to Smith](contributing.md)
+- [Local Development Reference](local-dev-make-workflow.md)
+- [Local Integration Environment](local-integration-environment.md)
+- [smithctl Installation and Usage](smithctl-installation-and-usage.md)
+- [Git History Policy](git-history-policy.md)
 
 ## Architecture
 
@@ -59,16 +68,14 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 
 - [Changelog](changelog.md)
 - [Docs-to-PRD Lifecycle](docs-to-prd-lifecycle.md)
-- [smithctl Installation and Usage](smithctl-installation-and-usage.md)
 - [PRD Authoring Workflow](prd-authoring-workflow.md)
+- [PRD Authoring Example](examples/prd-authoring/valid-prd.md)
 - [Loop Ingress and CLI](loop-ingress-and-cli.md)
 - [Loop Environment Profile](loop-environment-profiles.md)
 - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
 - [Skill Volume Mounts for Loop Runtime](skill-volume-mounts.md)
 - [Repository Auth Options](repository-auth-options.md)
-- [Git History Policy](git-history-policy.md)
 - [Journal Retention and Archival Policy](journal-retention-archival-policy.md)
-- [Local Integration Environment](local-integration-environment.md)
 - [Observability Latency Validation](observability-latency-validation.md)
 - [Backup/Restore Disaster Recovery Runbook](backup-restore-dr-runbook.md)
 - [Staging Soak/Chaos Runbook](staging-soak-chaos-runbook.md)
