@@ -10,16 +10,62 @@ extra_css = ["stylesheets/sidecar-smith.css"]
 extra_javascript = ["javascripts/sidecar-smith.js"]
 
 nav = [
-  { "Getting Started" = "index.md" },
-  { "Contributing" = "contributing.md" },
-  { "Architecture" = "distributed-autonomous-orchestration-mvp.md" },
-  { "Requirements (FR/NFR)" = "requirements-fr-nfr.md" },
-  { "Traceability Matrix" = "requirements-traceability.md" },
-  { "Docs to PRD Lifecycle" = "docs-to-prd-lifecycle.md" },
-  { "Deployment (Helm)" = "deployment-recommendations.md" },
-  { "Agent Providers & Authentication" = "agent-provider-auth.md" },
-  { "smithctl CLI" = "smithctl-installation-and-usage.md" },
-  { "Operations" = "loop-ingress-and-cli.md" }
+  { "Getting Started" = [
+    { "Overview" = "index.md" },
+    { "MVP Overview" = "distributed-autonomous-orchestration-mvp.md" },
+    { "Local Make Quickstart" = "make-local-quickstart.md" },
+    { "MVP Boundary and Release Gates" = "mvp-boundary-and-release-gates.md" },
+    { "Pre-Release System Gate" = "pre-release-system-gate.md" }
+  ]},
+  { "Contributing" = [
+    { "Contributor Guide" = "contributing.md" },
+    { "Local Development Reference" = "local-dev-make-workflow.md" },
+    { "Local Integration Environment" = "local-integration-environment.md" },
+    { "smithctl CLI" = "smithctl-installation-and-usage.md" },
+    { "Git History Policy" = "git-history-policy.md" }
+  ]},
+  { "Architecture" = [
+    { "Distributed Autonomous Orchestration" = "distributed-autonomous-orchestration-mvp.md" },
+    { "PRD1 Core Architecture" = "prd1.md" },
+    { "Reconciliation Loop" = "reconciliation-loop.md" },
+    { "Completion Commit Protocol" = "completion-commit-protocol.md" },
+    { "Lock Strategy" = "lock-strategy.md" },
+    { "etcd Key Schema" = "etcd-key-schema.md" },
+    { "Technology Stack and Thanks" = "technology-stack-and-thanks.md" }
+  ]},
+  { "Requirements" = [
+    { "Requirements (FR/NFR)" = "requirements-fr-nfr.md" },
+    { "Traceability Matrix" = "requirements-traceability.md" }
+  ]},
+  { "Operations" = [
+    { "Loop Ingress and CLI" = "loop-ingress-and-cli.md" },
+    { "Loop Environment Profiles" = "loop-environment-profiles.md" },
+    { "PRD Authoring Workflow" = "prd-authoring-workflow.md" },
+    { "PRD Authoring Example" = "examples/prd-authoring/valid-prd.md" },
+    { "Docs to PRD Lifecycle" = "docs-to-prd-lifecycle.md" },
+    { "Journal Retention and Archival Policy" = "journal-retention-archival-policy.md" },
+    { "Observability Latency Validation" = "observability-latency-validation.md" },
+    { "Backup and Restore DR Runbook" = "backup-restore-dr-runbook.md" },
+    { "Staging Soak and Chaos Runbook" = "staging-soak-chaos-runbook.md" },
+    { "Test Matrix and Failure Injection" = "test-matrix-and-failure-injection.md" },
+    { "Go-Native Test Harness Strategy" = "test-harness-strategy.md" },
+    { "Changelog" = "changelog.md" }
+  ]},
+  { "Deployment" = [
+    { "Deployment Recommendations" = "deployment-recommendations.md" },
+    { "Helm Upgrade and Rollback Runbook" = "helm-upgrade-rollback-runbook.md" },
+    { "Image Tagging and Versioning" = "image-tagging-versioning.md" },
+    { "Cluster Autoscaler Runbook" = "cluster-autoscaler-prerequisites-runbook.md" },
+    { "Secrets Encryption Provider Runbook" = "kubernetes-secrets-encryption-provider-runbook.md" },
+    { "Docs Site and GitHub Pages" = "docs-site-github-pages.md" },
+    { "Docs Site Style Contract" = "docs-site-style-sidecar.md" }
+  ]},
+  { "Providers and Integrations" = [
+    { "Agent Provider Authentication" = "agent-provider-auth.md" },
+    { "Repository Auth Options" = "repository-auth-options.md" },
+    { "Multi-Provider Skill Mount Abstraction" = "multi-provider-skill-mount-abstraction.md" },
+    { "Skill Volume Mounts" = "skill-volume-mounts.md" }
+  ]}
 ]
 
 [project.theme]
