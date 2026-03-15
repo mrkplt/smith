@@ -1,7 +1,10 @@
 package sessions
 
 import (
+	"crypto/rand"
+	"errors"
 	"smith/internal/chat"
+	"sync"
 	"testing"
 	"time"
 )
@@ -99,4 +102,57 @@ func TestManager_AddMessage(t *testing.T) {
 			t.Error("expected UpdatedAt to be updated")
 		}
 	})
+}
+
+type errorReader struct{}
+
+func (e *errorReader) Read(p []byte) (n int, err error) {
+	return 0, errors.New("forced error")
+}
+
+func TestManager_GenerateID_Error(t *testing.T) {
+	oldReader := rand.Reader
+	rand.Reader = &errorReader{}
+	defer func() { rand.Reader = oldReader }()
+
+	m := NewManager()
+	_, err := m.CreateSession(chat.SessionTypePRDRefinement, nil)
+	if err == nil {
+		t.Error("expected error from CreateSession when rand.Reader fails")
+	}
+}
+
+func TestManager_Concurrency(t *testing.T) {
+	m := NewManager()
+	var wg sync.WaitGroup
+
+	numGoroutines := 100
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(i int) {
+			defer wg.Done()
+
+			// Create session
+			s, err := m.CreateSession(chat.SessionTypePRDRefinement, nil)
+			if err != nil {
+				t.Errorf("unexpected error creating session concurrently: %v", err)
+				return
+			}
+
+			// Add message
+			err = m.AddMessage(s.ID, chat.Message{Content: "hello"})
+			if err != nil {
+				t.Errorf("unexpected error adding message concurrently: %v", err)
+			}
+
+			// Get session
+			_, ok := m.GetSession(s.ID)
+			if !ok {
+				t.Errorf("expected session %s to be found", s.ID)
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }
