@@ -346,6 +346,10 @@ func runConfig(configPath string, args []string, stdout, stderr io.Writer) int {
 		return cmdConfigUseContext(configPath, args[1:], stdout, stderr)
 	case "set-context":
 		return cmdConfigSetContext(configPath, args[1:], stdout, stderr)
+	case "delete-context":
+		return cmdConfigDeleteContext(configPath, args[1:], stdout, stderr)
+	case "rename-context":
+		return cmdConfigRenameContext(configPath, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
 		printConfigHelp(stderr)
@@ -498,6 +502,83 @@ func cmdConfigSetContext(configPath string, args []string, stdout, stderr io.Wri
 	}
 	if _, err := fmt.Fprintf(stdout, "Set context %q\n", name); err != nil {
 		fmt.Fprintf(stderr, "write set-context output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigDeleteContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config delete-context <name>")
+		return 2
+	}
+
+	name := strings.TrimSpace(args[0])
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, ok := cfg.Contexts[name]; !ok {
+		fmt.Fprintf(stderr, "context %q not found\n", name)
+		return 1
+	}
+
+	delete(cfg.Contexts, name)
+	if cfg.CurrentContext == name {
+		cfg.CurrentContext = ""
+	}
+
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Deleted context %q\n", name); err != nil {
+		fmt.Fprintf(stderr, "write delete-context output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigRenameContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 2 || strings.TrimSpace(args[0]) == "" || strings.TrimSpace(args[1]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config rename-context <old> <new>")
+		return 2
+	}
+
+	oldName := strings.TrimSpace(args[0])
+	newName := strings.TrimSpace(args[1])
+
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+
+	ctx, ok := cfg.Contexts[oldName]
+	if !ok {
+		fmt.Fprintf(stderr, "context %q not found\n", oldName)
+		return 1
+	}
+	if oldName != newName {
+		if _, exists := cfg.Contexts[newName]; exists {
+			fmt.Fprintf(stderr, "context %q already exists\n", newName)
+			return 1
+		}
+	}
+
+	delete(cfg.Contexts, oldName)
+	cfg.Contexts[newName] = ctx
+	if cfg.CurrentContext == oldName {
+		cfg.CurrentContext = newName
+	}
+
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Renamed context %q to %q\n", oldName, newName); err != nil {
+		fmt.Fprintf(stderr, "write rename-context output: %v\n", err)
 		return 1
 	}
 	return 0

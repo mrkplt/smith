@@ -508,6 +508,213 @@ func TestConfigSetContextRequiresMutableFieldAndDoesNotWriteFile(t *testing.T) {
 	}
 }
 
+func TestConfigDeleteContextRemovesNamedContext(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"default","contexts":{"default":{"server":"http://default.local:8080","token":"default-token"},"staging":{"server":"http://staging.local:8080","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "delete-context", "staging"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if stdout.String() != "Deleted context \"staging\"\n" {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+
+	cfg, err := readFileConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if cfg.CurrentContext != "default" {
+		t.Fatalf("expected current context preserved, got %q", cfg.CurrentContext)
+	}
+	if len(cfg.Contexts) != 1 {
+		t.Fatalf("expected one context, got %#v", cfg.Contexts)
+	}
+	if _, ok := cfg.Contexts["staging"]; ok {
+		t.Fatalf("expected staging context to be removed: %#v", cfg.Contexts)
+	}
+	if cfg.Contexts["default"].Server != "http://default.local:8080" || cfg.Contexts["default"].Token != "default-token" {
+		t.Fatalf("default context changed unexpectedly: %#v", cfg.Contexts["default"])
+	}
+}
+
+func TestConfigDeleteContextClearsCurrentContextWhenDeleted(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"staging","contexts":{"staging":{"server":"http://staging.local:8080","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "delete-context", "staging"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+
+	cfg, err := readFileConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if cfg.CurrentContext != "" {
+		t.Fatalf("expected current context to be cleared, got %q", cfg.CurrentContext)
+	}
+	if len(cfg.Contexts) != 0 {
+		t.Fatalf("expected all contexts removed, got %#v", cfg.Contexts)
+	}
+}
+
+func TestConfigDeleteContextUnknownDoesNotModifyFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"default","contexts":{"default":{"server":"http://default.local:8080","token":"default-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config before: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "delete-context", "staging"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit code")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `context "staging" not found`) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("expected config file to remain unchanged\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestConfigRenameContextPreservesFieldsAndUpdatesCurrentContext(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"staging","contexts":{"default":{"server":"http://default.local:8080","token":"default-token"},"staging":{"server":"http://staging.local:8080","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "rename-context", "staging", "preprod"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if stdout.String() != "Renamed context \"staging\" to \"preprod\"\n" {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+
+	cfg, err := readFileConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if cfg.CurrentContext != "preprod" {
+		t.Fatalf("expected current context to be updated, got %q", cfg.CurrentContext)
+	}
+	if len(cfg.Contexts) != 2 {
+		t.Fatalf("expected two contexts, got %#v", cfg.Contexts)
+	}
+	if _, ok := cfg.Contexts["staging"]; ok {
+		t.Fatalf("expected old context key removed: %#v", cfg.Contexts)
+	}
+	if cfg.Contexts["preprod"].Server != "http://staging.local:8080" || cfg.Contexts["preprod"].Token != "staging-token" {
+		t.Fatalf("expected renamed context values preserved, got %#v", cfg.Contexts["preprod"])
+	}
+	if cfg.Contexts["default"].Server != "http://default.local:8080" || cfg.Contexts["default"].Token != "default-token" {
+		t.Fatalf("default context changed unexpectedly: %#v", cfg.Contexts["default"])
+	}
+}
+
+func TestConfigRenameContextUnknownDoesNotModifyFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"default","contexts":{"default":{"server":"http://default.local:8080","token":"default-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config before: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "rename-context", "staging", "preprod"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit code")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `context "staging" not found`) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("expected config file to remain unchanged\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestConfigRenameContextToExistingNameDoesNotModifyFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"staging","contexts":{"default":{"server":"http://default.local:8080","token":"default-token"},"staging":{"server":"http://staging.local:8080","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	before, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config before: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "rename-context", "staging", "default"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit code")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), `context "default" already exists`) {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+
+	after, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("expected config file to remain unchanged\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
 func TestLoopCreateBatchArrayFile(t *testing.T) {
 	var received map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
