@@ -525,13 +525,18 @@ func (o *orchestrator) handoffConfigMapPayload(ctx context.Context, loopID strin
 }
 
 func (o *orchestrator) ensureSkillSourcesExist(ctx context.Context, mounts []replica.SkillMount) error {
+	seen := make(map[string]bool)
 	for _, mount := range mounts {
 		configMapName := skillSourceConfigMapName(mount.Source)
 		if configMapName == "" {
 			return fmt.Errorf("invalid skill source %q", mount.Source)
 		}
+		if seen[configMapName] {
+			continue
+		}
 		_, err := o.kube.CoreV1().ConfigMaps(o.cfg.namespace).Get(ctx, configMapName, metav1.GetOptions{})
 		if err == nil {
+			seen[configMapName] = true
 			continue
 		}
 		if apierrors.IsNotFound(err) {

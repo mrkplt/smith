@@ -9,7 +9,42 @@ import (
 	"smith/internal/source/gitpolicy"
 	"smith/internal/source/journalpolicy"
 	"smith/internal/source/model"
+	"smith/internal/source/replica"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
+
+func BenchmarkEnsureSkillSourcesExist(b *testing.B) {
+	client := fake.NewSimpleClientset(&corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "skill-test",
+			Namespace: "default",
+		},
+	})
+	orch := &orchestrator{
+		kube: client,
+		cfg: config{
+			namespace: "default",
+		},
+	}
+
+	// Create an array with many duplicate mounts to trigger the N+1 issue
+	var mounts []replica.SkillMount
+	for i := 0; i < 100; i++ {
+		mounts = append(mounts, replica.SkillMount{
+			Name:   "test",
+			Source: "local://skills/test",
+		})
+	}
+
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = orch.ensureSkillSourcesExist(ctx, mounts)
+	}
+}
 
 func TestResolveExecutionImageSelectionDefaults(t *testing.T) {
 	cfg := config{replicaImage: "ghcr.io/smith/replica:v1", replicaPullPolicy: "IfNotPresent"}
