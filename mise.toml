@@ -4,4 +4,3 @@
 [tools]
 go = "1.25.0"
 node = "22"
-python = "3.12"

@@ -57,9 +57,6 @@ jobs:
       - name: Helm Lint
         run: helm lint helm/smith
 
-      - name: Install Zensical
-        run: mise exec -- python -m pip install zensical
-
       - name: Docs quality
         run: ./scripts/docs/quality-check.sh
 
@@ -606,6 +603,7 @@ jobs:
         timeout-minutes: 20
         env:
           SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-pre-release-vc
           SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
           SMITH_ETCD_NAMESPACE: smith-pre-release-system
@@ -703,6 +701,7 @@ jobs:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity-direct-k3s
           SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity-direct-k3s
           SMITH_ENABLE_CLUSTER_TESTS: "true"
+          SMITH_USE_VCLUSTER: "false"
         run: mise exec -- ./scripts/release/pre-release-system-gate.sh parity
 
       - name: Upload direct k3s parity artifacts

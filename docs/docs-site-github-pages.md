@@ -2,17 +2,22 @@
 
 ## Local Build
 
-Install Zensical and build the docs site:
+Build the docs site with the repository-managed docs container:
 
 ```bash
-pip install zensical
 ./scripts/docs/quality-check.sh
 ```
 
 Output is written to `site/`.
 
 The quality-check script validates local markdown links, validates lifecycle metadata,
-builds the full source docs site, and then builds the public GitHub Pages site.
+builds the full source docs site in the docs container, and then builds the public GitHub Pages site.
+
+If you want to pre-build the docs tool image explicitly:
+
+```bash
+make docs-image-build
+```
 
 ## Base URL and Path Configuration
 

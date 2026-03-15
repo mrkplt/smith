@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Run optional long-duration staging validation beyond PR CI scope using `k3d + vCluster + etcd`.
+Run optional long-duration staging validation beyond PR CI scope using the explicit `k3d + vCluster + etcd` compatibility environment.
 
 Goals:
 
@@ -29,15 +29,15 @@ Default schedule: Mondays at 09:00 UTC.
 Provision and run locally:
 
 ```bash
-./scripts/integration/env-up.sh
+make cluster-up-vcluster
 SMITH_SOAK_ITERATIONS=3 SMITH_SOAK_INTERVAL_SECONDS=60 ./scripts/integration/staging-soak-chaos.sh
-./scripts/integration/env-down.sh
+make cluster-down-vcluster
 ```
 
 Run parity spot-check without vCluster:
 
 ```bash
-./scripts/test/parity-spot-check.sh
+SMITH_USE_VCLUSTER=false ./scripts/test/parity-spot-check.sh
 ```
 
 ## Key Parameters

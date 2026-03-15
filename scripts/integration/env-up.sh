@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+CLUSTER_PROVIDER="${SMITH_CLUSTER_PROVIDER:-current}"
 K3D_CLUSTER_NAME="${SMITH_K3D_CLUSTER_NAME:-smith-int}"
 K3D_SERVERS="${SMITH_K3D_SERVERS:-1}"
 K3D_AGENTS="${SMITH_K3D_AGENTS:-2}"
@@ -36,30 +37,46 @@ need_cmd() {
 
 need_cmd kubectl
 need_cmd helm
-need_cmd k3d
+if [[ "$CLUSTER_PROVIDER" == "k3d" ]]; then
+  need_cmd k3d
+fi
 if [[ "$USE_VCLUSTER" == "true" ]]; then
   need_cmd vcluster
 fi
 
-if ! k3d cluster list | awk 'NR>1 {print $1}' | grep -q "^${K3D_CLUSTER_NAME}$"; then
-  info "creating k3d cluster ${K3D_CLUSTER_NAME}"
-  k3d cluster create "$K3D_CLUSTER_NAME" \
-    --servers "$K3D_SERVERS" \
-    --agents "$K3D_AGENTS" \
-    --port "$K3D_PORT_HTTP" \
-    --port "$K3D_PORT_HTTPS"
+if [[ "$CLUSTER_PROVIDER" != "current" && "$CLUSTER_PROVIDER" != "k3d" ]]; then
+  fail "unsupported SMITH_CLUSTER_PROVIDER=${CLUSTER_PROVIDER}; expected current or k3d"
+fi
+
+if [[ "$USE_VCLUSTER" == "true" && "$CLUSTER_PROVIDER" != "k3d" ]]; then
+  fail "SMITH_USE_VCLUSTER=true requires SMITH_CLUSTER_PROVIDER=k3d"
+fi
+
+if [[ "$CLUSTER_PROVIDER" == "k3d" ]]; then
+  if ! k3d cluster list | awk 'NR>1 {print $1}' | grep -q "^${K3D_CLUSTER_NAME}$"; then
+    info "creating k3d cluster ${K3D_CLUSTER_NAME}"
+    k3d cluster create "$K3D_CLUSTER_NAME" \
+      --servers "$K3D_SERVERS" \
+      --agents "$K3D_AGENTS" \
+      --port "$K3D_PORT_HTTP" \
+      --port "$K3D_PORT_HTTPS"
+  else
+    info "k3d cluster ${K3D_CLUSTER_NAME} already exists"
+  fi
 else
-  info "k3d cluster ${K3D_CLUSTER_NAME} already exists"
+  info "using current kubectl context for local environment"
 fi
 
 kubectl cluster-info >/dev/null
 
-# Some local Docker environments mark k3d nodes with disk-pressure taints.
-# Clear these taints to keep local integration bootstrap deterministic.
-kubectl taint nodes --all node.kubernetes.io/disk-pressure:NoSchedule- >/dev/null 2>&1 || true
-sleep 2
-if kubectl get nodes -o jsonpath='{range .items[*].spec.taints[*]}{.key}{"\n"}{end}' 2>/dev/null | grep -q '^node.kubernetes.io/disk-pressure$'; then
-  fail "cluster nodes still report disk-pressure taints; free Docker disk space and retry"
+if [[ "$CLUSTER_PROVIDER" == "k3d" ]]; then
+  # Some local Docker environments mark k3d nodes with disk-pressure taints.
+  # Clear these taints to keep local integration bootstrap deterministic.
+  kubectl taint nodes --all node.kubernetes.io/disk-pressure:NoSchedule- >/dev/null 2>&1 || true
+  sleep 2
+  if kubectl get nodes -o jsonpath='{range .items[*].spec.taints[*]}{.key}{"\n"}{end}' 2>/dev/null | grep -q '^node.kubernetes.io/disk-pressure$'; then
+    fail "cluster nodes still report disk-pressure taints; free Docker disk space and retry"
+  fi
 fi
 
 if [[ "$USE_VCLUSTER" == "true" ]]; then
@@ -79,7 +96,7 @@ if [[ "$USE_VCLUSTER" == "true" ]]; then
     export KUBECONFIG="$SMITH_VCLUSTER_KUBECONFIG"
   fi
 else
-  info "SMITH_USE_VCLUSTER=false; using direct k3d namespace deployment profile"
+  info "SMITH_USE_VCLUSTER=false; deploying directly into the active cluster context"
 fi
 
 kubectl create namespace "$ETCD_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -201,10 +218,13 @@ if [[ "$ETCD_MODE" != "helm" ]]; then
 fi
 
 info "environment ready"
-info "k3d cluster: ${K3D_CLUSTER_NAME}"
+info "cluster provider: ${CLUSTER_PROVIDER}"
+if [[ "$CLUSTER_PROVIDER" == "k3d" ]]; then
+  info "k3d cluster: ${K3D_CLUSTER_NAME}"
+fi
 if [[ "$USE_VCLUSTER" == "true" ]]; then
   info "vcluster: ${VCLUSTER_NAME} (${VCLUSTER_NAMESPACE})"
 else
-  info "vcluster: disabled (direct k3d profile)"
+  info "vcluster: disabled"
 fi
 info "etcd endpoint (inside cluster): http://${ETCD_RELEASE_NAME}.${ETCD_NAMESPACE}.svc.cluster.local:2379"

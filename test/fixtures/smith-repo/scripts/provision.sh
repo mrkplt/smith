@@ -2,7 +2,10 @@
 set -euo pipefail
 
 TARGET_DIR="${1:-/tmp/smith-test-repo}"
-REPO_DIR="$(cd "$(dirname "$TARGET_DIR")" && pwd)/$(basename "$TARGET_DIR")"
+PARENT_DIR="$(dirname "$TARGET_DIR")"
+
+mkdir -p "$PARENT_DIR"
+REPO_DIR="$(cd "$PARENT_DIR" && pwd)/$(basename "$TARGET_DIR")"
 
 rm -rf "$REPO_DIR"
 mkdir -p "$REPO_DIR"

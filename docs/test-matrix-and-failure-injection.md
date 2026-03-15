@@ -63,6 +63,7 @@ Current policy: any failure in repeated runs fails the gate.
 Workflow: `.github/workflows/ephemeral-integration-env.yml`
 
 This workflow provisions an ephemeral `k3d + vCluster + etcd` stack per run, executes integration tests, uploads diagnostics/artifacts, and always tears down the environment.
+The separate direct-namespace parity gate in CI uses `k3d + etcd` without vCluster.
 
 ## CI Loop Scenario Matrix
 

@@ -37,7 +37,6 @@ The repository `mise.toml` is required for the language/runtime layer and manage
 
 - `go`
 - `node`
-- `python`
 
 Install and trust those pinned runtimes from the repository root with:
 
@@ -136,6 +135,8 @@ make cluster-health
 make build-local
 make deploy-local
 ```
+
+`make cluster-up` uses the current `kubectl` context by default. Use `make cluster-up-k3d` or `make cluster-up-vcluster` when you want an isolated disposable cluster.
 
 For teardown:
 

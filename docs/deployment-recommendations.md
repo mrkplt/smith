@@ -65,4 +65,4 @@ Rollout policy:
 
 ## Non-Cloud / Local
 
-Local and CI environments (e.g., k3d + vCluster) remain valid for development and verification, but are not a substitute for production autoscaling validation.
+Local and CI environments (for example the default current-context local workflow, `k3d + etcd`, and `k3d + vCluster`) remain valid for development and verification, but are not a substitute for production autoscaling validation.

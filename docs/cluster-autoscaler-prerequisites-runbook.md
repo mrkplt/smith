@@ -131,7 +131,7 @@ Actions:
 ## Operational Guardrails
 
 - Run pre-release system gate before promotion:
-  - `.github/workflows/pre-release-system-gate.yml`
+  - `.github/workflows/ci.yml`
 - Keep replica node pool max changes under 25% per rollout unless incident response is active.
 - Revert strategy: restore previous node bounds first, then rollback HPA changes if instability persists.
 

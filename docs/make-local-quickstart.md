@@ -20,7 +20,19 @@ make build-local
 make deploy-local
 ```
 
-`make deploy-local` now builds the Smith container images locally and imports them into the `k3d` cluster before running `helm upgrade`, so the control-plane pods do not need to pull `ghcr.io/smith/*` during local development.
+`make cluster-up` now targets the current `kubectl` context by default, which fits Docker Desktop Kubernetes well. `make deploy-local` builds the Smith images locally and skips k3d import unless you intentionally use `make cluster-up-k3d` or `make cluster-up-vcluster`.
+
+For an isolated disposable cluster instead of Docker Desktop Kubernetes:
+
+```bash
+make cluster-up-k3d
+```
+
+For the explicit nested vCluster test path:
+
+```bash
+make cluster-up-vcluster
+```
 
 ## 3. Expose API, Chat, and Console Locally
 
@@ -73,6 +85,7 @@ smithctl --server http://127.0.0.1:8080 --output json loop logs <loop_id>
 ```bash
 make test
 make test-e2e
+make cluster-up-vcluster
 make test-integration
 ```
 

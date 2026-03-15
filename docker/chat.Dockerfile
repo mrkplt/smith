@@ -16,6 +16,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-chat ./cmd/smith-chat
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    rm -rf /var/cache/apk/*
 COPY --from=builder /out/smith-chat /bin/smith-chat
 ENTRYPOINT ["/bin/smith-chat"]
