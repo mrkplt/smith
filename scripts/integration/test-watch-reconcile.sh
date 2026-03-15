@@ -14,10 +14,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
-vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$VCLUSTER_KUBECONFIG"
-export KUBECONFIG="$VCLUSTER_KUBECONFIG"
+connect_vcluster() {
+  vcluster connect "$VCLUSTER_NAME" -n "$VCLUSTER_NAMESPACE" --print > "$VCLUSTER_KUBECONFIG"
+  export KUBECONFIG="$VCLUSTER_KUBECONFIG"
+}
 
-kubectl -n "$ETCD_NAMESPACE" get svc "$ETCD_RELEASE_NAME" >/dev/null
+wait_for_etcd_service() {
+  local attempts=10
+  local attempt=1
+
+  while (( attempt <= attempts )); do
+    if kubectl -n "$ETCD_NAMESPACE" get svc "$ETCD_RELEASE_NAME" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if (( attempt == attempts )); then
+      break
+    fi
+
+    sleep 2
+    connect_vcluster
+    attempt=$((attempt + 1))
+  done
+
+  echo "failed to reach etcd service ${ETCD_RELEASE_NAME} in namespace ${ETCD_NAMESPACE}" >&2
+  return 1
+}
+
+connect_vcluster
+wait_for_etcd_service
+
 kubectl -n "$ETCD_NAMESPACE" port-forward svc/"$ETCD_RELEASE_NAME" 2379:2379 >/tmp/smith-it-port-forward.log 2>&1 &
 PF_PID=$!
 
