@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
-  import { BarsOutline, GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, MessagesOutline } from 'flowbite-svelte-icons';
+  import { BarsOutline, GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
 
 	import type { Snippet } from 'svelte';
 
@@ -17,10 +18,20 @@
 		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
 		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
 		{ id: 'projects', label: 'Projects', href: '/projects', icon: ArchiveOutline },
-		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline }
+		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline },
+		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
 	];
 
   const currentPath = $derived(page.url.pathname);
+
+  function openOperatorChat() {
+    if (typeof window !== 'undefined' && window.localStorage.getItem('smith.chat.preferFullScreen') === 'true') {
+      const returnTo = encodeURIComponent(page.url.pathname + page.url.search);
+      void goto(`/assistant?returnTo=${returnTo}`);
+      return;
+    }
+    chatOpen.update(v => !v);
+  }
 </script>
 
 <Navbar fluid class="bg-black border-b border-gray-800 px-4 py-2 sticky top-0 z-40">
@@ -35,7 +46,7 @@
     <Button
       color="alternative"
       class="p-2 text-blue-500 hover:bg-white/5 transition-colors hidden lg:flex items-center gap-2"
-      onclick={() => chatOpen.update(v => !v)}
+      onclick={openOperatorChat}
       aria-label="Toggle Chat"
     >
       <MessagesOutline size="md" />

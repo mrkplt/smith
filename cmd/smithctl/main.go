@@ -1247,7 +1247,13 @@ func cmdLoopCancel(client *client.Client, output string, args []string, stdout, 
 	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
 	fs.StringVar(&reason, "reason", "cancelled via smithctl", "Cancellation reason")
 	fs.StringVar(&actor, "actor", "operator", "Actor performing cancellation")
-	if err := fs.Parse(args); err != nil {
+	parsedArgs := normalizeInterspersedFlags(args, map[string]bool{
+		"-f":       true,
+		"--file":   true,
+		"--reason": true,
+		"--actor":  true,
+	})
+	if err := fs.Parse(parsedArgs); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
@@ -1294,6 +1300,24 @@ func cmdLoopCancel(client *client.Client, output string, args []string, stdout, 
 		return 1
 	}
 	return 0
+}
+
+func normalizeInterspersedFlags(args []string, flagsWithValues map[string]bool) []string {
+	flagArgs := make([]string, 0, len(args))
+	positionals := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			positionals = append(positionals, arg)
+			continue
+		}
+		flagArgs = append(flagArgs, arg)
+		if flagsWithValues[arg] && i+1 < len(args) {
+			i++
+			flagArgs = append(flagArgs, args[i])
+		}
+	}
+	return append(flagArgs, positionals...)
 }
 
 func cmdLoopDetach(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {

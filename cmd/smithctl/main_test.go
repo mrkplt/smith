@@ -1322,6 +1322,42 @@ func TestLoopCancelBatchPostsOverride(t *testing.T) {
 	}
 }
 
+func TestLoopCancelAcceptsFlagsAfterLoopID(t *testing.T) {
+	var calls []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/control/override" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		calls = append(calls, payload)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "loop", "cancel",
+		"loop-a", "--reason", "test-reason", "--actor", "test-actor",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0]["loop_id"] != "loop-a" {
+		t.Fatalf("expected loop-a, got %#v", calls[0])
+	}
+	if calls[0]["reason"] != "test-reason" {
+		t.Fatalf("expected test reason, got %#v", calls[0])
+	}
+	if calls[0]["actor"] != "test-actor" {
+		t.Fatalf("expected actor=test-actor, got %#v", calls[0])
+	}
+}
+
 func TestLoopDetachPostsControlDetach(t *testing.T) {
 	var calls []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

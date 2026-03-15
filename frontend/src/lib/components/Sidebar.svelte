@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
   import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
-  import { GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, CloseOutline, MessagesOutline } from 'flowbite-svelte-icons';
+  import { GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, CloseOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
 
 	const navItems = [
 		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
 		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
 		{ id: 'projects', label: 'Projects', href: '/projects', icon: ArchiveOutline },
-		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline }
+		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline },
+		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
 	];
 
   let transitionParams = {
@@ -19,6 +21,17 @@
   };
 
   const currentPath = $derived(page.url.pathname);
+
+  function openOperatorChat() {
+    if (typeof window !== 'undefined' && window.localStorage.getItem('smith.chat.preferFullScreen') === 'true') {
+      const returnTo = encodeURIComponent(page.url.pathname + page.url.search);
+      void goto(`/assistant?returnTo=${returnTo}`);
+      sidebarOpen.set(false);
+      return;
+    }
+    chatOpen.update(v => !v);
+    sidebarOpen.set(false);
+  }
 </script>
 
 <Drawer 
@@ -62,7 +75,7 @@
         {/each}
 
         <SidebarItem 
-          onclick={() => { chatOpen.update(v => !v); sidebarOpen.set(false); }}
+          onclick={openOperatorChat}
           class="group text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent"
         >
           {#snippet icon()}

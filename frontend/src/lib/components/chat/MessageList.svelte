@@ -8,12 +8,23 @@
     {#each messages as message}
         <div class="flex {message.role === 'user' ? 'justify-end' : 'justify-start'}">
             <div class="max-w-[80%] rounded-lg p-3 {message.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-100'}">
-                <div class="prose prose-invert prose-sm whitespace-pre-wrap">
-                    {message.content}
-                </div>
-                <div class="text-[10px] mt-1 opacity-50">
-                    {message.timestamp.toLocaleTimeString()}
-                </div>
+                {#if message.role === 'assistant' && !message.content.trim() && chatSession.isStreaming}
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1" aria-label="Assistant is thinking">
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" style="animation-delay: 120ms"></span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" style="animation-delay: 240ms"></span>
+                        </div>
+                        <span class="text-xs text-gray-400">Thinking...</span>
+                    </div>
+                {:else}
+                    <div class="prose prose-invert prose-sm whitespace-pre-wrap">
+                        {message.content}
+                    </div>
+                    <div class="text-[10px] mt-1 opacity-50">
+                        {message.timestamp.toLocaleTimeString()}
+                    </div>
+                {/if}
             </div>
         </div>
     {/each}

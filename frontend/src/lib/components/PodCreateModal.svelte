@@ -32,6 +32,8 @@
 	let chatMessages = $state<PRDChatMessage[]>([]);
 	let chatSocket = $state<PRDChatSocket | null>(null);
 	let chatInput = $state('');
+	let chatProvider = $state('');
+	let chatThinkingLevel = $state('balanced');
 	let finalPRD = $state<string | null>(null);
 
 	const isInteractive = $derived(method === 'issue' || method === 'generate_prd');
@@ -70,6 +72,16 @@
 	function startPRDChat() {
 		if (chatSocket) chatSocket.close();
 
+		if (typeof window !== 'undefined') {
+			if (chatProvider.trim() === '') {
+				chatProvider = window.localStorage.getItem('smith.chat.provider') || '';
+			}
+			const savedThinking = window.localStorage.getItem('smith.chat.thinkingLevel');
+			if (savedThinking === 'quick' || savedThinking === 'balanced' || savedThinking === 'deep') {
+				chatThinkingLevel = savedThinking;
+			}
+		}
+
 		let initialMsg = prompt;
 		if (!initialMsg && issueNumber) {
 			const issue = issues.find(i => String(i.number) === issueNumber);
@@ -82,6 +94,25 @@
 		chatMessages = [];
 		finalPRD = null;
 
+		const context: Record<string, string> = {};
+		const providerApiKey = typeof window !== 'undefined'
+			? (window.localStorage.getItem('smith.chat.providerApiKey') || '').trim()
+			: '';
+		if (projectID) {
+			context.project_id = projectID;
+		}
+		if (chatProvider.trim() !== '') {
+			context.provider = chatProvider.trim();
+		}
+		const resolvedModel = modelForThinking(chatProvider, chatThinkingLevel);
+		if (resolvedModel !== '') {
+			context.model = resolvedModel;
+		}
+		context.thinkingLevel = chatThinkingLevel;
+		if (providerApiKey !== '') {
+			context.providerApiKey = providerApiKey;
+		}
+
 		chatSocket = connectPRDChat((next) => {
 			if (next.messages) {
 				chatMessages = [...chatMessages, ...next.messages];
@@ -89,13 +120,21 @@
 			if (next.finalContent !== undefined) {
 				finalPRD = next.finalContent;
 			}
-		}, { initialPrompt: initialMsg, context: projectID ? { project_id: projectID } : {} });
+		}, { initialPrompt: initialMsg, context });
 	}
 
 	function sendChatMessage() {
 		if (!sendPRDChatMessage(chatSocket, chatInput)) return;
 		chatMessages = [...chatMessages, { type: 'user', text: chatInput }];
 		chatInput = '';
+	}
+
+	function modelForThinking(activeProvider: string, level: string): string {
+		const normalizedProvider = activeProvider.trim().toLowerCase();
+		if (normalizedProvider !== '' && normalizedProvider !== 'openai') {
+			return '';
+		}
+		return 'gpt-5.4';
 	}
 
 	function prevStep() {
@@ -200,8 +239,13 @@
         {finalPRD}
         {chatSocket}
         {chatInput}
+        {chatProvider}
+        {chatThinkingLevel}
         onChatInputChange={(value) => chatInput = value}
+        onChatProviderChange={(value) => chatProvider = value}
+        onChatThinkingLevelChange={(value) => chatThinkingLevel = value}
         onSendChatMessage={sendChatMessage}
+        onRestartChat={startPRDChat}
       />
     {/if}
   </div>

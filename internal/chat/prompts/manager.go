@@ -20,6 +20,7 @@ func (m *Manager) BuildSystemPrompt(ctx context.Context, session *chat.Session) 
 	var sb strings.Builder
 	sb.WriteString("You are the Smith Interactive Chat Assistant. ")
 	sb.WriteString(fmt.Sprintf("You are currently in a %s session.\n\n", session.Type))
+	m.injectApplicationContext(&sb, session.Context)
 
 	switch session.Type {
 	case chat.SessionTypePRDRefinement:
@@ -32,6 +33,63 @@ func (m *Manager) BuildSystemPrompt(ctx context.Context, session *chat.Session) 
 
 	sb.WriteString("\nFollow the operator's instructions and provide helpful, concise responses.")
 	return sb.String(), nil
+}
+
+func (m *Manager) injectApplicationContext(sb *strings.Builder, sCtx map[string]string) {
+	if len(sCtx) == 0 {
+		return
+	}
+
+	var lines []string
+	if app := strings.TrimSpace(sCtx["app"]); app != "" {
+		lines = append(lines, fmt.Sprintf("Application: %s", app))
+	}
+	if surface := strings.TrimSpace(sCtx["surface"]); surface != "" {
+		lines = append(lines, fmt.Sprintf("Surface: %s", surface))
+	}
+	if route := strings.TrimSpace(sCtx["route"]); route != "" {
+		lines = append(lines, fmt.Sprintf("Route: %s", route))
+	}
+	if projectID := strings.TrimSpace(sCtx["projectId"]); projectID != "" {
+		lines = append(lines, fmt.Sprintf("Project ID: %s", projectID))
+	}
+	if loopID := strings.TrimSpace(sCtx["loopId"]); loopID != "" {
+		lines = append(lines, fmt.Sprintf("Loop ID Hint: %s", loopID))
+	}
+	if documentID := strings.TrimSpace(sCtx["documentId"]); documentID != "" {
+		lines = append(lines, fmt.Sprintf("Document ID Hint: %s", documentID))
+	}
+	if provider := strings.TrimSpace(sCtx["provider"]); provider != "" {
+		lines = append(lines, fmt.Sprintf("Preferred Provider: %s", provider))
+	}
+	if model := strings.TrimSpace(sCtx["model"]); model != "" {
+		lines = append(lines, fmt.Sprintf("Preferred Model: %s", model))
+	}
+	if thinking := strings.TrimSpace(sCtx["thinkingLevel"]); thinking != "" {
+		lines = append(lines, fmt.Sprintf("Thinking Level: %s", thinking))
+	}
+	if projectCount := strings.TrimSpace(sCtx["projectsCount"]); projectCount != "" {
+		lines = append(lines, fmt.Sprintf("Projects Loaded: %s", projectCount))
+	}
+	if loopCount := strings.TrimSpace(sCtx["loopsCount"]); loopCount != "" {
+		lines = append(lines, fmt.Sprintf("Pods Loaded: %s", loopCount))
+	}
+	if activeLoopCount := strings.TrimSpace(sCtx["activeLoopsCount"]); activeLoopCount != "" {
+		lines = append(lines, fmt.Sprintf("Active Pods: %s", activeLoopCount))
+	}
+	if documentCount := strings.TrimSpace(sCtx["documentsCount"]); documentCount != "" {
+		lines = append(lines, fmt.Sprintf("Documents Loaded: %s", documentCount))
+	}
+
+	if len(lines) == 0 {
+		return
+	}
+
+	sb.WriteString("CONTEXT: Application\n")
+	for _, line := range lines {
+		sb.WriteString(line + "\n")
+	}
+	sb.WriteString("\n")
 }
 
 func (m *Manager) injectPRDContext(ctx context.Context, sb *strings.Builder, sCtx map[string]string) {
