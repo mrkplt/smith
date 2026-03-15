@@ -36,7 +36,9 @@ jobs:
       - name: Provision staging k3d + vCluster + etcd
         timeout-minutes: 20
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-staging
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-staging-vc
           SMITH_VCLUSTER_NAMESPACE: smith-staging-vcluster
           SMITH_ETCD_NAMESPACE: smith-staging-system
@@ -48,7 +50,9 @@ jobs:
       - name: Run soak + chaos in vCluster
         timeout-minutes: 120
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-staging
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-staging-vc
           SMITH_VCLUSTER_NAMESPACE: smith-staging-vcluster
           SMITH_ETCD_NAMESPACE: smith-staging-system
@@ -69,7 +73,9 @@ jobs:
         if: always()
         timeout-minutes: 15
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-staging
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-staging-vc
           SMITH_VCLUSTER_NAMESPACE: smith-staging-vcluster
           SMITH_ETCD_NAMESPACE: smith-staging-system
