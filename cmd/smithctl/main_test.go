@@ -57,6 +57,132 @@ func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
 	}
 }
 
+func TestLoopListUsesSMITH_CONTEXTForNonConfigCommands(t *testing.T) {
+	t.Setenv("SMITH_API_URL", "")
+	t.Setenv("SMITH_OPERATOR_TOKEN", "")
+	t.Setenv("SMITH_CONTEXT", "staging")
+
+	stagingHits := 0
+	staging := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stagingHits++
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "loop-staging"}})
+	}))
+	defer staging.Close()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"default","contexts":{"default":{"server":"http://127.0.0.1:1","token":"default-token"},"staging":{"server":"` + staging.URL + `","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "--output", "json", "loop", "list"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stagingHits != 1 {
+		t.Fatalf("expected one request to staging server, got %d", stagingHits)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if len(got) != 1 || got[0]["id"] != "loop-staging" {
+		t.Fatalf("unexpected output: %#v", got)
+	}
+}
+
+func TestLoopListEnvOverridesFileBackedServerAndToken(t *testing.T) {
+	t.Setenv("SMITH_CONTEXT", "")
+
+	var authHeader string
+	overrideHits := 0
+	override := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		overrideHits++
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/loops" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		authHeader = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": "loop-env"}})
+	}))
+	defer override.Close()
+
+	t.Setenv("SMITH_API_URL", override.URL)
+	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"default","contexts":{"default":{"server":"http://127.0.0.1:1","token":"file-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "--output", "json", "loop", "list"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if overrideHits != 1 {
+		t.Fatalf("expected one request to override server, got %d", overrideHits)
+	}
+	if authHeader != "Bearer env-token" {
+		t.Fatalf("expected env token auth header, got %q", authHeader)
+	}
+}
+
+func TestPRDSubmitRootFlagsStillOverrideEnvAndConfig(t *testing.T) {
+	var authHeader string
+	flagServerHits := 0
+	flagServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flagServerHits++
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/ingress/prd" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		authHeader = r.Header.Get("Authorization")
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []any{}})
+	}))
+	defer flagServer.Close()
+
+	t.Setenv("SMITH_API_URL", "http://127.0.0.1:1")
+	t.Setenv("SMITH_OPERATOR_TOKEN", "env-token")
+	t.Setenv("SMITH_CONTEXT", "")
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	cfgContent := `{"current_context":"default","contexts":{"default":{"server":"http://127.0.0.1:2","token":"file-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	prdPath := filepath.Join(dir, "prd.json")
+	prdContent := `{"version":1,"project":"Validation","overview":"Compatibility","qualityGates":["go test ./..."],"stories":[]}`
+	if err := os.WriteFile(prdPath, []byte(prdContent), 0o600); err != nil {
+		t.Fatalf("write prd file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--config", cfgPath,
+		"--server", flagServer.URL,
+		"--token", "flag-token",
+		"--output", "json",
+		"prd", "submit", "--file", prdPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if flagServerHits != 1 {
+		t.Fatalf("expected one request to flag server, got %d", flagServerHits)
+	}
+	if authHeader != "Bearer flag-token" {
+		t.Fatalf("expected flag token auth header, got %q", authHeader)
+	}
+}
+
 func TestHelpListsConfigResource(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"help"}, &stdout, &stderr)
