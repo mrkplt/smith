@@ -29,11 +29,11 @@ Recommended node group bounds:
 - `prod`: min 6, max 60 nodes.
 
 Node pool split for production:
-- Control plane pool (`smith-core`, `smith-api`, `smith-console`): min 3, max 15.
+- Control plane pool (`smith-core`, `smith-api`, `smith-chat`, `smith-console`): min 3, max 15.
 - Replica pool (`smith-replica` Jobs): min 3, max 45.
 
 ### HPA
-- Configure HPA for Agent Core and API/WebSocket services.
+- Configure HPA for Agent Core and API/chat services.
 - Start with CPU and memory targets; add custom metrics over time (queue depth, active anomalies).
 - Define scale-up/down stabilization windows to avoid oscillation.
 
@@ -41,6 +41,7 @@ Recommended production targets:
 - `core`: min 3 / max 30, CPU 60%, memory 70%, scale-down stabilization 600s.
 - `api`: min 3 / max 40, CPU 55%, memory 65%, scale-down stabilization 300s.
 - `console`: min 2 / max 10, CPU 65%, memory 75%, scale-down stabilization 300s.
+- `chat`: min 2 / max 10, CPU 65%, memory 75%, scale-down stabilization 300s.
 
 Rollout policy:
 - Deploy HPA with conservative max bounds first.

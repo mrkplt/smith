@@ -60,3 +60,13 @@ console:
     targetMemoryUtilizationPercentage: 75
     scaleUpStabilizationWindowSeconds: 0
     scaleDownStabilizationWindowSeconds: 300
+chat:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 65
+    targetMemoryUtilizationPercentage: 75
+    scaleUpStabilizationWindowSeconds: 0
+    scaleDownStabilizationWindowSeconds: 300

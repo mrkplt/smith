@@ -3,6 +3,7 @@
 	import { fetchJSON, postJSON } from '$lib/api';
 	import { onDestroy } from 'svelte';
 	import { slugifySegment } from '$lib/utils';
+	import { connectPRDChat, sendPRDChatMessage, type PRDChatMessage, type PRDChatSocket } from '$lib/chat/prd-chat';
   import { Modal, Button, Badge } from 'flowbite-svelte';
   import { ArrowLeftOutline, ArrowRightOutline, RocketOutline } from 'flowbite-svelte-icons';
   import PodCreateMethodStep from '$lib/components/PodCreateMethodStep.svelte';
@@ -28,8 +29,8 @@
 	let prompt = $state('');
 	let busy = $state(false);
 	
-	let chatMessages = $state<{ type: string, text?: string, error?: string, final_prd_path?: string }[]>([]);
-	let chatSocket: WebSocket | null = $state(null);
+	let chatMessages = $state<PRDChatMessage[]>([]);
+	let chatSocket = $state<PRDChatSocket | null>(null);
 	let chatInput = $state('');
 	let finalPRD = $state<string | null>(null);
 
@@ -68,47 +69,31 @@
 
 	function startPRDChat() {
 		if (chatSocket) chatSocket.close();
-		
-		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const host = window.location.host;
-		const url = `${protocol}//${host}/api/v1/chat/prd`;
 
-		chatSocket = new WebSocket(url);
+		let initialMsg = prompt;
+		if (!initialMsg && issueNumber) {
+			const issue = issues.find(i => String(i.number) === issueNumber);
+			if (issue) {
+				initialMsg = `Build a PRD from GitHub issue #${issue.number}: ${issue.title}\n\n${issue.body || ""}`;
+			}
+		}
+		if (!initialMsg) initialMsg = "Let's build a new PRD.";
+
 		chatMessages = [];
 		finalPRD = null;
 
-		chatSocket.onopen = () => {
-			let initialMsg = prompt;
-			if (!initialMsg && issueNumber) {
-				const issue = issues.find(i => String(i.number) === issueNumber);
-				if (issue) {
-					initialMsg = `Build a PRD from GitHub issue #${issue.number}: ${issue.title}\n\n${issue.body || ""}`;
-				}
+		chatSocket = connectPRDChat((next) => {
+			if (next.messages) {
+				chatMessages = [...chatMessages, ...next.messages];
 			}
-			if (!initialMsg) initialMsg = "Let's build a new PRD.";
-			chatSocket?.send(JSON.stringify({ type: 'user', text: initialMsg }));
-		};
-
-		chatSocket.onmessage = (event) => {
-			try {
-				const msg = JSON.parse(event.data);
-				if (msg.type === 'system' && msg.final_prd_path) {
-					finalPRD = msg.text;
-				}
-				chatMessages = [...chatMessages, msg];
-			} catch (err) {
-				console.error("Failed to parse chat message", err);
+			if (next.finalContent !== undefined) {
+				finalPRD = next.finalContent;
 			}
-		};
-
-		chatSocket.onclose = () => {
-			chatSocket = null;
-		};
+		}, { initialPrompt: initialMsg, context: projectID ? { project_id: projectID } : {} });
 	}
 
 	function sendChatMessage() {
-		if (!chatInput || !chatSocket) return;
-		chatSocket.send(JSON.stringify({ type: 'user', text: chatInput }));
+		if (!sendPRDChatMessage(chatSocket, chatInput)) return;
 		chatMessages = [...chatMessages, { type: 'user', text: chatInput }];
 		chatInput = '';
 	}

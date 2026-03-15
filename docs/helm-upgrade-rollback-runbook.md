@@ -11,7 +11,7 @@ This runbook covers operational rollout and recovery for Smith Helm releases.
 ## Compatibility and Ordering Constraints
 
 1. Use immutable image tags for production rollouts (`v*` or `sha-*`), not branch tags.
-2. Keep all control-plane components (`core`, `api`, `console`) on the same chart revision.
+2. Keep all control-plane components (`core`, `api`, `chat`, `console`) on the same chart revision.
 3. Apply schema-compatible releases only:
    - state/journal/handoff are `v1` records;
    - rolling versions must continue to read existing `v1` data.
@@ -51,12 +51,13 @@ Post-upgrade checks:
 2. `kubectl -n smith-system get deploy,pod,svc`
 3. `kubectl -n smith-system rollout status deploy/smith-smith-core --timeout=5m`
 4. `kubectl -n smith-system rollout status deploy/smith-smith-api --timeout=5m`
-5. `kubectl -n smith-system rollout status deploy/smith-smith-console --timeout=5m`
+5. `kubectl -n smith-system rollout status deploy/smith-smith-chat --timeout=5m`
+6. `kubectl -n smith-system rollout status deploy/smith-smith-console --timeout=5m`
 
 ## Zero-Downtime Guidance
 
 1. Prefer rolling upgrades with `--wait` and generous timeout.
-2. Keep at least two API replicas in staging/prod during rollouts.
+2. Keep at least two API and chat replicas in staging/prod during rollouts.
 3. Avoid simultaneous disruptive changes:
    - do not rotate secrets and chart structure in one deploy;
    - do not change autoscaling bounds and resource limits in the same window.
@@ -64,7 +65,7 @@ Post-upgrade checks:
    - `local` -> `staging` -> `prod`.
 5. Watch live service health during rollout:
    - `kubectl -n smith-system get pods -w`
-   - verify `/readyz` on API service from an internal probe job or port-forward.
+   - verify `/readyz` on API and chat services from an internal probe job or port-forward.
 
 ## Rollback Procedure
 
@@ -76,7 +77,7 @@ Post-upgrade checks:
 helm -n smith-system rollback smith <REVISION> --wait --timeout 10m
 ```
 
-3. Re-run post-upgrade checks (`status`, `rollout status`, basic API health).
+3. Re-run post-upgrade checks (`status`, `rollout status`, API/chat health).
 4. Confirm image tags and values match expected rollback baseline.
 5. Record incident details and failed revision in ops notes.
 
@@ -91,8 +92,8 @@ helm -n smith-system rollback smith <REVISION> --wait --timeout 10m
 3. HPA thrash during rollout
    - Cause: overly aggressive stabilization/window settings.
    - Recovery: revert autoscaling changes or rollback release revision.
-4. API unavailable during rollout
-   - Cause: single replica + restart window.
+4. API or chat unavailable during rollout
+    - Cause: single replica + restart window.
    - Recovery: raise replica count in profile before next upgrade window.
 
 ## Non-Prod Validation Record

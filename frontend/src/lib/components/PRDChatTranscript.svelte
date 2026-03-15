@@ -23,11 +23,11 @@
     {#if starting}
       <div class="flex flex-col justify-center items-center h-full text-gray-500 gap-4">
         <div class="w-8 h-8 border-4 border-[#86BC25] border-t-transparent rounded-full animate-spin"></div>
-        <span class="italic text-xs uppercase font-bold tracking-widest">Starting agent in Kubernetes...</span>
+        <span class="italic text-xs uppercase font-bold tracking-widest">Starting chat session...</span>
       </div>
     {:else}
       <div class="flex justify-center items-center h-full text-gray-500 italic">
-        Waiting for prompt...
+        Ready for your prompt.
       </div>
     {/if}
   {/each}
@@ -36,7 +36,7 @@
     <div class="flex justify-start">
       <div class="bg-slate-900 text-gray-400 border border-gray-800 px-4 py-2 rounded-none flex items-center gap-3">
         <div class="w-4 h-4 border-2 border-[#86BC25] border-t-transparent rounded-full animate-spin"></div>
-        <span class="text-[10px] font-bold uppercase tracking-widest">Agent is thinking...</span>
+        <span class="text-[10px] font-bold uppercase tracking-widest">Assistant is thinking...</span>
       </div>
     </div>
   {/if}

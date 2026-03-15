@@ -1,11 +1,12 @@
 <script lang="ts">
   import { Badge, Button, Input } from 'flowbite-svelte';
   import { PaperPlaneOutline } from 'flowbite-svelte-icons';
+  import type { PRDChatSocket } from '$lib/chat/prd-chat';
 
   interface Props {
     chatMessages: { type: string; text?: string; error?: string; final_prd_path?: string }[];
     finalPRD: string | null;
-    chatSocket: WebSocket | null;
+    chatSocket: PRDChatSocket | null;
     chatInput: string;
     onChatInputChange: (value: string) => void;
     onSendChatMessage: () => void;
@@ -26,13 +27,13 @@
       {/if}
     {:else}
       <div class="flex justify-center items-center h-full text-gray-500 italic text-sm">
-        Initializing PRD chat...
+        Starting chat session...
       </div>
     {/each}
   </div>
 
   {#if finalPRD}
-    <Badge color="green" class="mb-4 py-2 rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px]">PRD Finalized</Badge>
+    <Badge color="green" class="mb-4 py-2 rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px]">Draft Ready</Badge>
   {/if}
 
   <div class="flex gap-2">

@@ -5,3 +5,6 @@ API service:
 
 Console service:
   {{ include "smith.fullname" . }}-console:{{ .Values.console.service.port }}
+
+Chat service:
+  {{ include "smith.fullname" . }}-chat:{{ .Values.chat.service.port }}

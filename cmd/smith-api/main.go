@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -33,7 +32,6 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 	_ "smith/docs"
 
-	"github.com/gorilla/websocket"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -99,7 +97,6 @@ type server struct {
 	podExec      podExecRunner
 	kube         kubernetes.Interface
 	restConfig   *rest.Config
-	upgrader     websocket.Upgrader
 }
 type overrideRequest = api.OverrideRequest
 type costSummary = api.CostSummary
@@ -528,9 +525,6 @@ func main() {
 		podExec:      podExec,
 		kube:         kube,
 		restConfig:   restConfig,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-		},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
@@ -543,7 +537,6 @@ func main() {
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
 	mux.HandleFunc("/v1/webhooks/github/issues", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
-	mux.HandleFunc("/v1/chat/prd", s.handleChatPRD)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/audit/stream", s.handleAuditStream)
@@ -1357,257 +1350,6 @@ func resolveRuntimeContainerName(pod corev1.Pod, preferred string) (string, bool
 	return pod.Spec.Containers[0].Name, true
 }
 
-type chatMessage struct {
-	Type         string `json:"type"`
-	Text         string `json:"text,omitempty"`
-	Actor        string `json:"actor,omitempty"`
-	Timestamp    string `json:"timestamp,omitempty"`
-	Error        string `json:"error,omitempty"`
-	FinalPRDPath string `json:"final_prd_path,omitempty"`
-}
-
-func (s *server) handleChatPRD(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	conn, err := s.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("prd chat upgrade failed: %v", err)
-		return
-	}
-	defer func() { _ = conn.Close() }()
-
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
-	// Initial greeting or wait for prompt
-	_ = conn.WriteJSON(chatMessage{
-		Type:      "system",
-		Text:      "PRD Drafting Agent starting in Kubernetes... Waiting for prompt.",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-	})
-
-	var initialPrompt string
-	for {
-		var msg chatMessage
-		if err := conn.ReadJSON(&msg); err != nil {
-			return
-		}
-		if msg.Type == "user" && strings.TrimSpace(msg.Text) != "" {
-			initialPrompt = strings.TrimSpace(msg.Text)
-			break
-		}
-	}
-
-	providerID := strings.ToLower(r.URL.Query().Get("provider"))
-	if providerID == "" {
-		providerID = "openai" // default
-	}
-
-	agentImage := "smith-replica:local"
-
-	// Goose provider mapping
-	gooseProvider := "openai"
-	switch providerID {
-	case "google", "gemini":
-		gooseProvider = "google"
-	case "anthropic", "claude":
-		gooseProvider = "anthropic"
-	}
-
-	agentChatCmd := "smith agent-chat --agent-cmd '/root/.local/bin/goose acp'"
-	podName := fmt.Sprintf("smith-drafter-%d", time.Now().UTC().UnixNano())
-	namespace := s.cfg.runtimeNamespace
-	if namespace == "" {
-		namespace = "smith-system"
-	}
-
-	_ = conn.WriteJSON(chatMessage{
-		Type:      "system",
-		Text:      fmt.Sprintf("Launching %s agent (Goose) in pod %s...", providerID, podName),
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-	})
-
-	envVars := []corev1.EnvVar{
-		{Name: "GOOSE_PROVIDER", Value: gooseProvider},
-		{Name: "SMITH_RUNTIME_CREDENTIALS", Value: s.cfg.operatorToken},
-		{Name: "OPENAI_API_KEY", Value: s.cfg.operatorToken},
-		{Name: "GOOGLE_API_KEY", Value: s.cfg.operatorToken},
-		{Name: "ANTHROPIC_API_KEY", Value: s.cfg.operatorToken},
-	}
-
-	_, err = s.createDraftingPod(ctx, namespace, podName, agentImage, envVars)
-	if err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to create drafting pod: " + err.Error()})
-		return
-	}
-	defer func() {
-		cleanupCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		defer stop()
-		_ = s.kube.CoreV1().Pods(namespace).Delete(cleanupCtx, podName, metav1.DeleteOptions{})
-	}()
-
-	// Stream pipes
-	stdinReader, stdinWriter := io.Pipe()
-	stdoutReader, stdoutWriter := io.Pipe()
-	stderrReader, stderrWriter := io.Pipe()
-
-	// Wait for pod to be running
-	for i := 0; i < 30; i++ {
-		p, err := s.kube.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
-		if err == nil && p.Status.Phase == corev1.PodRunning {
-			break
-		}
-		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Waiting for agent pod to start..."})
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(2 * time.Second):
-		}
-	}
-
-	// Setup interactive exec
-	execRequest := s.kube.CoreV1().RESTClient().Post().
-		Resource("pods").
-		Namespace(namespace).
-		Name(podName).
-		SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Container: "agent",
-			Command:   []string{"/bin/sh", "-lc", agentChatCmd},
-			Stdin:     true,
-			Stdout:    true,
-			Stderr:    true,
-			TTY:       false,
-		}, kubescheme.ParameterCodec)
-
-	executor, err := remotecommand.NewSPDYExecutor(s.restConfig, http.MethodPost, execRequest.URL())
-	if err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "error", Error: "failed to setup executor: " + err.Error()})
-		return
-	}
-
-	// Feed initial prompt into stdin (agent-chat reads first line as prompt)
-	go func() {
-		_, _ = io.WriteString(stdinWriter, initialPrompt+"\n")
-	}()
-	// Proxy WS to stdin
-	go func() {
-		for {
-			var msg chatMessage
-			if err := conn.ReadJSON(&msg); err != nil {
-				_ = stdinWriter.Close()
-				return
-			}
-			if msg.Type == "user" {
-				_, _ = io.WriteString(stdinWriter, msg.Text+"\n")
-			}
-		}
-	}()
-
-	// Proxy bridge JSON events to WS
-	var finalJSON string
-	go func() {
-		scanner := bufio.NewScanner(stdoutReader)
-		for scanner.Scan() {
-			var evt map[string]any
-			if err := json.Unmarshal(scanner.Bytes(), &evt); err != nil {
-				// Raw non-JSON output, send as agent text
-				_ = conn.WriteJSON(chatMessage{
-					Type:      "agent",
-					Text:      scanner.Text(),
-					Timestamp: time.Now().UTC().Format(time.RFC3339),
-				})
-				continue
-			}
-
-			switch evt["type"] {
-			case "status":
-				text, _ := evt["text"].(string)
-				_ = conn.WriteJSON(chatMessage{Type: "system", Text: "[bridge] " + text})
-			case "output":
-				text, _ := evt["text"].(string)
-				_ = conn.WriteJSON(chatMessage{Type: "agent", Text: text})
-			case "log":
-				text, _ := evt["text"].(string)
-				_ = conn.WriteJSON(chatMessage{Type: "system", Text: "[agent-log] " + text})
-			case "final_prd":
-				content, _ := evt["content"]
-				data, _ := json.Marshal(content)
-				finalJSON = string(data)
-			case "error":
-				text, _ := evt["text"].(string)
-				_ = conn.WriteJSON(chatMessage{Type: "error", Error: text})
-			}
-		}
-	}()
-
-	// Proxy raw stderr to system messages
-	go func() {
-		scanner := bufio.NewScanner(stderrReader)
-		for scanner.Scan() {
-			_ = conn.WriteJSON(chatMessage{
-				Type:      "system",
-				Text:      "[pod-stderr] " + scanner.Text(),
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-			})
-		}
-	}()
-
-	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin:  stdinReader,
-		Stdout: stdoutWriter,
-		Stderr: stderrWriter,
-		Tty:    false,
-	})
-
-	if err != nil {
-		_ = conn.WriteJSON(chatMessage{Type: "system", Text: "Agent pod execution failed: " + err.Error()})
-	}
-
-	if finalJSON != "" {
-		var prd model.PRD
-		if err := json.Unmarshal([]byte(finalJSON), &prd); err == nil {
-			if valErr := prd.Validate(); valErr == nil {
-				_ = conn.WriteJSON(chatMessage{
-					Type:         "system",
-					FinalPRDPath: "drafted-via-agent.json",
-					Text:         finalJSON,
-				})
-				return
-			} else {
-				_ = conn.WriteJSON(chatMessage{Type: "error", Error: "Generated PRD failed validation: " + valErr.Error()})
-			}
-		}
-	}
-	_ = conn.WriteJSON(chatMessage{Type: "error", Error: "Agent failed to produce a valid structured PRD JSON."})
-}
-
-func (s *server) createDraftingPod(ctx context.Context, namespace, name, image string, env []corev1.EnvVar) (*corev1.Pod, error) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"smith.io/component": "drafter",
-			},
-		},
-		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
-			Containers: []corev1.Container{
-				{
-					Name:            "agent",
-					Image:           image,
-					ImagePullPolicy: corev1.PullNever,
-					Command:         []string{"/bin/sh", "-c", "sleep 3600"}, // Keep alive for exec
-					Env:             env,
-				},
-			},
-		},
-	}
-	return s.kube.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
-}
 func (s *server) handleLoopAttach(w http.ResponseWriter, r *http.Request, loopID string) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")

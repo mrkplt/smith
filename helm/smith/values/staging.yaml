@@ -24,3 +24,5 @@ api:
   replicaCount: 2
 console:
   replicaCount: 1
+chat:
+  replicaCount: 1
