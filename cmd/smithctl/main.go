@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	client "smith/pkg/client/v1"
 )
 
@@ -43,13 +44,13 @@ type runtimeConfig struct {
 }
 
 type fileConfig struct {
-	CurrentContext string                   `json:"current_context"`
-	Contexts       map[string]contextConfig `json:"contexts"`
+	CurrentContext string                   `json:"current_context" yaml:"current_context"`
+	Contexts       map[string]contextConfig `json:"contexts" yaml:"contexts"`
 }
 
 type contextConfig struct {
-	Server string `json:"server"`
-	Token  string `json:"token"`
+	Server string `json:"server" yaml:"server"`
+	Token  string `json:"token" yaml:"token"`
 }
 
 type stringMapFlag map[string]string
@@ -146,7 +147,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch rest[0] {
 
 	case "config":
-		return runConfig(rest[1:], stdout, stderr)
+		return runConfig(flags.Config, rest[1:], stdout, stderr)
 	case "loop":
 		return runLoop(client, cfg.Output, rest[1:], stdout, stderr)
 	case "prd":
@@ -295,7 +296,7 @@ func runLoop(client *client.Client, output string, args []string, stdout, stderr
 	}
 }
 
-func runConfig(args []string, stdout, stderr io.Writer) int {
+func runConfig(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printConfigHelp(stdout)
 		return 0
@@ -304,11 +305,31 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 	case "help", "-h", "--help":
 		printConfigHelp(stdout)
 		return 0
+	case "view":
+		return cmdConfigView(configPath, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
 		printConfigHelp(stderr)
 		return 2
 	}
+}
+
+func cmdConfigView(configPath string, stdout, stderr io.Writer) int {
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	rendered, err := yaml.Marshal(cfg)
+	if err != nil {
+		fmt.Fprintf(stderr, "render config yaml: %v\n", err)
+		return 1
+	}
+	if _, err := stdout.Write(rendered); err != nil {
+		fmt.Fprintf(stderr, "write config yaml: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func cmdLoopTrace(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
