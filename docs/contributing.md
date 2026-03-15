@@ -37,7 +37,6 @@ The repository `mise.toml` is required for the language/runtime layer and manage
 
 - `go`
 - `node`
-- `python`
 
 Install and trust those pinned runtimes from the repository root with:
 

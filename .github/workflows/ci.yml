@@ -57,9 +57,6 @@ jobs:
       - name: Helm Lint
         run: helm lint helm/smith
 
-      - name: Install Zensical
-        run: mise exec -- python -m pip install zensical
-
       - name: Docs quality
         run: ./scripts/docs/quality-check.sh
 

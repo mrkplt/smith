@@ -16,7 +16,6 @@ ACT ?= act
 MISE ?= mise
 GO ?= $(MISE) exec --no-prepare -- go
 NPM ?= $(MISE) exec --no-prepare -- npm
-PYTHON ?= $(MISE) exec --no-prepare -- python
 GO_TEST_PACKAGES = $$($(GO) list ./... | grep -Ev '^smith/(frontend/node_modules|site)(/|$$)')
 SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
 SMITH_K3D_CLUSTER_NAME ?= smith-int
@@ -79,11 +78,6 @@ doctor: ## Validate local prerequisites for make-first workflow
 	fi; \
 	if ! $(NPM) --version >/dev/null 2>&1; then \
 	  echo "doctor failed: node/npm is not available through mise"; \
-	  echo "remediation: run 'mise install' from the repo root"; \
-	  exit 1; \
-	fi; \
-	if ! $(PYTHON) --version >/dev/null 2>&1; then \
-	  echo "doctor failed: python is not available through mise"; \
 	  echo "remediation: run 'mise install' from the repo root"; \
 	  exit 1; \
 	fi; \
@@ -312,6 +306,8 @@ images-local: image-build-local image-load-local hooks-image-build ## Build and 
 
 hooks-image-build: ## Build the containerized hook image
 	docker build -f docker/hooks.Dockerfile -t "smith-hooks:local" .
+docs-image-build: ## Build the containerized docs tool image
+	docker build -f docker/docs.Dockerfile -t "smith-docs:local" .
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh
 

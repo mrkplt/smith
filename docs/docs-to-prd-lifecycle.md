@@ -107,13 +107,13 @@ The initial trigger contract is:
 The repository now includes a helper to detect those candidates:
 
 ```bash
-./scripts/docs/find-prd-triggers.py <base-ref> <head-ref>
+node ./scripts/docs/find-prd-triggers.mjs <base-ref> <head-ref>
 ```
 
 Example:
 
 ```bash
-./scripts/docs/find-prd-triggers.py origin/main HEAD
+node ./scripts/docs/find-prd-triggers.mjs origin/main HEAD
 ```
 
 The script emits a JSON array describing approved planning docs that should create or update PRDs.
@@ -135,7 +135,7 @@ This keeps future intent, formalized work definitions, and implemented reality s
 
 Lifecycle docs are now validated by:
 
-- `./scripts/docs/validate-lifecycle-docs.py`
+- `node ./scripts/docs/validate-lifecycle-docs.mjs`
 - `./scripts/docs/quality-check.sh`
 
 The validator checks required frontmatter, status-directory alignment, allowed document types, and PRD/source linkage rules.

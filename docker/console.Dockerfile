@@ -5,7 +5,7 @@ FROM node:22-alpine as builder
 
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
-RUN npm install --silent
+RUN npm install --silent --omit=dev
 COPY frontend/ ./
 RUN npm run build
 
@@ -13,7 +13,8 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine3.20
 
 USER root
-RUN apk upgrade --no-cache libcrypto3 libssl3 libxml2
+RUN apk upgrade --no-cache libcrypto3 libssl3 libxml2 && \
+    rm -rf /var/cache/apk/*
 USER 101
 
 COPY frontend/deploy/nginx.conf /etc/nginx/conf.d/default.conf

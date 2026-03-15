@@ -32,13 +32,8 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Zensical
-        run: pip install zensical
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Set project site_url for this repository
         run: |
@@ -56,9 +51,7 @@ jobs:
           echo "Resolved site_url=$SITE_URL"
 
       - name: Build docs
-        run: |
-          ./scripts/docs/quality-check.sh
-          ./scripts/docs/build-public-site.py
+        run: ./scripts/docs/quality-check.sh
 
       - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

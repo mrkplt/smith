@@ -58,7 +58,7 @@ if $is_docs_only && $needs_docs_checks; then
   ./scripts/docs/quality-check.sh
   if $needs_prd_trigger_report; then
     echo "[pre-push] PRD trigger candidates:"
-    ./scripts/docs/find-prd-triggers.py "${base_ref}" HEAD
+    mise exec -- node ./scripts/docs/find-prd-triggers.mjs "${base_ref}" HEAD
   fi
   exit 0
 fi

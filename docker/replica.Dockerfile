@@ -13,17 +13,16 @@ ARG TARGETARCH=amd64
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-replica ./cmd/smith-replica
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-replica ./cmd/smith-replica && \
     go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith ./cmd/smith
 
 FROM node:22-alpine3.20
 RUN apk add --no-cache git bash ca-certificates curl bzip2 && \
     apk upgrade --no-cache libcrypto3 libssl3 && \
-    npm install -g @openai/codex
-RUN curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash
+    rm -rf /var/cache/apk/* && \
+    npm install -g @openai/codex && \
+    curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash && \
+    npm cache clean --force
 ENV PATH="/root/.local/bin:${PATH}"
 COPY --from=builder /out/smith-replica /bin/smith-replica
 COPY --from=builder /out/smith /bin/smith
