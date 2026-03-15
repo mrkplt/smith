@@ -293,6 +293,25 @@ trivy-scan-local: ## Run local vulnerability scans on all Smith images
 	  exit 1; \
 	fi
 
+image-build-local: ## Build local Smith container images with deploy-local tags
+	docker build -f docker/core.Dockerfile -t "$(SMITH_LOCAL_CORE_IMAGE)" .
+	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
+	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
+	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
+	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
+
+image-load-local: ## Import local Smith container images into the k3d cluster
+	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
+	  "$(SMITH_LOCAL_CORE_IMAGE)" \
+	  "$(SMITH_LOCAL_API_IMAGE)" \
+	  "$(SMITH_LOCAL_REPLICA_IMAGE)" \
+	  "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
+	  "$(SMITH_LOCAL_CHAT_IMAGE)"
+
+images-local: image-build-local image-load-local hooks-image-build ## Build and load local Smith images for deploy-local
+
+hooks-image-build: ## Build the containerized hook image
+	docker build -f docker/hooks.Dockerfile -t "smith-hooks:local" .
 docs-check: ## Run docs quality checks
 	./scripts/docs/quality-check.sh
 

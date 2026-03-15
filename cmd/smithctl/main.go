@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	client "smith/pkg/client/v1"
 )
 
@@ -43,13 +44,24 @@ type runtimeConfig struct {
 }
 
 type fileConfig struct {
-	CurrentContext string                   `json:"current_context"`
-	Contexts       map[string]contextConfig `json:"contexts"`
+	CurrentContext string                   `json:"current_context" yaml:"current_context"`
+	Contexts       map[string]contextConfig `json:"contexts" yaml:"contexts"`
 }
 
 type contextConfig struct {
-	Server string `json:"server"`
-	Token  string `json:"token"`
+	Server string `json:"server" yaml:"server"`
+	Token  string `json:"token" yaml:"token"`
+}
+
+type contextListOutput struct {
+	CurrentContext string                         `yaml:"current_context"`
+	Contexts       map[string]listedContextConfig `yaml:"contexts"`
+}
+
+type listedContextConfig struct {
+	Server  string `yaml:"server"`
+	Token   string `yaml:"token"`
+	Current bool   `yaml:"current"`
 }
 
 type stringMapFlag map[string]string
@@ -145,6 +157,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	client := client.NewClient(cfg.Server, cfg.Token)
 	switch rest[0] {
 
+	case "config":
+		return runConfig(flags.Config, rest[1:], stdout, stderr)
 	case "loop":
 		return runLoop(client, cfg.Output, rest[1:], stdout, stderr)
 	case "prd":
@@ -255,6 +269,26 @@ func readFileConfig(path string) (fileConfig, error) {
 	return out, nil
 }
 
+func writeFileConfig(path string, cfg fileConfig) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("config path is required")
+	}
+	if cfg.Contexts == nil {
+		cfg.Contexts = map[string]contextConfig{}
+	}
+	content, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	if err := os.WriteFile(path, append(content, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
+}
+
 func runLoop(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printLoopHelp(stdout)
@@ -291,6 +325,263 @@ func runLoop(client *client.Client, output string, args []string, stdout, stderr
 		printLoopHelp(stderr)
 		return 2
 	}
+}
+
+func runConfig(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printConfigHelp(stdout)
+		return 0
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		printConfigHelp(stdout)
+		return 0
+	case "view":
+		return cmdConfigView(configPath, stdout, stderr)
+	case "get-contexts":
+		return cmdConfigGetContexts(configPath, stdout, stderr)
+	case "current-context":
+		return cmdConfigCurrentContext(configPath, stdout, stderr)
+	case "use-context":
+		return cmdConfigUseContext(configPath, args[1:], stdout, stderr)
+	case "set-context":
+		return cmdConfigSetContext(configPath, args[1:], stdout, stderr)
+	case "delete-context":
+		return cmdConfigDeleteContext(configPath, args[1:], stdout, stderr)
+	case "rename-context":
+		return cmdConfigRenameContext(configPath, args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
+		printConfigHelp(stderr)
+		return 2
+	}
+}
+
+func cmdConfigView(configPath string, stdout, stderr io.Writer) int {
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	rendered, err := yaml.Marshal(cfg)
+	if err != nil {
+		fmt.Fprintf(stderr, "render config yaml: %v\n", err)
+		return 1
+	}
+	if _, err := stdout.Write(rendered); err != nil {
+		fmt.Fprintf(stderr, "write config yaml: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigGetContexts(configPath string, stdout, stderr io.Writer) int {
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	out := contextListOutput{
+		CurrentContext: cfg.CurrentContext,
+		Contexts:       map[string]listedContextConfig{},
+	}
+	for name, ctx := range cfg.Contexts {
+		out.Contexts[name] = listedContextConfig{
+			Server:  ctx.Server,
+			Token:   ctx.Token,
+			Current: name == cfg.CurrentContext,
+		}
+	}
+	rendered, err := yaml.Marshal(out)
+	if err != nil {
+		fmt.Fprintf(stderr, "render contexts yaml: %v\n", err)
+		return 1
+	}
+	if _, err := stdout.Write(rendered); err != nil {
+		fmt.Fprintf(stderr, "write contexts yaml: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigCurrentContext(configPath string, stdout, stderr io.Writer) int {
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	current := strings.TrimSpace(cfg.CurrentContext)
+	if current == "" {
+		fmt.Fprintln(stderr, "no current context is set")
+		return 1
+	}
+	if _, err := fmt.Fprintln(stdout, current); err != nil {
+		fmt.Fprintf(stderr, "write current context: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigUseContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config use-context <name>")
+		return 2
+	}
+	name := strings.TrimSpace(args[0])
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, ok := cfg.Contexts[name]; !ok {
+		fmt.Fprintf(stderr, "context %q not found\n", name)
+		return 1
+	}
+	cfg.CurrentContext = name
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Switched to context %q\n", name); err != nil {
+		fmt.Fprintf(stderr, "write use-context output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigSetContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]")
+		return 2
+	}
+
+	name := strings.TrimSpace(args[0])
+	fs := flag.NewFlagSet("config set-context", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	var (
+		server string
+		token  string
+	)
+	fs.StringVar(&server, "server", "", "Context server URL")
+	fs.StringVar(&token, "token", "", "Context bearer token")
+	if err := fs.Parse(args[1:]); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintln(stderr, "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]")
+		return 2
+	}
+
+	server = strings.TrimSpace(server)
+	token = strings.TrimSpace(token)
+	if server == "" && token == "" {
+		fmt.Fprintln(stderr, "at least one of --server or --token must be provided")
+		return 2
+	}
+
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+
+	ctx := cfg.Contexts[name]
+	if server != "" {
+		ctx.Server = server
+	}
+	if token != "" {
+		ctx.Token = token
+	}
+	cfg.Contexts[name] = ctx
+
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Set context %q\n", name); err != nil {
+		fmt.Fprintf(stderr, "write set-context output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigDeleteContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config delete-context <name>")
+		return 2
+	}
+
+	name := strings.TrimSpace(args[0])
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, ok := cfg.Contexts[name]; !ok {
+		fmt.Fprintf(stderr, "context %q not found\n", name)
+		return 1
+	}
+
+	delete(cfg.Contexts, name)
+	if cfg.CurrentContext == name {
+		cfg.CurrentContext = ""
+	}
+
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Deleted context %q\n", name); err != nil {
+		fmt.Fprintf(stderr, "write delete-context output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigRenameContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 2 || strings.TrimSpace(args[0]) == "" || strings.TrimSpace(args[1]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config rename-context <old> <new>")
+		return 2
+	}
+
+	oldName := strings.TrimSpace(args[0])
+	newName := strings.TrimSpace(args[1])
+
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+
+	ctx, ok := cfg.Contexts[oldName]
+	if !ok {
+		fmt.Fprintf(stderr, "context %q not found\n", oldName)
+		return 1
+	}
+	if oldName != newName {
+		if _, exists := cfg.Contexts[newName]; exists {
+			fmt.Fprintf(stderr, "context %q already exists\n", newName)
+			return 1
+		}
+	}
+
+	delete(cfg.Contexts, oldName)
+	cfg.Contexts[newName] = ctx
+	if cfg.CurrentContext == oldName {
+		cfg.CurrentContext = newName
+	}
+
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Renamed context %q to %q\n", oldName, newName); err != nil {
+		fmt.Fprintf(stderr, "write rename-context output: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func cmdLoopTrace(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
@@ -1511,6 +1802,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  smithctl [--server URL] [--token TOKEN] [--output text|json] <resource> <command> [flags]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Resources:")
+	fmt.Fprintln(w, "  config  Manage smithctl configuration")
 	fmt.Fprintln(w, "  loop    Manage loop resources")
 	fmt.Fprintln(w, "  prd     Manage PRD resources")
 	fmt.Fprintln(w, "  version Print the version information")
@@ -1539,6 +1831,11 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  smithctl loop ingest-github --file issues.json")
 	fmt.Fprintln(w, "  smithctl prd create \"Auth Flow\" --template feature --out docs/prd-auth.md")
 	fmt.Fprintln(w, "  smithctl prd submit --file docs/prd1.md")
+}
+
+func printConfigHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: smithctl config <command>")
+	fmt.Fprintln(w, "Commands: view, get-contexts, current-context, use-context, set-context, delete-context, rename-context")
 }
 
 func printLoopHelp(w io.Writer) {
