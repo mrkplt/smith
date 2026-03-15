@@ -344,6 +344,8 @@ func runConfig(configPath string, args []string, stdout, stderr io.Writer) int {
 		return cmdConfigCurrentContext(configPath, stdout, stderr)
 	case "use-context":
 		return cmdConfigUseContext(configPath, args[1:], stdout, stderr)
+	case "set-context":
+		return cmdConfigSetContext(configPath, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
 		printConfigHelp(stderr)
@@ -438,6 +440,64 @@ func cmdConfigUseContext(configPath string, args []string, stdout, stderr io.Wri
 	}
 	if _, err := fmt.Fprintf(stdout, "Switched to context %q\n", name); err != nil {
 		fmt.Fprintf(stderr, "write use-context output: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigSetContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]")
+		return 2
+	}
+
+	name := strings.TrimSpace(args[0])
+	fs := flag.NewFlagSet("config set-context", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	var (
+		server string
+		token  string
+	)
+	fs.StringVar(&server, "server", "", "Context server URL")
+	fs.StringVar(&token, "token", "", "Context bearer token")
+	if err := fs.Parse(args[1:]); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintln(stderr, "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]")
+		return 2
+	}
+
+	server = strings.TrimSpace(server)
+	token = strings.TrimSpace(token)
+	if server == "" && token == "" {
+		fmt.Fprintln(stderr, "at least one of --server or --token must be provided")
+		return 2
+	}
+
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+
+	ctx := cfg.Contexts[name]
+	if server != "" {
+		ctx.Server = server
+	}
+	if token != "" {
+		ctx.Token = token
+	}
+	cfg.Contexts[name] = ctx
+
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Set context %q\n", name); err != nil {
+		fmt.Fprintf(stderr, "write set-context output: %v\n", err)
 		return 1
 	}
 	return 0

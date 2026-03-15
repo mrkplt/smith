@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "project": "smithctl Config Command Set",
+  "overview": "Add a first-class `smithctl config` command group so operators can manage local Smith CLI contexts directly instead of editing `~/.smith/config.json` by hand. The first version should cover the full local config lifecycle for contexts, preserve compatibility with existing global flags and environment variables, and present configuration in YAML-oriented output suited to operator inspection.",
+  "goals": [
+    "Provide a dedicated `smithctl config` command group for viewing and managing local CLI configuration.",
+    "Support the core context lifecycle expected from a kubectl-like CLI: inspect contexts, see the current context, switch contexts, and manage context records.",
+    "Allow direct field updates for context `server` and `token` values through CLI commands instead of manual JSON edits.",
+    "Create the config file automatically on write operations when `~/.smith/config.json` does not yet exist.",
+    "Keep existing `--config`, `--context`, `--server`, `--token`, and environment-variable behavior intact so the new commands complement the current resolution model."
+  ],
+  "nonGoals": [
+    "OS keychain, secret store, or encrypted credential integration.",
+    "Interactive prompts, TUI editing flows, or wizard-style setup.",
+    "Import/export/merge support for kubeconfig-style or external config formats.",
+    "Shell completion, editor integration, or broader CLI UX redesign beyond the `config` command group.",
+    "Changing non-config commands to require the new `config` subcommands before existing flags or environment variables work."
+  ],
+  "successMetrics": [
+    "An operator can create, inspect, switch, update, and delete Smith CLI contexts without hand-editing JSON files.",
+    "Write operations succeed against an empty workstation by creating `~/.smith/config.json` automatically.",
+    "Existing non-config `smithctl` commands continue to resolve config correctly from file, env vars, and flags after the feature lands.",
+    "Config command behavior is covered by focused `cmd/smithctl` tests and the feature passes the required Go test and lint gates."
+  ],
+  "openQuestions": [
+    "Should YAML output be the default only for `smithctl config` commands or should this feature also extend the global `--output` flag beyond `text|json`?",
+    "Should token values be fully displayed in YAML output, partially redacted, or controllable with an explicit reveal flag in a later iteration?",
+    "Should `delete-context` be allowed to remove the current context directly, or must users switch away first?"
+  ],
+  "stack": {
+    "framework": "Existing Go CLI in cmd/smithctl",
+    "hosting": "Local operator CLI binary",
+    "database": "JSON config file at ~/.smith/config.json",
+    "auth": "Existing bearer token model stored in config file and overridden by environment variables or command-line flags"
+  },
+  "routes": [
+    {
+      "path": "smithctl config view",
+      "name": "Config View",
+      "purpose": "Display config data in YAML-oriented output for operator inspection."
+    },
+    {
+      "path": "smithctl config get-contexts",
+      "name": "Context List",
+      "purpose": "List configured contexts and identify the current context."
+    },
+    {
+      "path": "smithctl config current-context",
+      "name": "Current Context",
+      "purpose": "Return the active context name."
+    },
+    {
+      "path": "smithctl config use-context <name>",
+      "name": "Use Context",
+      "purpose": "Switch the active context."
+    },
+    {
+      "path": "smithctl config set-context <name> [--server URL] [--token TOKEN]",
+      "name": "Set Context",
+      "purpose": "Create or update a named context record."
+    },
+    {
+      "path": "smithctl config delete-context <name>",
+      "name": "Delete Context",
+      "purpose": "Remove a named context from the local config."
+    },
+    {
+      "path": "smithctl config rename-context <old> <new>",
+      "name": "Rename Context",
+      "purpose": "Rename an existing context while preserving its values."
+    }
+  ],
+  "uiNotes": [
+    "Command help output should present `config` alongside the existing top-level resources.",
+    "YAML output should be stable and readable for operator use and scripting, especially for `view` and `get-contexts`.",
+    "Read commands should produce sensible empty-state output when no config file exists instead of failing with file-not-found errors.",
+    "Write commands should surface precise, actionable errors for invalid arguments, duplicate names, unknown contexts, and invalid rename/delete operations."
+  ],
+  "dataModel": [
+    {
+      "entity": "SmithCLIConfig",
+      "fields": [
+        "current_context",
+        "contexts"
+      ]
+    },
+    {
+      "entity": "SmithCLIContext",
+      "fields": [
+        "name",
+        "server",
+        "token"
+      ]
+    }
+  ],
+  "importFormat": {
+    "description": "Not applicable. The feature manages the existing local JSON config file format and adds YAML-oriented display output for CLI commands.",
+    "example": {
+      "current_context": "default",
+      "contexts": {
+        "default": {
+          "server": "http://127.0.0.1:8080",
+          "token": "operator-token"
+        }
+      }
+    }
+  },
+  "rules": [
+    "The feature applies to the existing codebase in this repository.",
+    "The `config` command group complements existing global flags and environment variables; it does not replace them.",
+    "Read operations must tolerate a missing config file and return empty/default state rather than failing.",
+    "Write operations must create the parent config directory and `config.json` file automatically when missing.",
+    "Context names must be explicit CLI operands and validated for non-empty values.",
+    "Set/update commands must support direct mutation of `server` and `token` fields for a named context.",
+    "The current-context pointer must remain valid after write operations or fail with a clear error when an operation would leave it invalid.",
+    "Output for config inspection commands should be YAML-oriented for the first version.",
+    "The feature must preserve config resolution precedence already used by non-config commands: config file values, then environment overrides, then explicit flags."
+  ],
+  "qualityGates": [
+    "mise exec --no-prepare -- go test ./cmd/smithctl",
+    "mise exec --no-prepare -- go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./..."
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Add config command scaffolding",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want `smithctl` to expose a `config` command group so that configuration management is a first-class CLI workflow.",
+      "acceptanceCriteria": [
+        "`smithctl help` lists `config` as a top-level command alongside the existing resources.",
+        "`smithctl config` without a subcommand prints command-specific help and exits successfully.",
+        "The implementation reuses the existing config file structs and parsing model rather than introducing a parallel config representation.",
+        "Example: running `smithctl config` prints usage for subcommands such as `view`, `get-contexts`, and `use-context`.",
+        "Negative case: running `smithctl config unknown` exits non-zero and prints a clear unknown-command error."
+      ],
+      "startedAt": "2026-03-15T02:01:31.494938+00:00",
+      "completedAt": "2026-03-15T02:06:24.593230+00:00",
+      "updatedAt": "2026-03-15T02:06:24.593069+00:00"
+    },
+    {
+      "id": "US-002",
+      "title": "View config in YAML form",
+      "status": "done",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As an operator, I want to inspect my Smith CLI configuration in YAML-oriented output so that I can understand the current local state quickly.",
+      "acceptanceCriteria": [
+        "`smithctl config view` prints the local config in YAML-oriented output derived from the existing config structure.",
+        "The command supports inspecting the config file even when no current context is set.",
+        "Example: with a config containing `default` and `staging`, `smithctl config view` emits YAML showing `current_context` and both contexts.",
+        "Negative case: if the config file is missing, `smithctl config view` succeeds and returns an empty/default YAML structure instead of failing."
+      ],
+      "startedAt": "2026-03-15T02:06:26.687201+00:00",
+      "completedAt": "2026-03-15T02:12:06.148709+00:00",
+      "updatedAt": "2026-03-15T02:12:06.148569+00:00"
+    },
+    {
+      "id": "US-003",
+      "title": "List and report current context",
+      "status": "done",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As an operator, I want to list contexts and query the current context so that I can tell which Smith API target I am pointed at.",
+      "acceptanceCriteria": [
+        "`smithctl config get-contexts` lists all defined contexts and identifies the current one.",
+        "`smithctl config current-context` prints the active context name when one is set.",
+        "Example: if `current_context` is `staging`, `smithctl config current-context` returns `staging` and `get-contexts` marks it as current.",
+        "Negative case: if no config file or current context exists, `current-context` exits non-zero with a clear message or returns an explicit empty-state result as defined by the implementation."
+      ],
+      "startedAt": "2026-03-15T02:12:08.234326+00:00",
+      "completedAt": "2026-03-15T02:16:47.923573+00:00",
+      "updatedAt": "2026-03-15T02:16:47.923141+00:00"
+    },
+    {
+      "id": "US-004",
+      "title": "Switch active context",
+      "status": "done",
+      "dependsOn": [
+        "US-003"
+      ],
+      "description": "As an operator, I want to switch the active Smith CLI context so that subsequent commands target a different server without repeated flags.",
+      "acceptanceCriteria": [
+        "`smithctl config use-context <name>` updates `current_context` in the config file.",
+        "The command preserves all existing context records and only changes the active pointer.",
+        "Example: running `smithctl config use-context staging` changes `current_context` from `default` to `staging`.",
+        "Negative case: using an unknown context name exits non-zero and does not modify the config file."
+      ],
+      "startedAt": "2026-03-15T02:16:49.993894+00:00",
+      "completedAt": "2026-03-15T02:21:44.080310+00:00",
+      "updatedAt": "2026-03-15T02:21:44.079894+00:00"
+    },
+    {
+      "id": "US-005",
+      "title": "Create and update contexts",
+      "status": "in_progress",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As an operator, I want to create or update context records from the CLI so that I do not have to edit config JSON manually.",
+      "acceptanceCriteria": [
+        "`smithctl config set-context <name> --server URL --token TOKEN` creates a new named context or updates an existing one.",
+        "Write commands automatically create `~/.smith/config.json` and any missing parent directories if they do not exist.",
+        "Field updates support `server` and `token` values on the named context.",
+        "Example: on a fresh machine with no config file, `smithctl config set-context default --server http://127.0.0.1:8080 --token abc` creates the file with the named context.",
+        "Negative case: providing an empty context name or omitting all mutable fields exits non-zero and does not write a partial config file."
+      ],
+      "startedAt": "2026-03-15T02:21:46.164644+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-15T02:21:46.164858+00:00"
+    },
+    {
+      "id": "US-006",
+      "title": "Rename and delete contexts safely",
+      "status": "open",
+      "dependsOn": [
+        "US-005"
+      ],
+      "description": "As an operator, I want to rename or delete obsolete contexts so that local Smith CLI configuration stays maintainable over time.",
+      "acceptanceCriteria": [
+        "`smithctl config rename-context <old> <new>` renames an existing context and preserves its fields.",
+        "`smithctl config delete-context <name>` removes the named context from the config.",
+        "If the current context is renamed, the current-context pointer is updated to the new name.",
+        "Example: renaming `staging` to `preprod` preserves the same `server` and `token` values under the new key.",
+        "Negative case: deleting or renaming an unknown context exits non-zero and does not modify the config file."
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Preserve runtime resolution compatibility",
+      "status": "open",
+      "dependsOn": [
+        "US-002",
+        "US-003",
+        "US-004",
+        "US-005",
+        "US-006"
+      ],
+      "description": "As an operator, I want existing `smithctl` command resolution behavior to remain compatible so that adding config commands does not break current automation.",
+      "acceptanceCriteria": [
+        "Existing global flags (`--config`, `--context`, `--server`, `--token`) continue to work for non-config commands after the feature lands.",
+        "Environment-variable overrides (`SMITH_API_URL`, `SMITH_OPERATOR_TOKEN`, `SMITH_CONTEXT`) continue to override file-backed context values as they do today.",
+        "Example: after setting a default context in the config file, `SMITH_API_URL=http://override smithctl loop list` still targets the override URL.",
+        "Negative case: adding config subcommands does not change the result of existing config resolution tests for unrelated `loop` or `prd` commands."
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Cover config workflows with focused tests",
+      "status": "open",
+      "dependsOn": [
+        "US-007"
+      ],
+      "description": "As a maintainer, I want focused automated coverage for the new config workflows so that the CLI remains stable as config behavior grows.",
+      "acceptanceCriteria": [
+        "Add or extend `cmd/smithctl` tests to cover view, get-contexts, current-context, use-context, set-context, rename-context, and delete-context behavior.",
+        "Tests cover both missing-file behavior for reads and auto-create behavior for writes.",
+        "Example: a test creates a temp config path, runs `set-context`, and verifies the file contents and current-context behavior.",
+        "Negative case: tests assert non-zero exit codes and unchanged file state for unknown contexts, invalid arguments, and invalid write requests.",
+        "The feature passes `mise exec --no-prepare -- go test ./cmd/smithctl` and `mise exec --no-prepare -- go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...`."
+      ]
+    }
+  ]
+}
