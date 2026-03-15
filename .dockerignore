@@ -3,6 +3,9 @@
 td
 **/*_test.go
 docs
+!docs/
+docs/*
+!docs/docs.go
 helm
 scripts
 .DS_Store
