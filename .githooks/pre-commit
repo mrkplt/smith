@@ -39,11 +39,5 @@ if $is_docs_only && $needs_docs_checks; then
   exit 0
 fi
 
-if ! command -v act >/dev/null 2>&1; then
-  echo "ERROR: 'act' is required for non-doc git hooks but was not found." >&2
-  echo "Please install it: brew install act" >&2
-  exit 1
-fi
-
-echo "[pre-commit] running lint-and-check via act..."
+echo "[pre-commit] running fast local checks..."
 make hooks-run-pre-commit

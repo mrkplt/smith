@@ -26,14 +26,27 @@ Required local tools include:
 
 - `td`
 - `git`
-- `go`
-- `node`
+- `mise`
 - `docker`
-- `act`
 - `kubectl`
 - `helm`
 - `k3d`
 - `vcluster`
+
+The repository `mise.toml` is required for the language/runtime layer and manages:
+
+- `go`
+- `node`
+- `python`
+
+Install and trust those pinned runtimes from the repository root with:
+
+```bash
+mise trust mise.toml
+mise install
+```
+
+`mise` is the required manager for the runtimes it controls. It does not replace the system-managed tools Smith still requires, including `docker`, `act`, `kubectl`, `helm`, `k3d`, and `vcluster`.
 
 Validate the local environment with:
 
@@ -47,6 +60,8 @@ Bootstrap local dependencies with:
 make bootstrap
 ```
 
+`make bootstrap` now installs the repo-pinned `mise` runtimes before preparing the remaining local prerequisites.
+
 ## Git Hooks and Local CI
 
 Install the repository-managed git hooks:
@@ -57,8 +72,9 @@ make hooks-install
 
 Hook behavior:
 
-- `pre-commit` runs the `lint-and-check` job via `act`.
-- `pre-push` runs the parallel unit-test jobs via `act` (`go-unit-tests`, `node-unit-tests`, `playwright-tests`).
+- `pre-commit` runs fast local checks directly (`docs-check`, `go vet`, frontend lint/check, and `golangci-lint`).
+- `pre-push` runs fast local unit checks directly (`go test ./...` and frontend `test:unit`).
+- heavier validation stays in GitHub Actions, including Playwright, acceptance, matrix, integration, image build, and release gates.
 
 The local full CI entrypoint is:
 
@@ -66,7 +82,7 @@ The local full CI entrypoint is:
 make ci-local-act
 ```
 
-`act` and Docker are mandatory for the hook workflow because the hooks execute local CI jobs through GitHub Actions-compatible runners.
+`act` and Docker are optional for local hook use, but still required if you want to run the full GitHub Actions-style CI workload locally with `make ci-local-act`.
 
 If you need to bypass hooks temporarily:
 
@@ -82,23 +98,23 @@ Frontend dependencies live under `frontend/`.
 Install dependencies before frontend build or check commands:
 
 ```bash
-npm --prefix frontend install
+mise exec -- npm --prefix frontend install
 ```
 
 Common frontend validation commands:
 
 ```bash
-npm --prefix frontend run lint
-npm --prefix frontend run build
-npm --prefix frontend run check
-npm --prefix frontend run test:unit
-npm --prefix frontend run test:coverage
+mise exec -- npm --prefix frontend run lint
+mise exec -- npm --prefix frontend run build
+mise exec -- npm --prefix frontend run check
+mise exec -- npm --prefix frontend run test:unit
+mise exec -- npm --prefix frontend run test:coverage
 ```
 
 Go analyzer command:
 
 ```bash
-golangci-lint run ./...
+mise exec -- go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
 ```
 
 For frontend or browser-driven tests, use the repo `make` targets where available so artifact paths and environment setup stay consistent with the rest of the project.
@@ -106,8 +122,8 @@ For frontend or browser-driven tests, use the repo `make` targets where availabl
 Playwright harness files live under `test/playwright/`:
 
 ```bash
-npm --prefix test/playwright install
-npm --prefix test/playwright run test:frontend
+mise exec -- npm --prefix test/playwright install
+mise exec -- npm --prefix test/playwright run test:frontend
 ```
 
 ## Local Development

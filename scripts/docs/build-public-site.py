@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import errno
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,15 @@ def copy_public_docs(target_docs_root: Path) -> None:
         shutil.copy2(source, target)
 
 
+def ignore_missing_paths(function, path, excinfo) -> None:
+    _, error, _ = excinfo
+    if isinstance(error, FileNotFoundError):
+        return
+    if isinstance(error, OSError) and error.errno == errno.ENOENT:
+        return
+    raise error
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="smith-public-docs-") as temp_dir:
         temp_root = Path(temp_dir)
@@ -52,7 +62,7 @@ def main() -> int:
         site_dir = temp_root / "site"
         target_site = ROOT / "site"
         if target_site.exists():
-            shutil.rmtree(target_site)
+            shutil.rmtree(target_site, onexc=ignore_missing_paths)
         shutil.copytree(site_dir, target_site)
 
     print("Public docs site build completed.")

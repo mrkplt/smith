@@ -63,12 +63,6 @@ if $is_docs_only && $needs_docs_checks; then
   exit 0
 fi
 
-if ! command -v act >/dev/null 2>&1; then
-  echo "ERROR: 'act' is required for non-doc git hooks but was not found." >&2
-  echo "Please install it: brew install act" >&2
-  exit 1
-fi
-
 echo "[pre-push] remote=${remote_name} url=${remote_url}"
-echo "[pre-push] code changes detected; running unit tests via act..."
+echo "[pre-push] code changes detected; running fast local unit checks..."
 make hooks-run-pre-push

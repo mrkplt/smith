@@ -34,6 +34,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Local Integration Environment](local-integration-environment.md)
 - [smithctl Installation and Usage](smithctl-installation-and-usage.md)
 - [Git History Policy](git-history-policy.md)
+- Required repo `mise.toml` runtime bootstrap is documented in the contributor guide.
 
 ## Architecture
 

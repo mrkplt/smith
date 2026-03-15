@@ -1,0 +1,7 @@
+# Optional local tool bootstrap for Smith contributors.
+# This pins the language/runtime layer to match CI where practical.
+
+[tools]
+go = "1.25.0"
+node = "22"
+python = "3.12"

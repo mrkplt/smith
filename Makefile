@@ -13,6 +13,11 @@ SMITH_REPLICA_IMAGE ?= ghcr.io/smith/replica:v0.1.0
 SMITH_CONSOLE_IMAGE ?= ghcr.io/smith/console:v0.1.0
 SMITH_TEST_ARTIFACTS_DIR ?= /tmp/smith-test-artifacts
 ACT ?= act
+MISE ?= mise
+GO ?= $(MISE) exec --no-prepare -- go
+NPM ?= $(MISE) exec --no-prepare -- npm
+PYTHON ?= $(MISE) exec --no-prepare -- python
+GO_TEST_PACKAGES = $$($(GO) list ./... | grep -Ev '^smith/(frontend/node_modules|site)(/|$$)')
 SMITH_FIXTURE_DIR ?= /tmp/smith-test-repo
 SMITH_K3D_CLUSTER_NAME ?= smith-int
 SMITH_LOCAL_CORE_IMAGE ?= smith-core:local
@@ -33,7 +38,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
-	test test-unit test-frontend \
+	test test-unit test-frontend hook-fast-pre-commit hook-fast-pre-push \
 	\
 	teardown \
 	build docs-check ci-local hooks-install hooks-run-pre-commit hooks-run-pre-push
@@ -42,7 +47,7 @@ help: ## Show available make targets
 doctor: ## Validate local prerequisites for make-first workflow
 	@set -euo pipefail; \
 	missing=0; \
-	for cmd in go kubectl helm docker k3d vcluster; do \
+	for cmd in $(MISE) kubectl helm docker k3d vcluster; do \
 	  if ! command -v $$cmd >/dev/null 2>&1; then \
 	    echo "missing required command: $$cmd"; \
 	    missing=1; \
@@ -56,10 +61,30 @@ doctor: ## Validate local prerequisites for make-first workflow
 	  local current="$$1"; local required="$$2"; \
 	  [[ "$$(printf '%s\n%s\n' "$$required" "$$current" | sort -V | head -n1)" == "$$required" ]]; \
 	}; \
-	go_v="$$(go version | awk '{print $$3}' | sed 's/^go//')"; \
+	if ! $(MISE) trust --quiet mise.toml >/dev/null 2>&1; then \
+	  echo "doctor failed: mise could not trust repo config"; \
+	  echo "remediation: run 'mise trust mise.toml' from the repo root"; \
+	  exit 1; \
+	fi; \
+	if ! $(GO) version >/dev/null 2>&1; then \
+	  echo "doctor failed: go is not available through mise"; \
+	  echo "remediation: run 'mise install' from the repo root"; \
+	  exit 1; \
+	fi; \
+	go_v="$$( $(GO) version | awk '{print $$3}' | sed 's/^go//')"; \
 	if ! ver_ge "$$go_v" "$(SMITH_MIN_GO_VERSION)"; then \
 	  echo "doctor failed: go $$go_v is below required $(SMITH_MIN_GO_VERSION)"; \
-	  echo "remediation: install newer Go from https://go.dev/dl/"; \
+	  echo "remediation: update the pinned Go version in mise.toml or repair the local mise runtime"; \
+	  exit 1; \
+	fi; \
+	if ! $(NPM) --version >/dev/null 2>&1; then \
+	  echo "doctor failed: node/npm is not available through mise"; \
+	  echo "remediation: run 'mise install' from the repo root"; \
+	  exit 1; \
+	fi; \
+	if ! $(PYTHON) --version >/dev/null 2>&1; then \
+	  echo "doctor failed: python is not available through mise"; \
+	  echo "remediation: run 'mise install' from the repo root"; \
 	  exit 1; \
 	fi; \
 	kubectl_v="$$(kubectl version --client=true -o yaml 2>/dev/null | awk '/gitVersion:/{print $$2; exit}' | sed 's/^v//')"; \
@@ -75,8 +100,10 @@ doctor: ## Validate local prerequisites for make-first workflow
 	  exit 1; \
 	fi; \
 	echo "doctor passed: required local tools found"
-bootstrap: ## Install missing k3d/vcluster prerequisites
+bootstrap: ## Install required mise runtimes and missing k3d/vcluster prerequisites
 	@set -euo pipefail; \
+	$(MISE) trust mise.toml; \
+	$(MISE) install; \
 	./scripts/integration/prereqs.sh; \
 	mkdir -p "$$HOME/.smith"; \
 	if [[ ! -f "$$HOME/.smith/config.json" ]]; then \
@@ -90,22 +117,22 @@ build: build-smithctl build-services ## Build all binaries
 
 build-smithctl: ## Build smithctl binary for current platform
 	@mkdir -p $(BIN_DIR)
-	go build -ldflags "-X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT)" -o $(BIN_DIR)/smithctl ./cmd/smithctl
+	$(GO) build -ldflags "-X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT)" -o $(BIN_DIR)/smithctl ./cmd/smithctl
 
 build-services: ## Build all service binaries
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/smith-api ./cmd/smith-api
-	go build -o $(BIN_DIR)/smith-core ./cmd/smith-core
-	go build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
-	go build -o $(BIN_DIR)/smith ./cmd/smith
+	$(GO) build -o $(BIN_DIR)/smith-api ./cmd/smith-api
+	$(GO) build -o $(BIN_DIR)/smith-core ./cmd/smith-core
+	$(GO) build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
+	$(GO) build -o $(BIN_DIR)/smith ./cmd/smith
 
 dist: ## Build cross-platform smithctl binaries
 	@mkdir -p dist
-	GOOS=linux GOARCH=amd64 go build -o dist/smithctl-linux-amd64 ./cmd/smithctl
-	GOOS=linux GOARCH=arm64 go build -o dist/smithctl-linux-arm64 ./cmd/smithctl
-	GOOS=darwin GOARCH=amd64 go build -o dist/smithctl-darwin-amd64 ./cmd/smithctl
-	GOOS=darwin GOARCH=arm64 go build -o dist/smithctl-darwin-arm64 ./cmd/smithctl
-	GOOS=windows GOARCH=amd64 go build -o dist/smithctl-windows-amd64.exe ./cmd/smithctl
+	GOOS=linux GOARCH=amd64 $(GO) build -o dist/smithctl-linux-amd64 ./cmd/smithctl
+	GOOS=linux GOARCH=arm64 $(GO) build -o dist/smithctl-linux-arm64 ./cmd/smithctl
+	GOOS=darwin GOARCH=amd64 $(GO) build -o dist/smithctl-darwin-amd64 ./cmd/smithctl
+	GOOS=darwin GOARCH=arm64 $(GO) build -o dist/smithctl-darwin-arm64 ./cmd/smithctl
+	GOOS=windows GOARCH=amd64 $(GO) build -o dist/smithctl-windows-amd64.exe ./cmd/smithctl
 
 cluster: cluster-up ## Alias for cluster-up
 
@@ -225,29 +252,29 @@ undeploy-local: ## Remove local Helm deployment
 test: test-unit test-frontend test-acceptance ## Run default local test workflow (non-cluster matrix)
 
 test-unit: ## Run full Go test suite
-	go test ./...
+	$(GO) test $(GO_TEST_PACKAGES)
 
 test-bdd: ## Run godog-based BDD acceptance suite
-	go test ./test/acceptance -run TestFeatures -count=1
+	$(GO) test ./test/acceptance -run TestFeatures -count=1
 
 test-acceptance-smoke: ## Run acceptance smoke suite with JSON artifact output
 	@set -euo pipefail; \
 	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
-	go test ./test/acceptance -run TestHarnessSmoke -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-smoke.jsonl"
+	$(GO) test ./test/acceptance -run TestHarnessSmoke -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-smoke.jsonl"
 
 test-acceptance-bdd: ## Run acceptance BDD suite with JSON artifact output
 	@set -euo pipefail; \
 	mkdir -p "$(SMITH_TEST_ARTIFACTS_DIR)"; \
-	go test ./test/acceptance -run TestFeatures -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-bdd.jsonl"
+	$(GO) test ./test/acceptance -run TestFeatures -count=1 -json | tee "$(SMITH_TEST_ARTIFACTS_DIR)/acceptance-bdd.jsonl"
 
 test-acceptance: test-acceptance-smoke test-acceptance-bdd ## Run all Go-native acceptance harness suites
 
 test-frontend: ## Run Playwright frontend/component tests for console
-	@if [ ! -d test/playwright/node_modules ]; then npm --prefix test/playwright install; fi
-	@if [ ! -d frontend/node_modules ]; then cd frontend && npm install; fi
-	@if [ ! -d frontend/.svelte-kit ]; then cd frontend && npx svelte-kit sync; fi
-	cd frontend && npm run build
-	npm --prefix test/playwright run test:frontend
+	@if [ ! -d test/playwright/node_modules ]; then $(NPM) --prefix test/playwright install; fi
+	@if [ ! -d frontend/node_modules ]; then $(NPM) --prefix frontend install; fi
+	@if [ ! -d frontend/.svelte-kit ]; then $(NPM) --prefix frontend exec svelte-kit sync; fi
+	$(NPM) --prefix frontend run build
+	$(NPM) --prefix test/playwright run test:frontend
 
 trivy-scan-local: ## Run local vulnerability scans on all Smith images
 	@echo "[trivy] scanning images for critical vulnerabilities..."
@@ -289,25 +316,20 @@ ci-local-act: ## Run core CI jobs locally using 'act' (requires 'act' and Docker
 	$(ACT) -j acceptance-tests
 	$(ACT) -j test-matrix
 
-hooks-run-pre-commit: ## Run the local pre-commit hook workload via act
-	@if ! command -v "$(ACT)" >/dev/null 2>&1; then \
-		echo "ERROR: 'act' is not installed."; \
-		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
-		exit 1; \
-	fi
-	@echo "[act] running pre-commit hook workload..."
-	$(ACT) -j lint-and-check
+hook-fast-pre-commit: ## Run fast local checks for pre-commit
+	$(MAKE) docs-check
+	$(GO) vet ./...
+	$(NPM) --prefix frontend run lint
+	$(NPM) --prefix frontend run check
+	$(GO) run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
 
-hooks-run-pre-push: ## Run the local pre-push hook workload via act
-	@if ! command -v "$(ACT)" >/dev/null 2>&1; then \
-		echo "ERROR: 'act' is not installed."; \
-		echo "HINT: install it with 'brew install act' or from https://github.com/nektos/act"; \
-		exit 1; \
-	fi
-	@echo "[act] running pre-push hook workload..."
-	$(ACT) -j go-unit-tests
-	$(ACT) -j node-unit-tests
-	$(ACT) -j playwright-tests
+hook-fast-pre-push: ## Run fast local checks for pre-push
+	$(MAKE) test-unit
+	$(NPM) --prefix frontend run test:unit
+
+hooks-run-pre-commit: hook-fast-pre-commit ## Backward-compatible alias for pre-commit hook workload
+
+hooks-run-pre-push: hook-fast-pre-push ## Backward-compatible alias for pre-push hook workload
 
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks
