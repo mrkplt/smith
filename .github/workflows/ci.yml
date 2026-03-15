@@ -26,53 +26,39 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            frontend/package-lock.json
-            test/playwright/package-lock.json
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        run: mise exec -- go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
       - name: Go vet
-        run: go vet ./...
+        run: mise exec -- go vet ./...
 
       - name: Go analyzer
-        run: golangci-lint run ./...
+        run: mise exec -- golangci-lint run ./...
 
       - name: Install dependencies
         run: |
-          npm --prefix test/playwright install --silent
-          cd frontend && npm install --silent
+          mise exec -- npm --prefix test/playwright install --silent
+          mise exec -- npm --prefix frontend install --silent
 
       - name: TypeScript analyzer
-        run: cd frontend && npm run lint
+        run: mise exec -- npm --prefix frontend run lint
 
       - name: Svelte check
-        run: cd frontend && npx svelte-kit sync && npm run check
+        run: |
+          mise exec -- npm --prefix frontend exec svelte-kit sync
+          mise exec -- npm --prefix frontend run check
 
       - name: Helm Lint
         run: helm lint helm/smith
 
       - name: Install Zensical
-        run: pip install zensical
+        run: mise exec -- python -m pip install zensical
 
       - name: Docs quality
         run: ./scripts/docs/quality-check.sh
@@ -100,6 +86,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up mise
+        uses: jdx/mise-action@v3
+
       # NOTE: All CodeQL actions must use the EXACT same version to avoid configuration mismatches.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -122,13 +111,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Run Go unit tests
-        run: go test -v ./...
+        run: mise exec -- go test -v ./...
 
   node-unit-tests:
     runs-on: ubuntu-latest
@@ -137,18 +124,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Install dependencies
-        run: cd frontend && npm install --silent
+        run: mise exec -- npm --prefix frontend install --silent
 
       - name: Run Vitest unit tests
-        run: cd frontend && npm run test:unit
+        run: mise exec -- npm --prefix frontend run test:unit
 
   playwright-tests:
     runs-on: ubuntu-latest
@@ -157,22 +140,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            frontend/package-lock.json
-            test/playwright/package-lock.json
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Install dependencies
         run: |
-          npm --prefix test/playwright install --silent
-          cd frontend && npm install --silent
+          mise exec -- npm --prefix test/playwright install --silent
+          mise exec -- npm --prefix frontend install --silent
 
       - name: Install Playwright browsers
-        run: cd test/playwright && npx playwright install --with-deps
+        run: mise exec -- npm --prefix test/playwright exec playwright install --with-deps
 
       - name: Run frontend Playwright tests
         run: make test-frontend
@@ -195,17 +172,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Run test matrix (unit + e2e)
         env:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-test-artifacts
           SMITH_FIXTURE_DIR: /tmp/smith-test-repo
           SMITH_ENABLE_CLUSTER_TESTS: "false"
-        run: ./scripts/test/run-matrix.sh
+        run: mise exec -- ./scripts/test/run-matrix.sh
 
       - name: Upload test artifacts
         if: ${{ always() && env.ACT != 'true' }}
@@ -221,10 +196,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Run acceptance smoke stage
         env:
@@ -259,17 +232,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Run loop e2e scenario (${{ matrix.scenario.id }})
         env:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-e2e-artifacts/${{ matrix.scenario.id }}
           SMITH_FIXTURE_DIR: /tmp/smith-test-repo-${{ matrix.scenario.id }}
           SMITH_ENABLE_CLUSTER_TESTS: "false"
-        run: ${{ matrix.scenario.script }}
+        run: mise exec -- ${{ matrix.scenario.script }}
 
       - name: Upload scenario artifacts
         if: ${{ always() && env.ACT != 'true' }}
@@ -286,20 +257,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Run ingress and environment mode e2e
         env:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-e2e-artifacts/ingress
           SMITH_ENABLE_CLUSTER_TESTS: "false"
         run: |
-          ./scripts/test/e2e-ingress-modes.sh
-          ./scripts/test/e2e-prd-authoring.sh
-          ./scripts/test/e2e-environment-modes.sh
-          ./scripts/test/e2e-skill-mounts.sh
+          mise exec -- ./scripts/test/e2e-ingress-modes.sh
+          mise exec -- ./scripts/test/e2e-prd-authoring.sh
+          mise exec -- ./scripts/test/e2e-environment-modes.sh
+          mise exec -- ./scripts/test/e2e-skill-mounts.sh
 
       - name: Upload ingress/environment e2e artifacts
         if: ${{ always() && env.ACT != 'true' }}
@@ -512,16 +481,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
       - name: Install integration prerequisites
-        run: ./scripts/integration/prereqs.sh
+        run: mise exec -- ./scripts/integration/prereqs.sh
 
       - name: Provision ephemeral k3d + vCluster + etcd
         timeout-minutes: 15
@@ -534,7 +501,7 @@ jobs:
           SMITH_ETCD_MODE: simple
           SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_CONNECT: "true"
-        run: ./scripts/integration/env-up.sh
+        run: mise exec -- ./scripts/integration/env-up.sh
 
       - name: Run vCluster watch/reconcile integration tests
         timeout-minutes: 10
@@ -544,7 +511,7 @@ jobs:
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
           SMITH_ETCD_NAMESPACE: smith-ci-system
           SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
-        run: ./scripts/integration/test-watch-reconcile.sh
+        run: mise exec -- ./scripts/integration/test-watch-reconcile.sh
 
       - name: Run cluster-enabled test matrix
         timeout-minutes: 10
@@ -557,7 +524,7 @@ jobs:
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
           SMITH_ETCD_NAMESPACE: smith-ci-system
           SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
-        run: ./scripts/test/run-matrix.sh
+        run: mise exec -- ./scripts/test/run-matrix.sh
 
       - name: Collect diagnostics
         if: always()
@@ -585,7 +552,7 @@ jobs:
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
           SMITH_ETCD_NAMESPACE: smith-ci-system
           SMITH_ETCD_RELEASE_NAME: smith-ci-etcd
-        run: ./scripts/integration/env-down.sh
+        run: mise exec -- ./scripts/integration/env-down.sh
 
   # ─── Stage 5: Publish (images + Helm chart) ─────────────────────
   publish:
@@ -626,16 +593,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
       - name: Install integration prerequisites
-        run: ./scripts/integration/prereqs.sh
+        run: mise exec -- ./scripts/integration/prereqs.sh
 
       - name: Provision k3d + vCluster + etcd
         timeout-minutes: 20
@@ -647,7 +612,7 @@ jobs:
           SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
           SMITH_ETCD_MODE: simple
           SMITH_VCLUSTER_CONNECT: "true"
-        run: ./scripts/integration/env-up.sh
+        run: mise exec -- ./scripts/integration/env-up.sh
 
       - name: Run vCluster pre-release gate
         timeout-minutes: 20
@@ -659,7 +624,7 @@ jobs:
           SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
           SMITH_ETCD_NAMESPACE: smith-pre-release-system
           SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
-        run: ./scripts/release/pre-release-system-gate.sh vcluster
+        run: mise exec -- ./scripts/release/pre-release-system-gate.sh vcluster
 
       - name: Upload vCluster gate artifacts
         if: always()
@@ -677,7 +642,7 @@ jobs:
           SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
           SMITH_ETCD_NAMESPACE: smith-pre-release-system
           SMITH_ETCD_RELEASE_NAME: smith-pre-release-etcd
-        run: ./scripts/integration/env-down.sh
+        run: mise exec -- ./scripts/integration/env-down.sh
 
   non-vcluster-parity-gate:
     runs-on: ubuntu-latest
@@ -688,16 +653,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Run non-vCluster parity pre-release gate
         env:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity
           SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity
-        run: ./scripts/release/pre-release-system-gate.sh parity
+        run: mise exec -- ./scripts/release/pre-release-system-gate.sh parity
 
       - name: Upload parity gate artifacts
         if: always()
@@ -715,16 +678,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - name: Set up mise
+        uses: jdx/mise-action@v3
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
       - name: Install integration prerequisites
-        run: ./scripts/integration/prereqs.sh
+        run: mise exec -- ./scripts/integration/prereqs.sh
 
       - name: Provision k3d + etcd (direct namespace, no vCluster)
         timeout-minutes: 20
@@ -734,7 +695,7 @@ jobs:
           SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
           SMITH_ETCD_RELEASE_NAME: smith-pre-release-direct-etcd
           SMITH_ETCD_MODE: simple
-        run: ./scripts/integration/env-up.sh
+        run: mise exec -- ./scripts/integration/env-up.sh
 
       - name: Run direct k3s non-vCluster parity gate
         timeout-minutes: 20
@@ -742,7 +703,7 @@ jobs:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity-direct-k3s
           SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity-direct-k3s
           SMITH_ENABLE_CLUSTER_TESTS: "true"
-        run: ./scripts/release/pre-release-system-gate.sh parity
+        run: mise exec -- ./scripts/release/pre-release-system-gate.sh parity
 
       - name: Upload direct k3s parity artifacts
         if: always()
@@ -759,4 +720,4 @@ jobs:
           SMITH_USE_VCLUSTER: "false"
           SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
           SMITH_ETCD_RELEASE_NAME: smith-pre-release-direct-etcd
-        run: ./scripts/integration/env-down.sh
+        run: mise exec -- ./scripts/integration/env-down.sh
