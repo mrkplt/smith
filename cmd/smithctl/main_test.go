@@ -55,6 +55,54 @@ func TestResolveConfigEnvAndFlagPrecedence(t *testing.T) {
 	}
 }
 
+func TestHelpListsConfigResource(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "config  Manage smithctl configuration") {
+		t.Fatalf("expected config resource in help, got %q", stdout.String())
+	}
+}
+
+func TestConfigWithoutSubcommandPrintsHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"config"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"Usage: smithctl config <command>",
+		"view",
+		"get-contexts",
+		"use-context",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected %q in output %q", want, output)
+		}
+	}
+}
+
+func TestConfigUnknownCommandFails(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"config", "unknown"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit code")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	errOutput := stderr.String()
+	if !strings.Contains(errOutput, `unknown config command "unknown"`) {
+		t.Fatalf("expected unknown command error, got %q", errOutput)
+	}
+	if !strings.Contains(errOutput, "Usage: smithctl config <command>") {
+		t.Fatalf("expected config help in stderr, got %q", errOutput)
+	}
+}
+
 func TestLoopCreateBatchArrayFile(t *testing.T) {
 	var received map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

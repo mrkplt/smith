@@ -145,6 +145,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	client := client.NewClient(cfg.Server, cfg.Token)
 	switch rest[0] {
 
+	case "config":
+		return runConfig(rest[1:], stdout, stderr)
 	case "loop":
 		return runLoop(client, cfg.Output, rest[1:], stdout, stderr)
 	case "prd":
@@ -289,6 +291,22 @@ func runLoop(client *client.Client, output string, args []string, stdout, stderr
 	default:
 		fmt.Fprintf(stderr, "unknown loop command %q\n", args[0])
 		printLoopHelp(stderr)
+		return 2
+	}
+}
+
+func runConfig(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printConfigHelp(stdout)
+		return 0
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		printConfigHelp(stdout)
+		return 0
+	default:
+		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
+		printConfigHelp(stderr)
 		return 2
 	}
 }
@@ -1511,6 +1529,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  smithctl [--server URL] [--token TOKEN] [--output text|json] <resource> <command> [flags]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Resources:")
+	fmt.Fprintln(w, "  config  Manage smithctl configuration")
 	fmt.Fprintln(w, "  loop    Manage loop resources")
 	fmt.Fprintln(w, "  prd     Manage PRD resources")
 	fmt.Fprintln(w, "  version Print the version information")
@@ -1539,6 +1558,11 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  smithctl loop ingest-github --file issues.json")
 	fmt.Fprintln(w, "  smithctl prd create \"Auth Flow\" --template feature --out docs/prd-auth.md")
 	fmt.Fprintln(w, "  smithctl prd submit --file docs/prd1.md")
+}
+
+func printConfigHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: smithctl config <command>")
+	fmt.Fprintln(w, "Commands: view, get-contexts, current-context, use-context, set-context, delete-context, rename-context")
 }
 
 func printLoopHelp(w io.Writer) {
