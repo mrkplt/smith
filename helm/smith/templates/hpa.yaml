@@ -126,3 +126,46 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.console.autoscaling.targetMemoryUtilizationPercentage }}
 {{- end }}
+{{- if and .Values.chat.enabled .Values.chat.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "smith.fullname" . }}-chat
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chat
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "smith.fullname" . }}-chat
+  minReplicas: {{ .Values.chat.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.chat.autoscaling.maxReplicas }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.chat.autoscaling.scaleUpStabilizationWindowSeconds }}
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.chat.autoscaling.scaleDownStabilizationWindowSeconds }}
+      policies:
+        - type: Percent
+          value: 20
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.chat.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.chat.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }}

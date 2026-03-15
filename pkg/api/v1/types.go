@@ -312,6 +312,44 @@ type DocumentBuildRequest struct {
 	Actor string `json:"actor"`
 }
 
+type ChatCreateSessionRequest struct {
+	Type    string            `json:"type"`
+	Context map[string]string `json:"context"`
+}
+
+type ChatMessage struct {
+	ID        string    `json:"id"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+type ChatSession struct {
+	ID        string            `json:"sessionId"`
+	Type      string            `json:"type"`
+	Context   map[string]string `json:"context"`
+	Messages  []ChatMessage     `json:"messages"`
+	CreatedAt time.Time         `json:"createdAt"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+}
+
+type ChatPostMessageRequest struct {
+	Message string `json:"message"`
+}
+
+type ChatPostMessageResponse struct {
+	Status string `json:"status"`
+}
+
+type ChatCommitActionRequest struct {
+	Action  string `json:"action"`
+	Payload any    `json:"payload"`
+}
+
+type ChatCommitActionResponse struct {
+	Status string `json:"status"`
+}
+
 type LoopCreateRequest struct {
 	LoopID         string            `json:"loop_id,omitempty"`
 	IdempotencyKey string            `json:"idempotency_key,omitempty"`

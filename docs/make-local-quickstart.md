@@ -22,15 +22,34 @@ make deploy-local
 
 `make deploy-local` now builds the Smith container images locally and imports them into the `k3d` cluster before running `helm upgrade`, so the control-plane pods do not need to pull `ghcr.io/smith/*` during local development.
 
-## 3. Expose API Locally
+## 3. Expose API, Chat, and Console Locally
 
 In a separate terminal:
 
 ```bash
 kubectl -n smith-system port-forward svc/smith-smith-api 8080:8080
+kubectl -n smith-system port-forward svc/smith-smith-chat 8081:8081
+kubectl -n smith-system port-forward svc/smith-smith-console 3000:3000
 ```
 
 Keep this running while issuing `smithctl` commands.
+
+Quick chat sanity check (new terminal):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/v1/chat/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"prd-refinement","context":{}}'
+```
+
+Console routing sanity check (`/readyz` and `/chat/v1/chat/...`):
+
+```bash
+curl -sS http://127.0.0.1:3000/readyz
+curl -sS -X POST http://127.0.0.1:3000/chat/v1/chat/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"prd-refinement","context":{}}'
+```
 
 ## 4. Create and Inspect a Sample Loop
 
@@ -72,7 +91,7 @@ make cluster-down
   - run `make cluster-up`, then `make cluster-health`.
 - `missing required command` in doctor:
   - run `make bootstrap` and re-run `make doctor`.
-- API calls fail on `127.0.0.1:8080`:
-  - verify `kubectl port-forward` is active.
+- API calls fail on `127.0.0.1:8080` or chat calls fail on `127.0.0.1:8081`:
+  - verify `kubectl port-forward` is active for the matching service.
 - e2e/integration failures:
   - inspect the artifact path printed by make targets.

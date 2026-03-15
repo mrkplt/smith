@@ -22,7 +22,7 @@
       onclick={() => onSelectMethod('generate_prd')}
     >
       <div class="font-bold uppercase text-xs tracking-widest">Generate a PRD</div>
-      <div class="text-[10px] opacity-70 mt-1 uppercase">Chat with an agent to build a new document.</div>
+      <div class="text-[10px] opacity-70 mt-1 uppercase">Start a chat session to build a new document.</div>
     </button>
     <button
       class="p-4 rounded-none border text-left transition-all {method === 'load_prd' ? 'bg-[#86BC25]/10 border-[#86BC25] text-[#86BC25]' : 'bg-slate-900 border-gray-800 text-gray-400 hover:border-gray-600'}"

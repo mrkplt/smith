@@ -6,6 +6,33 @@
 helm upgrade --install smith ./helm/smith -n smith-system --create-namespace
 ```
 
+## Local Access Checks
+
+Port-forward API, chat, and console services:
+
+```bash
+kubectl -n smith-system port-forward svc/smith-smith-api 8080:8080
+kubectl -n smith-system port-forward svc/smith-smith-chat 8081:8081
+kubectl -n smith-system port-forward svc/smith-smith-console 3000:3000
+```
+
+Sanity check chat session creation:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/v1/chat/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"prd-refinement","context":{}}'
+```
+
+Sanity check console routing for `/api` and `/chat` paths:
+
+```bash
+curl -sS http://127.0.0.1:3000/readyz
+curl -sS -X POST http://127.0.0.1:3000/chat/v1/chat/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"prd-refinement","context":{}}'
+```
+
 ## Environment Overlays
 
 Prerequisites:
@@ -46,6 +73,7 @@ Required value groups:
 - `core.replicaTemplate.*` (replica Job defaults forwarded to Agent Core: serviceAccount/resources/nodeSelector/tolerations/env)
 - `api.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
 - `console.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
+- `chat.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
 - `rbac.create`
 
 Loop policy defaults:
@@ -60,6 +88,7 @@ Image tag defaults:
 - `core.image.tag: v0.1.0`
 - `api.image.tag: v0.1.0`
 - `console.image.tag: v0.1.0`
+- `chat.image.tag: v0.1.0`
 - See `docs/image-tagging-versioning.md` for semver/SHA/branch policy and rollback matrix.
 - Private registries: set `global.imagePullSecrets` and all component pods inherit it.
 
@@ -70,11 +99,11 @@ Environment examples:
 
 Minimal profile deltas:
 
-| Profile | Core/API/Console replicas | Secret mode | Autoscaling |
+| Profile | Core/API/Console/Chat replicas | Secret mode | Autoscaling |
 | --- | --- | --- | --- |
-| `local` | `1/1/1` | chart-managed (`secrets.create=true`) | disabled |
-| `staging` | `2/2/1` | pre-created (`secrets.existingSecret`) | disabled |
-| `prod` | `3/3/2` | pre-created (`secrets.existingSecret`) | enabled for all components |
+| `local` | `1/1/1/1` | chart-managed (`secrets.create=true`) | disabled |
+| `staging` | `2/2/1/1` | pre-created (`secrets.existingSecret`) | disabled |
+| `prod` | `3/3/2/2` | pre-created (`secrets.existingSecret`) | enabled for configured components |
 
 Autoscaling behavior:
 - HPAs are emitted from `templates/hpa.yaml` when `<component>.autoscaling.enabled=true`.

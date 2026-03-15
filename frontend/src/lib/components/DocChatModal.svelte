@@ -3,7 +3,7 @@
   import { Modal, Button, Badge } from 'flowbite-svelte';
   import PRDChatTranscript from '$lib/components/PRDChatTranscript.svelte';
   import PRDChatComposer from '$lib/components/PRDChatComposer.svelte';
-  import { connectPRDChat, sendPRDChatMessage, type PRDChatMessage } from '$lib/chat/prd-chat';
+  import { connectPRDChat, sendPRDChatMessage, type PRDChatMessage, type PRDChatSocket } from '$lib/chat/prd-chat';
 
 	interface Props {
 		open: boolean;
@@ -14,7 +14,7 @@
 	let { open = $bindable(), onClose, onDraftFinalized }: Props = $props();
 
 	let chatMessages = $state<PRDChatMessage[]>([]);
-	let chatSocket = $state<WebSocket | null>(null);
+	let chatSocket = $state<PRDChatSocket | null>(null);
 	let chatInput = $state('');
 	let busy = $state(false);
 	let starting = $state(false);

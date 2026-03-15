@@ -62,7 +62,7 @@ def main() -> int:
         site_dir = temp_root / "site"
         target_site = ROOT / "site"
         if target_site.exists():
-            shutil.rmtree(target_site, onexc=ignore_missing_paths)
+            shutil.rmtree(target_site, onerror=ignore_missing_paths)
         shutil.copytree(site_dir, target_site)
 
     print("Public docs site build completed.")

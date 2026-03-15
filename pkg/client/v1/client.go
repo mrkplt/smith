@@ -123,6 +123,57 @@ func (c *Client) SendCommand(ctx context.Context, loopID string, req api.Termina
 	return res, err
 }
 
+// CreateChatSession creates a new chat session.
+func (c *Client) CreateChatSession(ctx context.Context, req api.ChatCreateSessionRequest) (*api.ChatSession, error) {
+	var res api.ChatSession
+	err := c.do(ctx, http.MethodPost, "/v1/chat/sessions", req, &res)
+	return &res, err
+}
+
+// PostChatMessage queues a user message for a chat session.
+func (c *Client) PostChatMessage(ctx context.Context, sessionID string, req api.ChatPostMessageRequest) (*api.ChatPostMessageResponse, error) {
+	var res api.ChatPostMessageResponse
+	err := c.do(ctx, http.MethodPost, "/v1/chat/sessions/"+sessionID+"/messages", req, &res)
+	return &res, err
+}
+
+// OpenChatStream opens an SSE stream for chat events.
+func (c *Client) OpenChatStream(ctx context.Context, sessionID string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/chat/sessions/"+sessionID+"/stream", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute request: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		_ = resp.Body.Close()
+		return nil, &APIError{
+			Method:     http.MethodGet,
+			Path:       "/v1/chat/sessions/" + sessionID + "/stream",
+			StatusCode: resp.StatusCode,
+			Body:       raw,
+		}
+	}
+
+	return resp, nil
+}
+
+// CommitChatAction commits a structured chat action.
+func (c *Client) CommitChatAction(ctx context.Context, req api.ChatCommitActionRequest) (*api.ChatCommitActionResponse, error) {
+	var res api.ChatCommitActionResponse
+	err := c.do(ctx, http.MethodPost, "/v1/chat/actions/commit", req, &res)
+	return &res, err
+}
+
 // SubmitPRD submits a PRD for processing
 func (c *Client) SubmitPRD(ctx context.Context, req api.PRDIngressRequest) (*api.IngressSummary, error) {
 	var res api.IngressSummary

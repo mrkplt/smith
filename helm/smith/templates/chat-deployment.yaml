@@ -33,6 +33,7 @@ spec:
           args:
             - "--etcd-endpoints={{ join "," .Values.etcd.endpoints }}"
             - "--port={{ .Values.chat.service.port }}"
+            - '--api-url=http://{{ include "smith.fullname" . }}-api:{{ .Values.api.service.port }}'
           env:
             {{- with .Values.chat.env }}
             {{- toYaml . | nindent 12 }}
@@ -40,5 +41,13 @@ spec:
           ports:
             - containerPort: {{ .Values.chat.service.port }}
               name: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
           resources:
             {{- toYaml .Values.chat.resources | nindent 12 }}

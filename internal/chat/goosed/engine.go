@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"smith/internal/chat"
 	"strings"
+	"sync"
 )
 
 type Engine struct {
@@ -22,101 +24,205 @@ func NewEngine() *Engine {
 
 func (e *Engine) Stream(ctx context.Context, session *chat.Session, message string, events chan<- chat.ChatEvent) error {
 	fields := strings.Fields(e.agentCmd)
-	cmd := exec.CommandContext(ctx, fields[0], fields[1:]...)
+	if len(fields) == 0 {
+		return fmt.Errorf("agent command is empty")
+	}
 
-	stdin, _ := cmd.StdinPipe()
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
+	cmd := exec.CommandContext(ctx, fields[0], fields[1:]...)
+	if wd := session.Context["workingDirectory"]; wd != "" {
+		cmd.Dir = wd
+	}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to open goose stdin: %w", err)
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to open goose stdout: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to open goose stderr: %w", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start goose: %w", err)
 	}
 
-	sendRPC := func(method string, params any, id any) {
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			_ = stdin.Close()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			_ = cmd.Wait()
+		})
+	}
+	defer cleanup()
+
+	const (
+		initializeRequestID = 1
+		newSessionRequestID = 2
+		promptRequestID     = 3
+	)
+
+	sendRPC := func(method string, params any, id int) error {
 		req := map[string]any{
 			"jsonrpc": "2.0",
 			"method":  method,
 			"params":  params,
+			"id":      id,
 		}
-		if id != nil {
-			req["id"] = id
+
+		data, err := json.Marshal(req)
+		if err != nil {
+			return fmt.Errorf("failed to encode %s request: %w", method, err)
 		}
-		data, _ := json.Marshal(req)
-		_, _ = stdin.Write(data)
-		_, _ = stdin.Write([]byte("\n"))
+		if _, err := stdin.Write(data); err != nil {
+			return fmt.Errorf("failed to write %s request: %w", method, err)
+		}
+		if _, err := stdin.Write([]byte("\n")); err != nil {
+			return fmt.Errorf("failed to terminate %s request: %w", method, err)
+		}
+		return nil
 	}
 
-	// Step 1: Initialize
-	sendRPC("initialize", map[string]any{
-		"capabilities": map[string]any{"text": true},
-		"client_info":  map[string]any{"name": "smith-chat", "version": "1.0.0"},
-	}, 1)
+	if err := sendRPC("initialize", map[string]any{
+		"protocolVersion":    "v1",
+		"clientCapabilities": map[string]any{},
+		"clientInfo":         map[string]any{"name": "smith-chat", "version": "1.0.0"},
+	}, initializeRequestID); err != nil {
+		return err
+	}
 
-	// Proxy stderr to logs (optional)
 	go func() {
 		s := bufio.NewScanner(stderr)
+		s.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for s.Scan() {
-			// events <- chat.ChatEvent{Event: chat.EventError, Data: s.Text()}
+			_ = s.Text()
 		}
 	}()
 
-	var sessionID string
-	done := make(chan struct{})
+	done := make(chan error, 1)
 
 	go func() {
-		defer close(done)
+		var sessionID string
 		s := bufio.NewScanner(stdout)
+		s.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for s.Scan() {
-			var rpc map[string]any
+			var rpc struct {
+				ID     json.RawMessage `json:"id"`
+				Method string          `json:"method"`
+				Params json.RawMessage `json:"params"`
+				Result json.RawMessage `json:"result"`
+				Error  *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+
 			if err := json.Unmarshal(s.Bytes(), &rpc); err != nil {
 				continue
 			}
 
-			id, _ := rpc["id"]
-			method, _ := rpc["method"].(string)
+			if rpc.Error != nil {
+				events <- chat.ChatEvent{Event: chat.EventError, Data: rpc.Error.Message}
+				done <- fmt.Errorf("goose rpc error (%d): %s", rpc.Error.Code, rpc.Error.Message)
+				return
+			}
 
-			if id == float64(1) {
-				// Initialized, create session
-				sendRPC("session/new", map[string]any{"working_directory": "/tmp"}, 2)
-			} else if id == float64(2) {
-				// Session created
-				if res, ok := rpc["result"].(map[string]any); ok {
-					sessionID, _ = res["session_id"].(string)
-					// Now send the prompt
-					sendRPC("session/prompt", map[string]any{
-						"session_id": sessionID,
-						"message": map[string]any{
-							"role": "user",
-							"parts": []map[string]any{
-								{"content_type": "text/plain", "content": message},
-							},
-						},
-					}, 3)
+			var id int
+			if len(rpc.ID) > 0 {
+				_ = json.Unmarshal(rpc.ID, &id)
+			}
+
+			switch {
+			case id == initializeRequestID:
+				cwd := "."
+				if cmd.Dir != "" {
+					cwd = cmd.Dir
 				}
-			} else if method == "session/append" {
-				// Delta received
-				if params, ok := rpc["params"].(map[string]any); ok {
-					if parts, ok := params["parts"].([]any); ok && len(parts) > 0 {
-						if part, ok := parts[0].(map[string]any); ok {
-							if content, ok := part["content"].(string); ok {
-								events <- chat.ChatEvent{Event: chat.EventMessageDelta, Data: chat.MessageDelta{Delta: content}}
-							}
-						}
+				if err := sendRPC("session/new", map[string]any{
+					"mcpServers": []any{},
+					"cwd":        cwd,
+				}, newSessionRequestID); err != nil {
+					done <- err
+					return
+				}
+
+			case id == newSessionRequestID:
+				var res struct {
+					SessionID string `json:"sessionId"`
+				}
+				if err := json.Unmarshal(rpc.Result, &res); err != nil {
+					done <- fmt.Errorf("failed to parse session/new result: %w", err)
+					return
+				}
+				sessionID = res.SessionID
+				if sessionID == "" {
+					done <- fmt.Errorf("goose returned empty sessionId")
+					return
+				}
+
+				if err := sendRPC("session/prompt", map[string]any{
+					"sessionId": sessionID,
+					"prompt": []map[string]any{
+						{"type": "text", "text": message},
+					},
+				}, promptRequestID); err != nil {
+					done <- err
+					return
+				}
+
+			case rpc.Method == "session/update":
+				var params struct {
+					SessionID string `json:"sessionId"`
+					Update    struct {
+						SessionUpdate string          `json:"sessionUpdate"`
+						Content       json.RawMessage `json:"content"`
+					} `json:"update"`
+				}
+				if err := json.Unmarshal(rpc.Params, &params); err != nil {
+					continue
+				}
+				if sessionID != "" && params.SessionID != "" && params.SessionID != sessionID {
+					continue
+				}
+
+				switch params.Update.SessionUpdate {
+				case "agent_message_chunk":
+					var content struct {
+						Text string `json:"text"`
+					}
+					if err := json.Unmarshal(params.Update.Content, &content); err == nil && content.Text != "" {
+						events <- chat.ChatEvent{Event: chat.EventMessageDelta, Data: chat.MessageDelta{Delta: content.Text}}
 					}
 				}
-			} else if id == float64(3) {
-				// Prompt completed
+
+			case id == promptRequestID:
 				events <- chat.ChatEvent{Event: chat.EventMessageCompleted, Data: map[string]any{}}
+				done <- nil
 				return
 			}
 		}
+
+		if err := s.Err(); err != nil && err != io.EOF {
+			done <- fmt.Errorf("failed to read goose output: %w", err)
+			return
+		}
+		done <- fmt.Errorf("goose stream ended before prompt completion")
 	}()
 
 	select {
 	case <-ctx.Done():
-		_ = cmd.Process.Kill()
+		cleanup()
 		return ctx.Err()
-	case <-done:
-		return nil
+	case err := <-done:
+		cleanup()
+		return err
 	}
 }

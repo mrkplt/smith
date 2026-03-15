@@ -2,100 +2,174 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { connectPRDChat, sendPRDChatMessage } from '$lib/chat/prd-chat';
 
-class MockWebSocket {
-  static instances: MockWebSocket[] = [];
+class MockEventSource {
+  static instances: MockEventSource[] = [];
 
   url: string;
-  sent: string[] = [];
-  onopen: (() => void) | null = null;
-  onmessage: ((event: MessageEvent<string>) => void) | null = null;
-  onclose: (() => void) | null = null;
+  closed = false;
+  private listeners = new Map<string, Array<(event: Event) => void>>();
 
   constructor(url: string) {
     this.url = url;
-    MockWebSocket.instances.push(this);
+    MockEventSource.instances.push(this);
   }
 
-  send(payload: string) {
-    this.sent.push(payload);
+  addEventListener(type: string, listener: (event: Event) => void) {
+    const existing = this.listeners.get(type) || [];
+    existing.push(listener);
+    this.listeners.set(type, existing);
   }
 
   close() {
-    this.onclose?.();
+    this.closed = true;
   }
+
+  emit(type: string, data: string) {
+    const listeners = this.listeners.get(type) || [];
+    for (const listener of listeners) {
+      listener({ data } as unknown as Event);
+    }
+  }
+}
+
+function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
 }
 
 describe('PRD chat helpers', () => {
   beforeEach(() => {
-    MockWebSocket.instances = [];
-    vi.stubGlobal('WebSocket', MockWebSocket);
-    vi.stubGlobal('window', {
-      location: {
-        protocol: 'https:',
-        host: 'smith.local'
-      }
-    });
+    MockEventSource.instances = [];
+    vi.stubGlobal('EventSource', MockEventSource);
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  it('connects, emits initial state, and sends the initial prompt', () => {
-    const states: Record<string, unknown>[] = [];
-
-    const socket = connectPRDChat(next => states.push(next));
-    const mock = socket as unknown as MockWebSocket;
-
-    expect(mock.url).toBe('wss://smith.local/api/v1/chat/prd');
-    expect(states[0]).toEqual({
-      messages: [],
-      finalContent: null,
-      finalTitle: null,
-      starting: true,
-      busy: false
+  it('creates a chat session and streams an initial assistant response', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/chat/v1/chat/sessions')) {
+        return jsonResponse({ sessionId: 'sess_1' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/messages')) {
+        return jsonResponse({ status: 'queued' });
+      }
+      throw new Error(`unexpected URL: ${url}`);
     });
+    vi.stubGlobal('fetch', fetchMock);
 
-    mock.onopen?.();
+    const states: Record<string, unknown>[] = [];
+    connectPRDChat((next) => states.push(next));
 
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(MockEventSource.instances[0].url).toBe('/chat/v1/chat/sessions/sess_1/stream');
+
+    const postCall = fetchMock.mock.calls[1];
+    const postBody = JSON.parse(String(postCall?.[1]?.body));
+    expect(postBody.message).toContain('I want to draft a new document');
+
+    MockEventSource.instances[0].emit('message.delta', JSON.stringify({ delta: 'Hello ' }));
+    MockEventSource.instances[0].emit('message.delta', JSON.stringify({ delta: 'world' }));
+    MockEventSource.instances[0].emit('message.completed', JSON.stringify({}));
+
+    await vi.waitFor(() => {
+      expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'Hello world' }], finalContent: 'Hello world', finalTitle: 'Drafted Document' });
+    });
     expect(states).toContainEqual({ starting: false });
-    expect(mock.sent[0]).toBe(JSON.stringify({
-      type: 'user',
-      text: 'I want to draft a new document. Help me refine the requirements.'
-    }));
-  });
-
-  it('updates busy and final state from websocket messages', () => {
-    const states: Record<string, unknown>[] = [];
-    const socket = connectPRDChat(next => states.push(next)) as unknown as MockWebSocket;
-
-    socket.onmessage?.({
-      data: JSON.stringify({ type: 'agent', text: 'thinking' })
-    } as MessageEvent<string>);
-
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: 'system',
-        text: 'Final content',
-        final_title: 'Doc title',
-        final_prd_path: '/tmp/doc.md'
-      })
-    } as MessageEvent<string>);
-
     expect(states).toContainEqual({ busy: true });
-    expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'thinking' }] });
-    expect(states).toContainEqual({
-      finalContent: 'Final content',
-      finalTitle: 'Doc title',
-      busy: false
-    });
+    expect(states).toContainEqual({ busy: false });
   });
 
-  it('ignores invalid websocket payloads and handles explicit messages', () => {
-    const socket = connectPRDChat(() => {}) as unknown as MockWebSocket;
+  it('queues user messages while a stream is active', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/chat/v1/chat/sessions')) {
+        return jsonResponse({ sessionId: 'sess_1' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/messages')) {
+        return jsonResponse({ status: 'queued' });
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    socket.onmessage?.({ data: 'not-json' } as MessageEvent<string>);
+    const socket = connectPRDChat(() => {});
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
-    expect(sendPRDChatMessage(socket as unknown as WebSocket, 'hello')).toBe(true);
+    expect(sendPRDChatMessage(socket, 'follow up')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    MockEventSource.instances[0].emit('message.completed', JSON.stringify({}));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(MockEventSource.instances).toHaveLength(2);
+
+    const queuedPostCall = fetchMock.mock.calls[2];
+    const postBody = JSON.parse(String(queuedPostCall?.[1]?.body));
+    expect(postBody).toEqual({ message: 'follow up' });
+  });
+
+  it('reports stream errors and validates explicit send helper behavior', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/chat/v1/chat/sessions')) {
+        return jsonResponse({ sessionId: 'sess_1' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/messages')) {
+        return jsonResponse({ status: 'queued' });
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const states: Record<string, unknown>[] = [];
+    const socket = connectPRDChat((next) => states.push(next));
+    await vi.waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    MockEventSource.instances[0].emit('error', JSON.stringify({ message: 'goose failed' }));
+    await vi.waitFor(() => {
+      expect(states).toContainEqual({ messages: [{ type: 'error', error: 'goose failed' }] });
+    });
+
+    expect(sendPRDChatMessage(socket, 'hello')).toBe(true);
     expect(sendPRDChatMessage(null, 'hello')).toBe(false);
-    expect(sendPRDChatMessage(socket as unknown as WebSocket, '')).toBe(false);
-    expect(socket.sent.at(-1)).toBe(JSON.stringify({ type: 'user', text: 'hello' }));
+    expect(sendPRDChatMessage(socket, '')).toBe(false);
+  });
+
+  it('recovers from post conflict by consuming pending stream', async () => {
+    let messagePostCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/chat/v1/chat/sessions')) {
+        return jsonResponse({ sessionId: 'sess_1' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/messages')) {
+        messagePostCount += 1;
+        if (messagePostCount === 1) {
+          return jsonResponse({ status: 'queued' });
+        }
+        return jsonResponse({ error: 'previous message is still pending stream consumption' }, 409);
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const states: Record<string, unknown>[] = [];
+    const socket = connectPRDChat((next) => states.push(next));
+    await vi.waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    MockEventSource.instances[0].emit('message.completed', JSON.stringify({}));
+
+    expect(sendPRDChatMessage(socket, 'follow up')).toBe(true);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
+
+    MockEventSource.instances[1].emit('message.delta', JSON.stringify({ delta: 'Recovered answer' }));
+    MockEventSource.instances[1].emit('message.completed', JSON.stringify({}));
+
+    await vi.waitFor(() => {
+      expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'Recovered answer' }], finalContent: 'Recovered answer', finalTitle: 'Drafted Document' });
+    });
   });
 });
