@@ -148,7 +148,7 @@ jobs:
         run: cd frontend && npm install --silent
 
       - name: Run Vitest unit tests
-        run: cd frontend && npm run test:unit || echo "No unit tests defined yet"
+        run: cd frontend && npm run test:unit
 
   playwright-tests:
     runs-on: ubuntu-latest

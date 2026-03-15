@@ -91,6 +91,8 @@ Common frontend validation commands:
 npm --prefix frontend run lint
 npm --prefix frontend run build
 npm --prefix frontend run check
+npm --prefix frontend run test:unit
+npm --prefix frontend run test:coverage
 ```
 
 Go analyzer command:
