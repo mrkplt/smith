@@ -294,6 +294,8 @@ image-build-local: ## Build local Smith container images with deploy-local tags
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
 	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
 
+build-local: image-build-local ## Backward-compatible alias for local image builds
+
 image-load-local: ## Import local Smith container images into the k3d cluster
 	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
 	  "$(SMITH_LOCAL_CORE_IMAGE)" \
@@ -302,10 +304,7 @@ image-load-local: ## Import local Smith container images into the k3d cluster
 	  "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
 	  "$(SMITH_LOCAL_CHAT_IMAGE)"
 
-images-local: image-build-local image-load-local hooks-image-build ## Build and load local Smith images for deploy-local
-
-hooks-image-build: ## Build the containerized hook image
-	docker build -f docker/hooks.Dockerfile -t "smith-hooks:local" .
+images-local: image-build-local image-load-local ## Build and load local Smith images for deploy-local
 docs-image-build: ## Build the containerized docs tool image
 	docker build -f docker/docs.Dockerfile -t "smith-docs:local" .
 docs-check: ## Run docs quality checks

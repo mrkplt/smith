@@ -603,6 +603,7 @@ jobs:
         timeout-minutes: 20
         env:
           SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-pre-release-vc
           SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
           SMITH_ETCD_NAMESPACE: smith-pre-release-system

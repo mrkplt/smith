@@ -1,19 +1,5 @@
 # Changelog
 
-## v0.2.1
-
-Release date: 2026-03-15
-
-This patch release fixes the API container build after the `v0.2.0` tag.
-
-### Fixes
-
-- Restored the generated Swagger docs package to the Docker build context so `smith-api` can import `smith/docs` during image builds.
-
-### Included Changes
-
-- `78908ec` - `fix(docker): include generated swagger docs`
-
 ## v0.2.0
 
 Release date: 2026-03-15
@@ -27,6 +13,8 @@ This release advances Smith beyond the initial `v0.1.0` baseline with a broader 
 - Standardized CI on `mise` across the workflow and moved the Zensical docs build into a dedicated container.
 - Added and documented a docs lifecycle workflow for planning and PRD trigger validation.
 - Tightened build/runtime container setup across console, chat, and replica images.
+- Fixed the API image build context so generated Swagger docs are available during container builds.
+- Repaired local build/deploy workflow regressions and restored the vCluster pre-release gate configuration.
 
 ### Included Changes
 
@@ -39,11 +27,13 @@ This release advances Smith beyond the initial `v0.1.0` baseline with a broader 
 - `d9dc730` - `feat(docs): add docs lifecycle workflow`
 - `147cb36` - `ci(workflows): standardize jobs on mise`
 - `2a819c3` - `build(docs): containerize zensical tooling`
+- `78908ec` - `fix(docker): include generated swagger docs`
 
 ### Notes
 
 - `v0.2.0` is a minor release because the range since `v0.1.0` adds new user-facing `smithctl` capabilities rather than only internal fixes.
 - The docs build now depends on Docker for the Zensical container path instead of a host-installed Python/Zensical toolchain.
+- This tag also includes the follow-on fixes required to keep local image builds and the vCluster pre-release workflow healthy.
 
 ## v0.1.0
 
