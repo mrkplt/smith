@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.1
+
+Release date: 2026-03-15
+
+This patch release fixes the API container build after the `v0.2.0` tag.
+
+### Fixes
+
+- Restored the generated Swagger docs package to the Docker build context so `smith-api` can import `smith/docs` during image builds.
+
+### Included Changes
+
+- `78908ec` - `fix(docker): include generated swagger docs`
+
 ## v0.2.0
 
 Release date: 2026-03-15
