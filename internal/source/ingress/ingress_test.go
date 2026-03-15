@@ -73,6 +73,56 @@ func TestPRDTasksToDraftsValidation(t *testing.T) {
 	}
 }
 
+func TestCopyMetadata(t *testing.T) {
+	t.Run("nil input", func(t *testing.T) {
+		out := copyMetadata(nil)
+		if out == nil {
+			t.Fatalf("expected non-nil map, got nil")
+		}
+		if len(out) != 0 {
+			t.Fatalf("expected empty map, got len %d", len(out))
+		}
+	})
+
+	t.Run("empty map", func(t *testing.T) {
+		in := map[string]string{}
+		out := copyMetadata(in)
+		if out == nil {
+			t.Fatalf("expected non-nil map, got nil")
+		}
+		if len(out) != 0 {
+			t.Fatalf("expected empty map, got len %d", len(out))
+		}
+
+		// Ensure it's a new map
+		in["test"] = "test"
+		if len(out) != 0 {
+			t.Fatalf("expected out to remain empty after modifying in")
+		}
+	})
+
+	t.Run("populated map", func(t *testing.T) {
+		in := map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+		}
+		out := copyMetadata(in)
+
+		if len(out) != 2 {
+			t.Fatalf("expected 2 elements, got %d", len(out))
+		}
+		if out["key1"] != "value1" || out["key2"] != "value2" {
+			t.Fatalf("expected map contents to match, got %#v", out)
+		}
+
+		// Ensure it's a distinct copy
+		out["key3"] = "value3"
+		if len(in) != 2 {
+			t.Fatalf("expected original map to be unmodified")
+		}
+	})
+}
+
 func TestCanonicalPRDToDrafts(t *testing.T) {
 	drafts := CanonicalPRDToDrafts(&model.PRD{
 		Stories: []model.PRDStory{
