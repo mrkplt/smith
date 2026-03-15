@@ -42,6 +42,7 @@ Default configurable vars:
 - `SMITH_NAMESPACE` (default `smith-system`)
 - `SMITH_RELEASE` (default `smith`)
 - `SMITH_VALUES` (default `helm/smith/values/local.yaml`)
+- `SMITH_VCLUSTER_VERSION` (default `0.32.1`, used by `scripts/integration/prereqs.sh`)
 - `SMITH_TEST_ARTIFACTS_DIR` (default `/tmp/smith-test-artifacts`)
 - `SMITH_FIXTURE_DIR` (default `/tmp/smith-test-repo`)
 

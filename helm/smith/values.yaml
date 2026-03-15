@@ -121,6 +121,11 @@ console:
 chat:
   replicaCount: 1
   enabled: true
+  goose:
+    provider: ""
+    model: ""
+    apiKeyFromRuntimeSecret: true
+    apiKeyEnvVar: OPENAI_API_KEY
   autoscaling:
     enabled: false
     minReplicas: 2
