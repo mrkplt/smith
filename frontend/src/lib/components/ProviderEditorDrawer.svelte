@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
-	import { postJSON, requestJSON, fetchJSON } from '$lib/api';
-  import { Drawer, Button, Label, Input, Helper } from 'flowbite-svelte';
-  import { BrainOutline, CheckOutline, CloseOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
+	import { postJSON } from '$lib/api';
+  import { Drawer, Button } from 'flowbite-svelte';
+  import { CheckOutline, CloseOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
+  import ProviderInfoSection from '$lib/components/ProviderInfoSection.svelte';
+  import ProviderCredentialsSection from '$lib/components/ProviderCredentialsSection.svelte';
 
 	interface Props {
 		open: boolean;
@@ -88,26 +90,15 @@
     <!-- Body -->
     <form class="flex-1 p-8 space-y-8" onsubmit={(e) => { e.preventDefault(); saveProvider(); }}>
       <div class="space-y-6">
-        <div class="bg-slate-900/30 p-4 border border-gray-800 rounded-none">
-          <div class="flex items-center gap-3 mb-2 text-[#86BC25]">
-            <BrainOutline size="sm" />
-            <span class="text-[10px] font-bold uppercase tracking-widest">OpenAI Integration</span>
-          </div>
-          <p class="text-[11px] text-gray-400 leading-relaxed">
-            Configure your OpenAI API key to enable autonomous code generation and analysis. Keys are securely stored and never exposed in the UI.
-          </p>
-        </div>
+        <ProviderInfoSection providerLabel={provider?.label || 'OpenAI Codex'} />
 
-        <div>
-          <Label for="api-key" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">OpenAI API Key</Label>
-          <Input type="password" id="api-key" placeholder="sk-..." bind:value={apiKey} disabled={busy} required class="bg-black border-gray-800 text-white rounded-none focus:border-[#86BC25]" />
-          <Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">Paste your secret key from the OpenAI dashboard.</Helper>
-        </div>
-
-        <div>
-          <Label for="account-id" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Account ID (Optional)</Label>
-          <Input type="text" id="account-id" placeholder="Optional Organization ID" bind:value={accountId} disabled={busy} class="bg-black border-gray-800 text-white rounded-none focus:border-[#86BC25]" />
-        </div>
+        <ProviderCredentialsSection
+          {apiKey}
+          {accountId}
+          {busy}
+          onAPIKeyChange={(value) => apiKey = value}
+          onAccountIDChange={(value) => accountId = value}
+        />
       </div>
 
       <!-- Footer Actions -->
