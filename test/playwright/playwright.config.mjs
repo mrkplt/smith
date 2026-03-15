@@ -4,7 +4,7 @@ const baseURL = process.env.PW_UI_BASE_URL || 'http://127.0.0.1:4173';
 const useLocalWebServer = !process.env.PW_UI_BASE_URL;
 
 export default defineConfig({
-  testDir: './test/playwright',
+  testDir: '.',
   timeout: 30_000,
   expect: {
     timeout: 5_000,
@@ -14,9 +14,9 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'output/playwright/report', open: 'never' }],
+    ['html', { outputFolder: '../../output/playwright/report', open: 'never' }],
   ],
-  outputDir: 'output/playwright/test-results',
+  outputDir: '../../output/playwright/test-results',
   use: {
     baseURL,
     trace: 'on-first-retry',
@@ -25,7 +25,7 @@ export default defineConfig({
   },
   webServer: useLocalWebServer
     ? {
-        command: 'cd frontend && npx vite preview --port 4173 --host 0.0.0.0',
+        command: 'cd ../../frontend && npx vite preview --port 4173 --host 0.0.0.0',
         url: 'http://127.0.0.1:4173',
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

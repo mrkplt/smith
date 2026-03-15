@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
-	import { deleteJSON, requestJSON, postJSON } from '$lib/api';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import DocChatModal from '$lib/components/DocChatModal.svelte';
 	import DocumentsSidebar from '$lib/components/DocumentsSidebar.svelte';
 	import DocumentWorkspace from '$lib/components/DocumentWorkspace.svelte';
-  import { Checkbox, Button } from 'flowbite-svelte';
-  import { PlusOutline, MessagesOutline } from 'flowbite-svelte-icons';
+	import DocumentsPageActions from '$lib/components/DocumentsPageActions.svelte';
+	import { buildDocument, deleteDocument, saveDocumentDraft, toggleDocumentArchive } from '$lib/documents/mutations';
 
 	let showAll = $state(false);
 	let chatOpen = $state(false);
@@ -50,30 +49,13 @@
   }
 
 	async function saveDocument() {
-		if (!selectedDocId) {
-			try {
-				await postJSON("/v1/documents", {
-					project_id: editProjectID,
-					title: editTitle,
-					content: editContent,
-					format: "markdown",
-					status: "active"
-				});
-				pushToast("Document created", "ok");
-				isEditing = false;
-			} catch (err: any) {
-				pushToast(err.message, "err");
-			}
-			return;
-		}
-
 		try {
-			await requestJSON(`/v1/documents/${selectedDocId}`, "PUT", {
+			await saveDocumentDraft(selectedDocId, {
 				title: editTitle,
 				content: editContent,
-				project_id: editProjectID
+				projectID: editProjectID
 			});
-			pushToast("Document saved", "ok");
+			pushToast(selectedDocId ? "Document saved" : "Document created", "ok");
 			isEditing = false;
 		} catch (err: any) {
 			pushToast(err.message, "err");
@@ -83,7 +65,7 @@
 	async function buildDoc() {
 		if (!selectedDocId) return;
 		try {
-			await postJSON(`/v1/documents/${selectedDocId}/build`, {});
+			await buildDocument(selectedDocId);
 			pushToast("Build loop started", "ok");
 		} catch (err: any) {
 			pushToast(err.message, "err");
@@ -92,9 +74,8 @@
 
 	async function archiveDoc() {
 		if (!selectedDocId || !selectedDoc) return;
-		const nextStatus = selectedDoc.status === 'active' ? 'archived' : 'active';
 		try {
-			await requestJSON(`/v1/documents/${selectedDocId}`, "PUT", { status: nextStatus });
+			const nextStatus = await toggleDocumentArchive(selectedDocId, selectedDoc);
 			pushToast(`Document ${nextStatus}`, "ok");
 		} catch (err: any) {
 			pushToast(err.message, "err");
@@ -104,7 +85,7 @@
 	async function deleteDoc() {
 		if (!selectedDocId || !confirm("Delete document?")) return;
 		try {
-			await deleteJSON(`/v1/documents/${selectedDocId}`);
+			await deleteDocument(selectedDocId);
 			selectedDocId = null;
 			pushToast("Document deleted", "ok");
 		} catch (err: any) {
@@ -132,24 +113,16 @@
 
 <TopBar title="Documents">
   {#snippet controls()}
-    <div class="flex items-center gap-4">
-      <Checkbox bind:checked={showAll} class="text-gray-400 font-medium uppercase text-[10px] tracking-widest">Show Archived</Checkbox>
-    </div>
+    <div></div>
   {/snippet}
 </TopBar>
 
-<!-- Inline Actions Header -->
-<div class="flex justify-end gap-2 -mt-14 mb-8 relative z-50 px-4">
-  <Button color="alternative" class="bg-black border-gray-800 text-[#86BC25] hover:bg-white/5 rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={() => chatOpen = true}>
-    <MessagesOutline size="xs" class="mr-1.5" />
-    Draft with AI
-  </Button>
-  
-  <Button color="alternative" class="bg-[#86BC25] text-black rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={createNew}>
-    <PlusOutline size="xs" class="mr-1.5" />
-    New Doc
-  </Button>
-</div>
+<DocumentsPageActions
+	{showAll}
+	onShowAllChange={(value) => showAll = value}
+	onOpenChat={() => chatOpen = true}
+	onCreateNew={createNew}
+/>
 
 <DocChatModal
 	open={chatOpen}

@@ -1,5 +1,5 @@
 {
-  "name": "smith-frontend-tests",
+  "name": "smith-playwright-tests",
   "private": true,
   "type": "module",
   "scripts": {

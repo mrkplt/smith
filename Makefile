@@ -243,11 +243,11 @@ test-acceptance-bdd: ## Run acceptance BDD suite with JSON artifact output
 test-acceptance: test-acceptance-smoke test-acceptance-bdd ## Run all Go-native acceptance harness suites
 
 test-frontend: ## Run Playwright frontend/component tests for console
-	@if [ ! -d node_modules ]; then npm install; fi
+	@if [ ! -d test/playwright/node_modules ]; then npm --prefix test/playwright install; fi
 	@if [ ! -d frontend/node_modules ]; then cd frontend && npm install; fi
 	@if [ ! -d frontend/.svelte-kit ]; then cd frontend && npx svelte-kit sync; fi
 	cd frontend && npm run build
-	npm run test:frontend
+	npm --prefix test/playwright run test:frontend
 
 trivy-scan-local: ## Run local vulnerability scans on all Smith images
 	@echo "[trivy] scanning images for critical vulnerabilities..."

@@ -101,6 +101,13 @@ golangci-lint run ./...
 
 For frontend or browser-driven tests, use the repo `make` targets where available so artifact paths and environment setup stay consistent with the rest of the project.
 
+Playwright harness files live under `test/playwright/`:
+
+```bash
+npm --prefix test/playwright install
+npm --prefix test/playwright run test:frontend
+```
+
 ## Local Development
 
 For a quick local deploy path:
