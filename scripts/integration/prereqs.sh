@@ -33,7 +33,7 @@ install_vcluster() {
       x86_64) arch="amd64" ;;
       arm64|aarch64) arch="arm64" ;;
     esac
-    url="https://github.com/loft-sh/vcluster/releases/latest/download/vcluster-${os}-${arch}"
+    url="https://github.com/loft-sh/vcluster/releases/download/v0.19.7/vcluster-${os}-${arch}"
     curl -fsSL "$url" -o /tmp/vcluster
     chmod +x /tmp/vcluster
     if command -v sudo >/dev/null 2>&1; then
