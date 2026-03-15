@@ -59,7 +59,7 @@ Bootstrap local dependencies with:
 make bootstrap
 ```
 
-`make bootstrap` now installs the repo-pinned `mise` runtimes before preparing the remaining local prerequisites.
+`make bootstrap` now installs the repo-pinned `mise` runtimes before preparing the remaining local prerequisites, including a pinned vCluster CLI baseline (`SMITH_VCLUSTER_VERSION`, default `0.32.1`).
 
 ## Git Hooks and Local CI
 

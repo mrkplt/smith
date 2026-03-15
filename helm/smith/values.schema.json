@@ -185,6 +185,17 @@
       },
       "required": ["name", "value"]
     },
+    "gooseConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "apiKeyFromRuntimeSecret": { "type": "boolean" },
+        "apiKeyEnvVar": { "type": "string", "minLength": 1 }
+      },
+      "required": ["provider", "model", "apiKeyFromRuntimeSecret", "apiKeyEnvVar"]
+    },
     "resourceRequirements": {
       "type": "object"
     },
@@ -307,6 +318,7 @@
         "apiBaseUrl": { "type": "string", "minLength": 1 },
         "chatBaseUrl": { "type": "string", "minLength": 1 },
         "showComingSoonProviders": { "type": "boolean" },
+        "goose": { "$ref": "#/definitions/gooseConfig" },
         "replicaCount": {
           "type": "integer",
           "minimum": 1

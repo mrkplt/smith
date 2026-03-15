@@ -24,10 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Install golangci-lint
         run: mise exec -- go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
@@ -83,10 +83,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       # NOTE: All CodeQL actions must use the EXACT same version to avoid configuration mismatches.
       - name: Initialize CodeQL
@@ -108,10 +108,10 @@ jobs:
     needs: [lint-and-check]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Run Go unit tests
         run: mise exec -- go test -v ./...
@@ -121,10 +121,10 @@ jobs:
     needs: [lint-and-check]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Install dependencies
         run: mise exec -- npm --prefix frontend install --silent
@@ -137,10 +137,10 @@ jobs:
     needs: [lint-and-check]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Install dependencies
         run: |
@@ -169,10 +169,10 @@ jobs:
     needs: [go-unit-tests, node-unit-tests]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Run test matrix (unit + e2e)
         env:
@@ -193,10 +193,10 @@ jobs:
     needs: [go-unit-tests, node-unit-tests]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Run acceptance smoke stage
         env:
@@ -229,10 +229,10 @@ jobs:
             script: ./scripts/test/e2e-concurrent-loops.sh
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Run loop e2e scenario (${{ matrix.scenario.id }})
         env:
@@ -254,10 +254,10 @@ jobs:
     needs: [go-unit-tests, node-unit-tests]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Run ingress and environment mode e2e
         env:
@@ -332,7 +332,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -478,10 +478,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -566,7 +566,7 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -596,10 +596,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -662,10 +662,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Run non-vCluster parity pre-release gate
         env:
@@ -687,10 +687,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up mise
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
 
       - name: Set up Helm
         uses: azure/setup-helm@v4

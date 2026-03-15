@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"smith/internal/chat"
 	"strings"
@@ -31,6 +32,16 @@ func (e *Engine) Stream(ctx context.Context, session *chat.Session, message stri
 	cmd := exec.CommandContext(ctx, fields[0], fields[1:]...)
 	if wd := session.Context["workingDirectory"]; wd != "" {
 		cmd.Dir = wd
+	}
+
+	if provider := firstNonEmpty(session.Context["gooseProvider"], session.Context["provider"]); provider != "" {
+		cmd.Env = append(cmd.Env, "GOOSE_PROVIDER="+provider)
+	}
+	if model := firstNonEmpty(session.Context["gooseModel"], session.Context["model"]); model != "" {
+		cmd.Env = append(cmd.Env, "GOOSE_MODEL="+model)
+	}
+	if len(cmd.Env) > 0 {
+		cmd.Env = append(os.Environ(), cmd.Env...)
 	}
 
 	stdin, err := cmd.StdinPipe()
@@ -225,4 +236,14 @@ func (e *Engine) Stream(ctx context.Context, session *chat.Session, message stri
 		cleanup()
 		return err
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		trimmed := strings.TrimSpace(v)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

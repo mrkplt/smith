@@ -1025,15 +1025,15 @@ func expectedPRDStoryCount(defaultCount int, anomaly model.Anomaly) int {
 }
 
 func syncDocumentWithEtcd(ctx context.Context, storeClient store.StateStore, docID, path, loopID, correlationID string) error {
-        payload, err := os.ReadFile(path)
-        if err != nil {
-                if os.IsNotExist(err) {
-                        log.Printf("document path not found for sync: %s", path)
-                        return nil
-                }
-                return err
-        }
-        return storeClient.PutDocument(ctx, model.Document{
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("document path not found for sync: %s", path)
+			return nil
+		}
+		return err
+	}
+	return storeClient.PutDocument(ctx, model.Document{
 
 		ID:            docID,
 		Content:       string(payload),
@@ -1426,9 +1426,9 @@ func normalizeInvocationMethod(raw string) string {
 }
 
 var agentCommandMap = map[string]string{
-	"codex":  "codex exec --yolo --skip-git-repo-check -",
-	"upstream-tooling":  "upstream-tooling build --yolo -",
-	"openai": "openai-agent exec -",
+	"codex":            "codex exec --yolo --skip-git-repo-check -",
+	"upstream-tooling": "upstream-tooling build --yolo -",
+	"openai":           "openai-agent exec -",
 }
 
 func resolveAgentCommand(providerID string) string {

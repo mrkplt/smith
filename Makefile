@@ -27,6 +27,7 @@ SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
+SMITH_VCLUSTER_VERSION ?= 0.32.1
 BIN_DIR ?= bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0")
 GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -98,7 +99,7 @@ bootstrap: ## Install required mise runtimes and optional k3d/vcluster prerequis
 	@set -euo pipefail; \
 	$(MISE) trust mise.toml; \
 	$(MISE) install; \
-	./scripts/integration/prereqs.sh; \
+	SMITH_VCLUSTER_VERSION="$(SMITH_VCLUSTER_VERSION)" ./scripts/integration/prereqs.sh; \
 	mkdir -p "$$HOME/.smith"; \
 	if [[ ! -f "$$HOME/.smith/config.json" ]]; then \
 	  printf '%s\n' '{"current_context":"default","contexts":{"default":{"server":"http://127.0.0.1:8080","token":""}}}' > "$$HOME/.smith/config.json"; \

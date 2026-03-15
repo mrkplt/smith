@@ -1,3 +1,21 @@
+{{- $provider := trim (default "" .Values.chat.goose.provider) -}}
+{{- $model := trim (default "" .Values.chat.goose.model) -}}
+{{- if or (ne $provider "") (ne $model "") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "smith.fullname" . }}-chat-config
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+data:
+  {{- if ne $provider "" }}
+  GOOSE_PROVIDER: {{ $provider | quote }}
+  {{- end }}
+  {{- if ne $model "" }}
+  GOOSE_MODEL: {{ $model | quote }}
+  {{- end }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +52,19 @@ spec:
             - "--etcd-endpoints={{ join "," .Values.etcd.endpoints }}"
             - "--port={{ .Values.chat.service.port }}"
             - '--api-url=http://{{ include "smith.fullname" . }}-api:{{ .Values.api.service.port }}'
+          envFrom:
+            - configMapRef:
+                name: {{ include "smith.fullname" . }}-chat-config
+                optional: true
           env:
+            {{- if and .Values.chat.goose.apiKeyFromRuntimeSecret (include "smith.runtimeSecretName" .) }}
+            - name: {{ .Values.chat.goose.apiKeyEnvVar }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smith.runtimeSecretName" . }}
+                  key: {{ .Values.secrets.keys.runtimeCredentials }}
+                  optional: true
+            {{- end }}
             {{- with .Values.chat.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

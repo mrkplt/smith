@@ -73,7 +73,7 @@ Required value groups:
 - `core.replicaTemplate.*` (replica Job defaults forwarded to Agent Core: serviceAccount/resources/nodeSelector/tolerations/env)
 - `api.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
 - `console.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
-- `chat.*` (image/service/serviceAccount/resources/env + `autoscaling.*`)
+- `chat.*` (image/service/serviceAccount/resources/env + `autoscaling.*` + `goose.*`)
 - `rbac.create`
 
 Loop policy defaults:
@@ -89,6 +89,11 @@ Image tag defaults:
 - `api.image.tag: v0.1.0`
 - `console.image.tag: v0.1.0`
 - `chat.image.tag: v0.1.0`
+- Chat provider defaults:
+  - `chat.goose.provider: ""` (optional; injects `GOOSE_PROVIDER` into chat service when set)
+  - `chat.goose.model: ""` (optional; injects `GOOSE_MODEL` into chat service when set)
+  - `chat.goose.apiKeyFromRuntimeSecret: true` (maps `secrets.keys.runtimeCredentials` into `chat.goose.apiKeyEnvVar`)
+  - `chat.goose.apiKeyEnvVar: OPENAI_API_KEY`
 - See `docs/image-tagging-versioning.md` for semver/SHA/branch policy and rollback matrix.
 - Private registries: set `global.imagePullSecrets` and all component pods inherit it.
 
