@@ -698,16 +698,29 @@ func runDockerfileBuild(ctx context.Context, ref string, profile model.Dockerfil
 }
 
 func dockerfileBuildTag(loopID string, profile model.DockerfileProfile) string {
-	hashInput := strings.ToLower(strings.TrimSpace(loopID)) + "|" + strings.TrimSpace(profile.ContextDir) + "|" + strings.TrimSpace(profile.DockerfilePath) + "|" + strings.TrimSpace(profile.Target)
+	h := sha256.New()
+
+	h.Write([]byte(strings.ToLower(strings.TrimSpace(loopID))))
+	h.Write([]byte("|"))
+	h.Write([]byte(strings.TrimSpace(profile.ContextDir)))
+	h.Write([]byte("|"))
+	h.Write([]byte(strings.TrimSpace(profile.DockerfilePath)))
+	h.Write([]byte("|"))
+	h.Write([]byte(strings.TrimSpace(profile.Target)))
+
 	keys := make([]string, 0, len(profile.BuildArgs))
 	for key := range profile.BuildArgs {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		hashInput += "|" + key + "=" + profile.BuildArgs[key]
+		h.Write([]byte("|"))
+		h.Write([]byte(key))
+		h.Write([]byte("="))
+		h.Write([]byte(profile.BuildArgs[key]))
 	}
-	digest := sha256.Sum256([]byte(hashInput))
+
+	digest := h.Sum(nil)
 	return "loop-" + hex.EncodeToString(digest[:6])
 }
 
