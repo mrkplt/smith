@@ -53,6 +53,17 @@ type contextConfig struct {
 	Token  string `json:"token" yaml:"token"`
 }
 
+type contextListOutput struct {
+	CurrentContext string                         `yaml:"current_context"`
+	Contexts       map[string]listedContextConfig `yaml:"contexts"`
+}
+
+type listedContextConfig struct {
+	Server  string `yaml:"server"`
+	Token   string `yaml:"token"`
+	Current bool   `yaml:"current"`
+}
+
 type stringMapFlag map[string]string
 
 func (s *stringMapFlag) String() string {
@@ -307,6 +318,10 @@ func runConfig(configPath string, args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "view":
 		return cmdConfigView(configPath, stdout, stderr)
+	case "get-contexts":
+		return cmdConfigGetContexts(configPath, stdout, stderr)
+	case "current-context":
+		return cmdConfigCurrentContext(configPath, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
 		printConfigHelp(stderr)
@@ -327,6 +342,53 @@ func cmdConfigView(configPath string, stdout, stderr io.Writer) int {
 	}
 	if _, err := stdout.Write(rendered); err != nil {
 		fmt.Fprintf(stderr, "write config yaml: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigGetContexts(configPath string, stdout, stderr io.Writer) int {
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	out := contextListOutput{
+		CurrentContext: cfg.CurrentContext,
+		Contexts:       map[string]listedContextConfig{},
+	}
+	for name, ctx := range cfg.Contexts {
+		out.Contexts[name] = listedContextConfig{
+			Server:  ctx.Server,
+			Token:   ctx.Token,
+			Current: name == cfg.CurrentContext,
+		}
+	}
+	rendered, err := yaml.Marshal(out)
+	if err != nil {
+		fmt.Fprintf(stderr, "render contexts yaml: %v\n", err)
+		return 1
+	}
+	if _, err := stdout.Write(rendered); err != nil {
+		fmt.Fprintf(stderr, "write contexts yaml: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigCurrentContext(configPath string, stdout, stderr io.Writer) int {
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	current := strings.TrimSpace(cfg.CurrentContext)
+	if current == "" {
+		fmt.Fprintln(stderr, "no current context is set")
+		return 1
+	}
+	if _, err := fmt.Fprintln(stdout, current); err != nil {
+		fmt.Fprintf(stderr, "write current context: %v\n", err)
 		return 1
 	}
 	return 0

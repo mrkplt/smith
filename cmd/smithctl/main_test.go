@@ -190,6 +190,110 @@ func TestConfigViewMissingFileReturnsEmptyYAML(t *testing.T) {
 	}
 }
 
+func TestConfigGetContextsMarksCurrentContext(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"staging","contexts":{"default":{"server":"http://default.local:8080","token":"default-token"},"staging":{"server":"http://staging.local:8080","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "get-contexts"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+
+	var got struct {
+		CurrentContext string                         `yaml:"current_context"`
+		Contexts       map[string]listedContextConfig `yaml:"contexts"`
+	}
+	if err := yaml.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal yaml: %v\noutput=%s", err, stdout.String())
+	}
+	if got.CurrentContext != "staging" {
+		t.Fatalf("unexpected current context: %q", got.CurrentContext)
+	}
+	if len(got.Contexts) != 2 {
+		t.Fatalf("expected two contexts, got %#v", got.Contexts)
+	}
+	if got.Contexts["default"].Current {
+		t.Fatalf("expected default to not be current: %#v", got.Contexts["default"])
+	}
+	if !got.Contexts["staging"].Current {
+		t.Fatalf("expected staging to be current: %#v", got.Contexts["staging"])
+	}
+}
+
+func TestConfigGetContextsMissingFileReturnsEmptyYAML(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "missing.json")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "get-contexts"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+
+	var got struct {
+		CurrentContext string                         `yaml:"current_context"`
+		Contexts       map[string]listedContextConfig `yaml:"contexts"`
+	}
+	if err := yaml.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal yaml: %v\noutput=%s", err, stdout.String())
+	}
+	if got.CurrentContext != "" {
+		t.Fatalf("expected empty current context, got %q", got.CurrentContext)
+	}
+	if len(got.Contexts) != 0 {
+		t.Fatalf("expected no contexts, got %#v", got.Contexts)
+	}
+}
+
+func TestConfigCurrentContextPrintsActiveContext(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	content := `{"current_context":"staging","contexts":{"staging":{"server":"http://staging.local:8080","token":"staging-token"}}}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "current-context"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if stdout.String() != "staging\n" {
+		t.Fatalf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestConfigCurrentContextWithoutCurrentContextFails(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "missing.json")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "current-context"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit code")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no current context is set") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
 func TestLoopCreateBatchArrayFile(t *testing.T) {
 	var received map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
