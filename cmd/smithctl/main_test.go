@@ -634,6 +634,80 @@ func TestConfigSetContextRequiresMutableFieldAndDoesNotWriteFile(t *testing.T) {
 	}
 }
 
+func TestConfigSetContextWorkflowAndCurrentContextBehavior(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "nested", "smith", "config.json")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--config", cfgPath,
+		"config", "set-context", "default",
+		"--server", "http://127.0.0.1:8080",
+		"--token", "abc",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("set-context failed code=%d stderr=%s", code, stderr.String())
+	}
+
+	cfg, err := readFileConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("read config after set-context: %v", err)
+	}
+	if cfg.CurrentContext != "" {
+		t.Fatalf("expected current context to remain unset, got %q", cfg.CurrentContext)
+	}
+	if got := cfg.Contexts["default"]; got.Server != "http://127.0.0.1:8080" || got.Token != "abc" {
+		t.Fatalf("unexpected default context after set-context: %#v", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"--config", cfgPath, "config", "current-context"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("expected current-context to fail before use-context")
+	}
+	if !strings.Contains(stderr.String(), "no current context is set") {
+		t.Fatalf("unexpected stderr before use-context: %q", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"--config", cfgPath, "config", "use-context", "default"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("use-context failed code=%d stderr=%s", code, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"--config", cfgPath, "config", "current-context"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("current-context failed code=%d stderr=%s", code, stderr.String())
+	}
+	if stdout.String() != "default\n" {
+		t.Fatalf("unexpected current-context output after use-context: %q", stdout.String())
+	}
+}
+
+func TestConfigUseContextRequiresSingleNameAndDoesNotWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "use-context"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d stderr=%s", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "usage: smithctl config use-context <name>") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config file to be absent, stat err=%v", err)
+	}
+}
+
 func TestConfigDeleteContextRemovesNamedContext(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -732,6 +806,26 @@ func TestConfigDeleteContextUnknownDoesNotModifyFile(t *testing.T) {
 	}
 }
 
+func TestConfigDeleteContextRequiresSingleNameAndDoesNotWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "delete-context"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d stderr=%s", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "usage: smithctl config delete-context <name>") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config file to be absent, stat err=%v", err)
+	}
+}
+
 func TestConfigRenameContextPreservesFieldsAndUpdatesCurrentContext(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -804,6 +898,26 @@ func TestConfigRenameContextUnknownDoesNotModifyFile(t *testing.T) {
 	}
 	if string(after) != string(before) {
 		t.Fatalf("expected config file to remain unchanged\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestConfigRenameContextRequiresTwoNamesAndDoesNotWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", cfgPath, "config", "rename-context", "default"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected exit code 2, got %d stderr=%s", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "usage: smithctl config rename-context <old> <new>") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config file to be absent, stat err=%v", err)
 	}
 }
 

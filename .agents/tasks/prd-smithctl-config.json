@@ -233,7 +233,7 @@
     {
       "id": "US-007",
       "title": "Preserve runtime resolution compatibility",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "US-002",
         "US-003",
@@ -249,13 +249,13 @@
         "Negative case: adding config subcommands does not change the result of existing config resolution tests for unrelated `loop` or `prd` commands."
       ],
       "startedAt": "2026-03-15T02:42:39.593519+00:00",
-      "completedAt": null,
-      "updatedAt": "2026-03-15T02:42:39.593665+00:00"
+      "completedAt": "2026-03-15T02:47:38.237731+00:00",
+      "updatedAt": "2026-03-15T02:47:38.237596+00:00"
     },
     {
       "id": "US-008",
       "title": "Cover config workflows with focused tests",
-      "status": "open",
+      "status": "in_progress",
       "dependsOn": [
         "US-007"
       ],
@@ -266,7 +266,10 @@
         "Example: a test creates a temp config path, runs `set-context`, and verifies the file contents and current-context behavior.",
         "Negative case: tests assert non-zero exit codes and unchanged file state for unknown contexts, invalid arguments, and invalid write requests.",
         "The feature passes `mise exec --no-prepare -- go test ./cmd/smithctl` and `mise exec --no-prepare -- go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...`."
-      ]
+      ],
+      "startedAt": "2026-03-15T02:47:40.319121+00:00",
+      "completedAt": null,
+      "updatedAt": "2026-03-15T02:47:40.320088+00:00"
     }
   ]
 }
