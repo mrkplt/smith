@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.2.0
+
+Release date: 2026-03-15
+
+This release advances Smith beyond the initial `v0.1.0` baseline with a broader `smithctl` configuration workflow, stronger local/CI validation, and a simplified docs toolchain that no longer requires a host Python runtime.
+
+### Highlights
+
+- Added `smithctl` configuration command scaffolding plus YAML config inspection and context management commands for listing, selecting, setting, renaming, and deleting contexts.
+- Expanded automated coverage around config/runtime resolution and frontend helper behavior.
+- Standardized CI on `mise` across the workflow and moved the Zensical docs build into a dedicated container.
+- Added and documented a docs lifecycle workflow for planning and PRD trigger validation.
+- Tightened build/runtime container setup across console, chat, and replica images.
+
+### Included Changes
+
+- `632572e` - `feat(config): add command scaffolding`
+- `673952e` - `feat(config): add YAML config view`
+- `fb26961` - `feat(config): add context listing commands`
+- `7be5a94` - `feat(config): add use-context command`
+- `e9227b1` - `feat(config): add set-context command`
+- `6eaf813` - `feat(config): add context rename and delete`
+- `d9dc730` - `feat(docs): add docs lifecycle workflow`
+- `147cb36` - `ci(workflows): standardize jobs on mise`
+- `2a819c3` - `build(docs): containerize zensical tooling`
+
+### Notes
+
+- `v0.2.0` is a minor release because the range since `v0.1.0` adds new user-facing `smithctl` capabilities rather than only internal fixes.
+- The docs build now depends on Docker for the Zensical container path instead of a host-installed Python/Zensical toolchain.
+
 ## v0.1.0
 
 Release date: 2026-03-14

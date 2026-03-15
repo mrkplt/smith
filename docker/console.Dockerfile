@@ -5,7 +5,7 @@ FROM node:22-alpine as builder
 
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
-RUN npm install --silent --omit=dev
+RUN npm install --silent
 COPY frontend/ ./
 RUN npm run build
 
