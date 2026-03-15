@@ -98,3 +98,76 @@ func TestCanonicalPRDToDrafts(t *testing.T) {
 		t.Fatalf("expected prd_story_id metadata, got %#v", drafts[0].Metadata)
 	}
 }
+
+func TestSlug(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		expected string
+	}{
+		{
+			name:     "normal string with spaces",
+			raw:      "Hello World",
+			expected: "hello-world",
+		},
+		{
+			name:     "string with leading and trailing spaces",
+			raw:      "  Hello World  ",
+			expected: "hello-world",
+		},
+		{
+			name:     "string with multiple spaces",
+			raw:      "Hello   World",
+			expected: "hello---world",
+		},
+		{
+			name:     "string with special characters",
+			raw:      "Hello!@#World",
+			expected: "hello-world",
+		},
+		{
+			name:     "empty string",
+			raw:      "",
+			expected: "section",
+		},
+		{
+			name:     "only special characters",
+			raw:      "!@#$",
+			expected: "section",
+		},
+		{
+			name:     "already slugified string",
+			raw:      "already-a-slug",
+			expected: "already-a-slug",
+		},
+		{
+			name:     "camel case string",
+			raw:      "CamelCaseString",
+			expected: "camelcasestring",
+		},
+		{
+			name:     "string with numbers",
+			raw:      "123 numbers 456",
+			expected: "123-numbers-456",
+		},
+		{
+			name:     "mixed string",
+			raw:      "Mix_Of-Things.123",
+			expected: "mix-of-things-123",
+		},
+		{
+			name:     "whitespaces only",
+			raw:      "   ",
+			expected: "section",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := slug(tt.raw)
+			if result != tt.expected {
+				t.Errorf("slug(%q) = %q, expected %q", tt.raw, result, tt.expected)
+			}
+		})
+	}
+}
