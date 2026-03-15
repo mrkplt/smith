@@ -490,6 +490,7 @@ jobs:
       - name: Provision ephemeral k3d + vCluster + etcd
         timeout-minutes: 15
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-ci
           SMITH_VCLUSTER_NAME: smith-ci-vc
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
@@ -503,6 +504,7 @@ jobs:
       - name: Run vCluster watch/reconcile integration tests
         timeout-minutes: 10
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-ci
           SMITH_VCLUSTER_NAME: smith-ci-vc
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
@@ -544,7 +546,9 @@ jobs:
         if: always()
         timeout-minutes: 10
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-ci
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-ci-vc
           SMITH_VCLUSTER_NAMESPACE: smith-ci-vcluster
           SMITH_ETCD_NAMESPACE: smith-ci-system
@@ -602,6 +606,7 @@ jobs:
       - name: Provision k3d + vCluster + etcd
         timeout-minutes: 20
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-pre-release
           SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-pre-release-vc
@@ -635,7 +640,9 @@ jobs:
         if: always()
         timeout-minutes: 15
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-pre-release
+          SMITH_USE_VCLUSTER: "true"
           SMITH_VCLUSTER_NAME: smith-pre-release-vc
           SMITH_VCLUSTER_NAMESPACE: smith-pre-release-vcluster
           SMITH_ETCD_NAMESPACE: smith-pre-release-system
@@ -688,6 +695,7 @@ jobs:
       - name: Provision k3d + etcd (direct namespace, no vCluster)
         timeout-minutes: 20
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-pre-release-direct
           SMITH_USE_VCLUSTER: "false"
           SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
@@ -715,6 +723,7 @@ jobs:
         if: always()
         timeout-minutes: 15
         env:
+          SMITH_CLUSTER_PROVIDER: k3d
           SMITH_K3D_CLUSTER_NAME: smith-pre-release-direct
           SMITH_USE_VCLUSTER: "false"
           SMITH_ETCD_NAMESPACE: smith-pre-release-direct-system
