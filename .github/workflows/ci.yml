@@ -701,6 +701,7 @@ jobs:
           SMITH_TEST_ARTIFACTS_DIR: /tmp/smith-pre-release-artifacts/parity-direct-k3s
           SMITH_FIXTURE_DIR: /tmp/smith-pre-release-repo/parity-direct-k3s
           SMITH_ENABLE_CLUSTER_TESTS: "true"
+          SMITH_USE_VCLUSTER: "false"
         run: mise exec -- ./scripts/release/pre-release-system-gate.sh parity
 
       - name: Upload direct k3s parity artifacts

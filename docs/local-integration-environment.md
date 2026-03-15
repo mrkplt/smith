@@ -1,4 +1,4 @@
-# Local Integration Environment (k3d + vCluster + etcd)
+# Local Integration Environment
 
 This environment provides a reproducible local target for Smith integration/e2e tests.
 
@@ -16,20 +16,24 @@ Target matrix:
 
 | Target | Contract | Prerequisites |
 | --- | --- | --- |
-| `make doctor` | Fails fast when required local tools are missing. | `go`, `kubectl`, `helm`, `docker`, `k3d`, `vcluster` in `PATH` |
-| `make bootstrap` | Installs missing `k3d`/`vcluster` via script helpers. | `brew` or `curl` available |
-| `make cluster-up` (`make cluster`) | Provisions local `k3d + vcluster + etcd`. | Doctor checks pass |
-| `make cluster-down` | Removes local `k3d + vcluster + etcd` resources. | None (best-effort) |
-| `make cluster-reset` | Rebuilds local cluster stack from scratch (`cluster-down` then `cluster-up`). | Same as `cluster-up` |
-| `make cluster-health` | Verifies cluster API, node readiness, etcd readiness, and vcluster namespace. | Reachable Kubernetes context |
+| `make doctor` | Fails fast when required local tools are missing. | `go`, `kubectl`, `helm`, `docker` in `PATH` |
+| `make bootstrap` | Installs required runtimes and optional `k3d`/`vcluster` helpers. | `brew` or `curl` available |
+| `make cluster-up` (`make cluster`) | Provisions etcd on the current `kubectl` context. | Doctor checks pass |
+| `make cluster-up-k3d` | Provisions local `k3d + etcd`. | `k3d` installed |
+| `make cluster-up-vcluster` | Provisions local `k3d + vcluster + etcd`. | `k3d` and `vcluster` installed |
+| `make cluster-down` | Removes etcd from the current `kubectl` context. | None (best-effort) |
+| `make cluster-down-k3d` | Removes local `k3d + etcd`. | None (best-effort) |
+| `make cluster-down-vcluster` | Removes local `k3d + vcluster + etcd`. | None (best-effort) |
+| `make cluster-reset` | Rebuilds the default local environment (`cluster-down` then `cluster-up`). | Same as `cluster-up` |
+| `make cluster-health` | Verifies cluster API, node readiness, and etcd readiness. | Reachable Kubernetes context |
 | `make build-local` | Builds local Smith binaries used by local deploy workflows. | Go toolchain |
-| `make deploy-local` | Builds and imports local Smith images into k3d, then installs/upgrades the Helm release with the local values profile (`SMITH_LOCAL_VALUES`). | Reachable Kubernetes cluster + Helm + Docker + k3d |
+| `make deploy-local` | Builds local Smith images, imports them when using k3d, then installs/upgrades the Helm release with the local values profile (`SMITH_LOCAL_VALUES`). | Reachable Kubernetes cluster + Helm + Docker |
 | `make deploy-staging` | Installs/upgrades Helm release with staging profile (`SMITH_STAGING_VALUES`). | Reachable Kubernetes cluster + Helm + pre-created runtime secret |
 | `make deploy-prod` | Installs/upgrades Helm release with production profile (`SMITH_PROD_VALUES`). | Reachable Kubernetes cluster + Helm + pre-created runtime secret |
 | `make undeploy-local` | Removes local Helm release from namespace. | Reachable Kubernetes cluster + Helm |
 | `make deploy` | Installs/upgrades Helm release into namespace (`SMITH_NAMESPACE`, `SMITH_RELEASE`, `SMITH_VALUES`). | Reachable Kubernetes cluster + Helm |
 | `make test` (`make test-matrix`) | Runs local non-cluster matrix (fixtures, verification, e2e scripts). | Go toolchain + local repo dependencies |
-| `make test-integration` | Runs vCluster-backed integration workflow. | `cluster-up` completed |
+| `make test-integration` | Runs the vCluster-backed integration workflow. | `cluster-up-vcluster` completed |
 | `make test-observability-latency` | Measures journal-to-console propagation latency and reports p95/p99. | Running API + active test loop |
 | `make teardown` | Removes Helm release and tears down local cluster stack. | None; best-effort cleanup |
 
@@ -47,6 +51,9 @@ Required CLI tools:
 
 - `kubectl`
 - `helm`
+
+Optional for alternative local providers:
+
 - `k3d`
 - `vcluster`
 
@@ -65,19 +72,22 @@ docker system prune -af
 ## Bring Up Environment
 
 ```bash
-./scripts/integration/env-up.sh
-```
-
-Or via make:
-
-```bash
 make cluster-up
 make cluster-health
 make build-local
 make deploy-local
 ```
 
-`make deploy-local` builds `ghcr.io/smith/{core,api,replica,console}:v0.1.0` locally and imports those images into the `smith-int` k3d cluster by default. Override `SMITH_K3D_CLUSTER_NAME` or individual `SMITH_*_IMAGE` refs if your local cluster or tags differ.
+Default mode deploys into the current `kubectl` context, which is a good fit for Docker Desktop Kubernetes.
+
+Alternative providers:
+
+```bash
+make cluster-up-k3d
+make cluster-up-vcluster
+```
+
+`make deploy-local` builds `smith-*:local` images locally. When using `k3d`, those images are imported into the `smith-int` cluster. When using the current cluster provider, image import is skipped and the active cluster must already be able to resolve local images.
 
 Optional: enable Kubernetes Secret encryption at rest in local `k3d`:
 
@@ -91,25 +101,26 @@ Expected deploy-local output includes a Helm success line similar to:
 Release "smith" has been upgraded. Happy Helming!
 ```
 
-Creates:
+Default `cluster-up` creates:
+
+- etcd in namespace `smith-system` on the current cluster context
+
+`cluster-up-k3d` creates:
+
+- k3d host cluster: `smith-int`
+- etcd in namespace `smith-system`
+
+`cluster-up-vcluster` creates:
 
 - k3d host cluster: `smith-int`
 - vCluster: `smith-vc` in namespace `smith-vcluster`
-- etcd (bitnami chart) in namespace `smith-system`
-
-By default, `env-up` connects to the vCluster context before installing etcd so integration tests run against vCluster APIs.
+- etcd in namespace `smith-system`
 
 Default etcd endpoint in-cluster:
 
 `http://smith-etcd.smith-system.svc.cluster.local:2379`
 
 ## Tear Down Environment
-
-```bash
-./scripts/integration/env-down.sh
-```
-
-Or via make:
 
 ```bash
 make undeploy-local
@@ -158,6 +169,7 @@ Run observability latency benchmark:
 
 Scripts accept environment variable overrides:
 
+- `SMITH_CLUSTER_PROVIDER` (`current` default, `k3d` optional)
 - `SMITH_K3D_CLUSTER_NAME`
 - `SMITH_K3D_SERVERS`
 - `SMITH_K3D_AGENTS`

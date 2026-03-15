@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIXTURE_DIR="${SMITH_FIXTURE_DIR:-/tmp/smith-test-repo}"
 ARTIFACTS_DIR="${SMITH_TEST_ARTIFACTS_DIR:-/tmp/smith-test-artifacts}"
 ENABLE_CLUSTER_TESTS="${SMITH_ENABLE_CLUSTER_TESTS:-false}"
+USE_VCLUSTER="${SMITH_USE_VCLUSTER:-true}"
 
 mkdir -p "$ARTIFACTS_DIR"
 cd "$ROOT_DIR"
@@ -12,7 +13,7 @@ cd "$ROOT_DIR"
 ./scripts/fixtures/provision-smith-test-repo.sh "$FIXTURE_DIR"
 ./scripts/test/verify-completion.sh "$FIXTURE_DIR" "single-loop-success"
 
-if [[ "$ENABLE_CLUSTER_TESTS" == "true" ]]; then
+if [[ "$ENABLE_CLUSTER_TESTS" == "true" && "$USE_VCLUSTER" == "true" ]]; then
   ./scripts/integration/test-watch-reconcile.sh
 fi
 

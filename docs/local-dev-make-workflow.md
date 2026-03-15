@@ -23,11 +23,15 @@ This page describes the current make-first local development workflow. For the c
 ### Cluster Lifecycle
 
 - `make cluster-up`
-  - Start the local `k3d + vcluster + etcd` stack.
+  - Start the default local environment on the current `kubectl` context.
+- `make cluster-up-k3d`
+  - Start a disposable `k3d + etcd` environment.
+- `make cluster-up-vcluster`
+  - Start the explicit `k3d + vcluster + etcd` compatibility environment.
 - `make cluster-health`
-  - Verify the local cluster, namespace, and etcd health.
+  - Verify the current cluster, namespace, and etcd health.
 - `make cluster-down`
-  - Tear down the local cluster resources.
+  - Tear down the default local environment resources.
 - `make cluster-reset`
   - Recreate the cluster stack from scratch.
 
@@ -36,7 +40,7 @@ This page describes the current make-first local development workflow. For the c
 - `make build-local`
   - Build local artifacts used by the local cluster workflow.
 - `make deploy-local`
-  - Build, import, and deploy Smith into the local cluster.
+  - Build and deploy Smith into the active cluster, importing images only for `k3d`.
 - `make undeploy-local`
   - Remove the local deployment from the cluster.
 
@@ -76,6 +80,7 @@ For local validation:
 
 ```bash
 make test
+make cluster-up-vcluster
 make test-integration
 make test-e2e
 make ci-local-act

@@ -6,7 +6,7 @@ Smith promotion is blocked unless both system-gate profiles pass:
 - `parity` profile: non-vCluster parity run.
 - `parity-direct-k3s` profile (workflow job): k3d direct namespace deploy with `SMITH_USE_VCLUSTER=false`.
 
-Workflow: `.github/workflows/pre-release-system-gate.yml`
+Workflow: `.github/workflows/ci.yml`
 
 ## Gate Command
 
@@ -28,6 +28,8 @@ For `vcluster`, the gate also requires watch/reconcile integration against live 
 
 For `parity-direct-k3s`, the gate runs the parity profile with `SMITH_ENABLE_CLUSTER_TESTS=true`
 after provisioning k3d + etcd without vCluster to expose non-vCluster behavior differences.
+This profile explicitly passes `SMITH_USE_VCLUSTER=false`, so the parity suite skips the
+vCluster-only watch/reconcile check while still exercising the cluster-enabled parity path.
 
 ## Artifact Output
 

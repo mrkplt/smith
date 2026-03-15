@@ -33,7 +33,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 
 .PHONY: help \
 	doctor bootstrap \
-	cluster cluster-up cluster-down cluster-reset cluster-health \
+	cluster cluster-up cluster-up-local cluster-up-k3d cluster-up-vcluster cluster-down cluster-down-local cluster-down-k3d cluster-down-vcluster cluster-reset cluster-health \
 	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
@@ -46,7 +46,7 @@ help: ## Show available make targets
 doctor: ## Validate local prerequisites for make-first workflow
 	@set -euo pipefail; \
 	missing=0; \
-	for cmd in $(MISE) kubectl helm docker k3d vcluster; do \
+	for cmd in $(MISE) kubectl helm docker; do \
 	  if ! command -v $$cmd >/dev/null 2>&1; then \
 	    echo "missing required command: $$cmd"; \
 	    missing=1; \
@@ -94,7 +94,7 @@ doctor: ## Validate local prerequisites for make-first workflow
 	  exit 1; \
 	fi; \
 	echo "doctor passed: required local tools found"
-bootstrap: ## Install required mise runtimes and missing k3d/vcluster prerequisites
+bootstrap: ## Install required mise runtimes and optional k3d/vcluster prerequisites
 	@set -euo pipefail; \
 	$(MISE) trust mise.toml; \
 	$(MISE) install; \
@@ -130,18 +130,28 @@ dist: ## Build cross-platform smithctl binaries
 
 cluster: cluster-up ## Alias for cluster-up
 
-cluster-up: ## Provision local k3d + vcluster + etcd environment
-	./scripts/integration/env-up.sh
-cluster-down: ## Delete local k3d + vcluster + etcd environment
-	./scripts/integration/env-down.sh
-cluster-reset: ## Reset local k3d + vcluster + etcd (down then up)
+cluster-up: cluster-up-local ## Alias for the default local cluster provider
+cluster-up-local: ## Provision etcd on the current kubectl context
+	SMITH_CLUSTER_PROVIDER=current SMITH_USE_VCLUSTER=false ./scripts/integration/env-up.sh
+cluster-up-k3d: ## Provision local k3d + etcd environment
+	SMITH_CLUSTER_PROVIDER=k3d SMITH_USE_VCLUSTER=false ./scripts/integration/env-up.sh
+cluster-up-vcluster: ## Provision local k3d + vcluster + etcd environment
+	SMITH_CLUSTER_PROVIDER=k3d SMITH_USE_VCLUSTER=true ./scripts/integration/env-up.sh
+cluster-down: cluster-down-local ## Alias for the default local cluster provider
+cluster-down-local: ## Remove etcd from the current kubectl context
+	SMITH_CLUSTER_PROVIDER=current SMITH_USE_VCLUSTER=false ./scripts/integration/env-down.sh
+cluster-down-k3d: ## Delete local k3d + etcd environment
+	SMITH_CLUSTER_PROVIDER=k3d SMITH_USE_VCLUSTER=false ./scripts/integration/env-down.sh
+cluster-down-vcluster: ## Delete local k3d + vcluster + etcd environment
+	SMITH_CLUSTER_PROVIDER=k3d SMITH_USE_VCLUSTER=true ./scripts/integration/env-down.sh
+cluster-reset: ## Reset the default local environment (down then up)
 	@set -euo pipefail; \
 	echo "[cluster-reset] tearing down existing local environment"; \
 	$(MAKE) --no-print-directory cluster-down; \
 	echo "[cluster-reset] bringing local environment back up"; \
 	$(MAKE) --no-print-directory cluster-up; \
 	echo "[cluster-reset] completed"
-cluster-health: ## Verify local cluster/vcluster/etcd readiness with actionable failures
+cluster-health: ## Verify current cluster API, node readiness, and etcd readiness
 	@set -euo pipefail; \
 	echo "[cluster-health] checking Kubernetes API reachability"; \
 	if ! kubectl cluster-info >/dev/null 2>&1; then \
@@ -195,29 +205,45 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	$(MAKE) --no-print-directory rollout-local
 console-build-local: ## Build only the console local image
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
-console-load-local: ## Load only the console image into k3d
-	k3d image import "$(SMITH_LOCAL_CONSOLE_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+console-load-local: ## Load only the console image when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import "$(SMITH_LOCAL_CONSOLE_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "console-load-local: skipping image import for current-cluster provider"; \
+	fi
 console-rollout-local: ## Restart only the console deployment
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 console-deploy-local: console-build-local console-load-local console-rollout-local ## Build, load, and restart only the console
 api-build-local: ## Build only the smith-api local image
 	docker build -f docker/api.Dockerfile -t "$(SMITH_LOCAL_API_IMAGE)" .
-api-load-local: ## Load only the smith-api image into k3d
-	k3d image import "$(SMITH_LOCAL_API_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+api-load-local: ## Load only the smith-api image when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import "$(SMITH_LOCAL_API_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "api-load-local: skipping image import for current-cluster provider"; \
+	fi
 api-rollout-local: ## Restart only the smith-api deployment
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 api-deploy-local: api-build-local api-load-local api-rollout-local ## Build, load, and restart only the smith-api
 replica-build-local: ## Build only the smith-replica local image
 	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
-replica-load-local: ## Load only the smith-replica image into k3d
-	k3d image import "$(SMITH_LOCAL_REPLICA_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+replica-load-local: ## Load only the smith-replica image when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import "$(SMITH_LOCAL_REPLICA_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "replica-load-local: skipping image import for current-cluster provider"; \
+	fi
 replica-deploy-local: replica-build-local replica-load-local ## Build and load only the smith-replica (no rollout needed as it runs as Jobs)
 chat-build-local: ## Build only the smith-chat local image
 	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
-chat-load-local: ## Load only the smith-chat image into k3d
-	k3d image import "$(SMITH_LOCAL_CHAT_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"
+chat-load-local: ## Load only the smith-chat image when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import "$(SMITH_LOCAL_CHAT_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "chat-load-local: skipping image import for current-cluster provider"; \
+	fi
 chat-deploy-local: chat-build-local chat-load-local ## Build and load only the smith-chat
 console-api-deploy-local: console-build-local console-load-local api-build-local api-load-local rollout-local ## Build, load, and restart console + api
 rollout-local: ## Force restart local deployments to pick up new images
@@ -296,15 +322,19 @@ image-build-local: ## Build local Smith container images with deploy-local tags
 
 build-local: image-build-local ## Backward-compatible alias for local image builds
 
-image-load-local: ## Import local Smith container images into the k3d cluster
-	k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
-	  "$(SMITH_LOCAL_CORE_IMAGE)" \
-	  "$(SMITH_LOCAL_API_IMAGE)" \
-	  "$(SMITH_LOCAL_REPLICA_IMAGE)" \
-	  "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
-	  "$(SMITH_LOCAL_CHAT_IMAGE)"
+image-load-local: ## Import local Smith container images when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import -c "$(SMITH_K3D_CLUSTER_NAME)" \
+	    "$(SMITH_LOCAL_CORE_IMAGE)" \
+	    "$(SMITH_LOCAL_API_IMAGE)" \
+	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
+	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
+	    "$(SMITH_LOCAL_CHAT_IMAGE)"; \
+	else \
+	  echo "image-load-local: skipping image import for current-cluster provider"; \
+	fi
 
-images-local: image-build-local image-load-local ## Build and load local Smith images for deploy-local
+images-local: image-build-local image-load-local ## Build local Smith images and import them when using k3d
 docs-image-build: ## Build the containerized docs tool image
 	docker build -f docker/docs.Dockerfile -t "smith-docs:local" .
 docs-check: ## Run docs quality checks
