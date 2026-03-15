@@ -269,6 +269,26 @@ func readFileConfig(path string) (fileConfig, error) {
 	return out, nil
 }
 
+func writeFileConfig(path string, cfg fileConfig) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("config path is required")
+	}
+	if cfg.Contexts == nil {
+		cfg.Contexts = map[string]contextConfig{}
+	}
+	content, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	if err := os.WriteFile(path, append(content, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
+}
+
 func runLoop(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printLoopHelp(stdout)
@@ -322,6 +342,8 @@ func runConfig(configPath string, args []string, stdout, stderr io.Writer) int {
 		return cmdConfigGetContexts(configPath, stdout, stderr)
 	case "current-context":
 		return cmdConfigCurrentContext(configPath, stdout, stderr)
+	case "use-context":
+		return cmdConfigUseContext(configPath, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown config command %q\n", args[0])
 		printConfigHelp(stderr)
@@ -389,6 +411,33 @@ func cmdConfigCurrentContext(configPath string, stdout, stderr io.Writer) int {
 	}
 	if _, err := fmt.Fprintln(stdout, current); err != nil {
 		fmt.Fprintf(stderr, "write current context: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func cmdConfigUseContext(configPath string, args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl config use-context <name>")
+		return 2
+	}
+	name := strings.TrimSpace(args[0])
+	cfg, err := readFileConfig(configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, ok := cfg.Contexts[name]; !ok {
+		fmt.Fprintf(stderr, "context %q not found\n", name)
+		return 1
+	}
+	cfg.CurrentContext = name
+	if err := writeFileConfig(configPath, cfg); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	if _, err := fmt.Fprintf(stdout, "Switched to context %q\n", name); err != nil {
+		fmt.Fprintf(stderr, "write use-context output: %v\n", err)
 		return 1
 	}
 	return 0
