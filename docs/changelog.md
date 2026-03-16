@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Highlights
+
+- Added provider profile CRUD APIs and project-to-provider-profile binding validation.
+- Added settings secrets CRUD APIs with masked responses and reference-integrity checks.
+- Expanded Console Settings with side-nav sections and live Providers/Projects/Secrets management.
+- Added full-screen Assistant route (`/assistant`) while preserving drawer chat flow.
+- Added chat defaults for provider profile selection, optional model/API key overrides, and opaque thinking levels.
+
+### Notes
+
+- Settings secrets are write-only from API/UI perspective: values can be created/rotated but are not returned in plaintext.
+- Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
+
 ## v0.2.0
 
 Release date: 2026-03-15

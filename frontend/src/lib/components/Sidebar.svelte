@@ -3,14 +3,12 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
   import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
-  import { GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, CloseOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
+  import { GridOutline, FileLinesOutline, CloseOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
 
 	const navItems = [
 		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
 		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
-		{ id: 'projects', label: 'Projects', href: '/projects', icon: ArchiveOutline },
-		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline },
 		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
 	];
 

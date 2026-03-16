@@ -17,6 +17,7 @@ type Project struct {
 	ID                string `json:"id"`
 	Name              string `json:"name"`
 	RepoURL           string `json:"repo_url"`
+	ProviderProfileID string `json:"provider_profile_id,omitempty"`
 	GitHubUser        string `json:"github_user,omitempty"`
 	RuntimeImage      string `json:"runtime_image,omitempty"`
 	RuntimePullPolicy string `json:"runtime_pull_policy,omitempty"`

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"smith/internal/source/model"
+	"smith/internal/source/provider"
 	"smith/internal/source/store"
 	pb "smith/proto/v1"
 
@@ -1259,6 +1260,157 @@ func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, ter
 	}
 }
 
+func TestHandleProvidersReturnsDefaultProfile(t *testing.T) {
+	s := &server{
+		providers:    provider.NewFileProviderProfileStore(),
+		projectStore: &memoryProjectStore{items: map[string]provider.Project{}},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers", nil)
+	s.handleProviders(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out []provider.ProviderProfile
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	require.NotEmpty(t, out)
+	assert.Equal(t, provider.DefaultProviderProfileID, out[0].ID)
+}
+
+func TestHandleProjectsAssignsDefaultProviderProfile(t *testing.T) {
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{}}
+	s := &server{
+		providers:    provider.NewFileProviderProfileStore(),
+		projectStore: projectStore,
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
+		"id":"proj-1",
+		"name":"Project 1",
+		"repo_url":"https://github.com/acme/project1"
+	}`))
+	s.handleProjects(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var saved provider.Project
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&saved))
+	assert.Equal(t, provider.DefaultProviderProfileID, saved.ProviderProfileID)
+	assert.Equal(t, "IfNotPresent", saved.RuntimePullPolicy)
+	assert.Equal(t, "IfNotPresent", saved.SkillsPullPolicy)
+
+	stored, ok := projectStore.items["proj-1"]
+	require.True(t, ok)
+	assert.Equal(t, provider.DefaultProviderProfileID, stored.ProviderProfileID)
+}
+
+func TestHandleProjectsRejectsUnknownProviderProfile(t *testing.T) {
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{}}
+	s := &server{
+		providers:    provider.NewFileProviderProfileStore(),
+		projectStore: projectStore,
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/projects", strings.NewReader(`{
+		"id":"proj-2",
+		"name":"Project 2",
+		"repo_url":"https://github.com/acme/project2",
+		"provider_profile_id":"does-not-exist"
+	}`))
+	s.handleProjects(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "provider profile")
+}
+
+func TestHandleSecretsCRUDAndMasking(t *testing.T) {
+	secretStore := provider.NewFileSecretStore()
+	s := &server{
+		providers: provider.NewFileProviderProfileStore(),
+		secrets:   secretStore,
+	}
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/secrets", strings.NewReader(`{
+		"id":"openai-key",
+		"name":"OpenAI Key",
+		"description":"Primary key",
+		"value":"sk-test-123456"
+	}`))
+	s.handleSecrets(createRec, createReq)
+	require.Equal(t, http.StatusOK, createRec.Code)
+	assert.NotContains(t, createRec.Body.String(), "sk-test-123456")
+
+	listRec := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/secrets", nil)
+	s.handleSecrets(listRec, listReq)
+	require.Equal(t, http.StatusOK, listRec.Code)
+	assert.Contains(t, listRec.Body.String(), "openai-key")
+	assert.Contains(t, listRec.Body.String(), "value_masked")
+	assert.NotContains(t, listRec.Body.String(), "sk-test-123456")
+
+	stored, found, err := secretStore.GetSecret(context.Background(), "openai-key")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "sk-test-123456", stored.Value)
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/secrets/openai-key", nil)
+	s.handleSecretByID(deleteRec, deleteReq)
+	require.Equal(t, http.StatusNoContent, deleteRec.Code)
+
+	_, found, err = secretStore.GetSecret(context.Background(), "openai-key")
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
+func TestHandleProvidersRejectsUnknownSecretRef(t *testing.T) {
+	s := &server{
+		providers: provider.NewFileProviderProfileStore(),
+		secrets:   provider.NewFileSecretStore(),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(`{
+		"id":"openai-profile",
+		"provider_type":"openai",
+		"secret_ref":"missing-secret"
+	}`))
+	s.handleProviders(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "secret")
+}
+
+func TestHandleSecretDeleteRejectsReferencedSecret(t *testing.T) {
+	secretStore := provider.NewFileSecretStore()
+	require.NoError(t, secretStore.PutSecret(context.Background(), provider.SettingsSecret{
+		ID:    "openai-key",
+		Name:  "OpenAI key",
+		Value: "sk-test-123456",
+	}))
+	providerStore := provider.NewFileProviderProfileStore()
+	require.NoError(t, providerStore.PutProviderProfile(context.Background(), provider.ProviderProfile{
+		ID:           "openai-profile",
+		Name:         "OpenAI profile",
+		ProviderType: "openai",
+		SecretRef:    "openai-key",
+	}))
+
+	s := &server{
+		providers: providerStore,
+		secrets:   secretStore,
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/v1/secrets/openai-key", nil)
+	s.handleSecretByID(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "referenced")
+}
+
 func newPRDValidationTestServer(ms *store.MemStore) *server {
 	return &server{
 		store:       ms,
@@ -1282,6 +1434,36 @@ type fakeRuntimePodReader struct {
 	podsByJob map[string][]corev1.Pod
 	err       error
 	calls     int
+}
+
+type memoryProjectStore struct {
+	items map[string]provider.Project
+}
+
+func (m *memoryProjectStore) ListProjects(ctx context.Context) ([]provider.Project, error) {
+	out := make([]provider.Project, 0, len(m.items))
+	for _, item := range m.items {
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (m *memoryProjectStore) GetProject(ctx context.Context, id string) (provider.Project, bool, error) {
+	item, ok := m.items[id]
+	if !ok {
+		return provider.Project{}, false, nil
+	}
+	return item, true, nil
+}
+
+func (m *memoryProjectStore) PutProject(ctx context.Context, project provider.Project) error {
+	m.items[project.ID] = project
+	return nil
+}
+
+func (m *memoryProjectStore) DeleteProject(ctx context.Context, id string) error {
+	delete(m.items, id)
+	return nil
 }
 
 func (f *fakeRuntimePodReader) List(_ context.Context, _ string, opts metav1.ListOptions) (*corev1.PodList, error) {

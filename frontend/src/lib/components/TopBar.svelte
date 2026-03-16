@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
-  import { BarsOutline, GridOutline, FileLinesOutline, ArchiveOutline, UsersGroupOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
+  import { BarsOutline, GridOutline, FileLinesOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
 
 	import type { Snippet } from 'svelte';
 
@@ -14,11 +14,9 @@
 
 	let { title, controls }: Props = $props();
 
-  const navItems = [
+	const navItems = [
 		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
 		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
-		{ id: 'projects', label: 'Projects', href: '/projects', icon: ArchiveOutline },
-		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline },
 		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
 	];
 

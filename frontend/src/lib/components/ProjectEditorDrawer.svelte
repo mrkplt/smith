@@ -2,7 +2,7 @@
 	import { appState, pushToast } from '$lib/stores';
 	import { postJSON, requestJSON, deleteJSON, fetchJSON } from '$lib/api';
 	import { slugifySegment } from '$lib/utils';
-  import { Drawer, Button } from 'flowbite-svelte';
+  import { Drawer, Button, Label } from 'flowbite-svelte';
   import { ArchiveOutline, TrashBinOutline, CheckOutline, CloseOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
   import ProjectBasicsSection from '$lib/components/ProjectBasicsSection.svelte';
@@ -25,6 +25,8 @@
 	let repoUrl = $state('');
 	let githubUser = $state('');
 	let githubCredential = $state('');
+	let providerProfileID = $state('codex-default');
+	let providerProfiles = $state<any[]>([]);
 	let runtimeImage = $state('');
 	let skillsImage = $state('');
 	let busy = $state(false);
@@ -42,10 +44,12 @@
 
 	$effect(() => {
 		if (open) {
+			void loadProviderProfiles();
 			if (projectToEdit) {
 				id = projectToEdit.id || '';
 				name = projectToEdit.name || '';
 				repoUrl = projectToEdit.repo_url || '';
+				providerProfileID = projectToEdit.provider_profile_id || 'codex-default';
 				githubUser = projectToEdit.github_user || '';
 				runtimeImage = projectToEdit.runtime_image || '';
 				skillsImage = projectToEdit.skills_image || '';
@@ -54,6 +58,7 @@
 				id = '';
 				name = '';
 				repoUrl = '';
+				providerProfileID = 'codex-default';
 				githubUser = '';
 				githubCredential = '';
 				runtimeImage = '';
@@ -61,6 +66,15 @@
 			}
 		}
 	});
+
+	async function loadProviderProfiles() {
+		try {
+			const profiles = await fetchJSON('/v1/providers');
+			providerProfiles = Array.isArray(profiles) ? profiles : [];
+		} catch {
+			providerProfiles = [];
+		}
+	}
 
 	async function saveProject() {
 		if (!name || !repoUrl) {
@@ -73,6 +87,7 @@
 			id: projectId,
 			name,
 			repo_url: repoUrl,
+			provider_profile_id: providerProfileID || 'codex-default',
 			github_user: githubUser,
 			runtime_image: runtimeImage,
 			skills_image: skillsImage,
@@ -157,6 +172,24 @@
           onNameChange={(value) => name = value}
           onRepoUrlChange={(value) => repoUrl = value}
         />
+
+				<div>
+					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Provider Profile</Label>
+					<select
+						class="w-full bg-black border border-gray-800 text-white text-sm rounded-none px-3 py-2"
+						value={providerProfileID}
+						oninput={(event) => providerProfileID = (event.currentTarget as HTMLSelectElement).value}
+						disabled={busy}
+					>
+						{#if providerProfiles.length === 0}
+							<option value="codex-default">codex-default</option>
+						{:else}
+							{#each providerProfiles as profile}
+								<option value={profile.id}>{profile.name || profile.id}</option>
+							{/each}
+						{/if}
+					</select>
+				</div>
 
         <div class="my-8 border-t border-gray-900"></div>
 

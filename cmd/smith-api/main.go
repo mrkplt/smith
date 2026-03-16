@@ -89,6 +89,8 @@ type server struct {
 	store        store.StateStore
 	auth         *provider.AuthManager
 	projectCred  provider.ProjectCredentialStore
+	providers    provider.ProviderProfileStore
+	secrets      provider.SecretStore
 	projectStore provider.ProjectStore
 	presets      *presetCatalog
 	skillPolicy  model.SkillPolicy
@@ -491,6 +493,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("smith-api project store init failed: %v", err)
 	}
+	providerStore, err := newProviderProfileStore(ctx, cfg)
+	if err != nil {
+		log.Fatalf("smith-api provider profile store init failed: %v", err)
+	}
+	secretStore, err := newSecretStore(ctx, cfg)
+	if err != nil {
+		log.Fatalf("smith-api secret store init failed: %v", err)
+	}
 
 	authManager := provider.NewAuthManager(
 		provider.ProviderCodex,
@@ -517,6 +527,8 @@ func main() {
 		store:        es,
 		auth:         authManager,
 		projectCred:  projectCredStore,
+		providers:    providerStore,
+		secrets:      secretStore,
 		projectStore: projectStore,
 		presets:      newPresetCatalog(cfg.defaultPreset),
 		skillPolicy:  cfg.skillPolicy,
@@ -551,6 +563,10 @@ func main() {
 	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
 	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
 	mux.HandleFunc("/v1/projects/credentials/github", s.handleProjectGitHubCredential)
+	mux.HandleFunc("/v1/providers", s.handleProviders)
+	mux.HandleFunc("/v1/providers/", s.handleProviderByID)
+	mux.HandleFunc("/v1/secrets", s.handleSecrets)
+	mux.HandleFunc("/v1/secrets/", s.handleSecretByID)
 	mux.HandleFunc("/v1/projects", s.handleProjects)
 	mux.HandleFunc("/v1/projects/", s.handleProjectByID)
 
@@ -2369,6 +2385,275 @@ func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Re
 	}
 }
 
+func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		profiles, err := s.providers.ListProviderProfiles(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, profiles)
+	case http.MethodPost:
+		var profile provider.ProviderProfile
+		if err := json.NewDecoder(r.Body).Decode(&profile); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		normalized, err := provider.NormalizeProviderProfile(profile)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.ensureSecretExists(r.Context(), normalized.SecretRef); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.providers.PutProviderProfile(r.Context(), normalized); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, normalized)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/v1/providers/")
+	id = strings.TrimSpace(id)
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "provider id is required")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		profile, found, err := s.providers.GetProviderProfile(r.Context(), id)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "provider profile not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, profile)
+	case http.MethodPut:
+		var profile provider.ProviderProfile
+		if err := json.NewDecoder(r.Body).Decode(&profile); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		if strings.TrimSpace(profile.ID) == "" {
+			profile.ID = id
+		}
+		if strings.TrimSpace(profile.ID) != id {
+			writeErr(w, http.StatusBadRequest, "id mismatch")
+			return
+		}
+		normalized, err := provider.NormalizeProviderProfile(profile)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.ensureSecretExists(r.Context(), normalized.SecretRef); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.providers.PutProviderProfile(r.Context(), normalized); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, normalized)
+	case http.MethodDelete:
+		projects, err := s.projectStore.ListProjects(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, project := range projects {
+			if strings.TrimSpace(project.ProviderProfileID) == id {
+				writeErr(w, http.StatusConflict, "provider profile is referenced by a project")
+				return
+			}
+		}
+		if err := s.providers.DeleteProviderProfile(r.Context(), id); err != nil {
+			if errors.Is(err, provider.ErrProtectedProviderProfile) {
+				writeErr(w, http.StatusConflict, err.Error())
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if s.secrets == nil {
+		writeErr(w, http.StatusInternalServerError, "secret store unavailable")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		secrets, err := s.secrets.ListSecrets(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		out := make([]map[string]any, 0, len(secrets))
+		for _, secret := range secrets {
+			out = append(out, secretResponse(secret))
+		}
+		writeJSON(w, http.StatusOK, out)
+	case http.MethodPost:
+		var secret provider.SettingsSecret
+		if err := json.NewDecoder(r.Body).Decode(&secret); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		normalized, err := provider.NormalizeSettingsSecret(secret)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if existing, found, err := s.secrets.GetSecret(r.Context(), normalized.ID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		} else if found && normalized.Value == "" {
+			normalized.Value = existing.Value
+		}
+		if strings.TrimSpace(normalized.Value) == "" {
+			writeErr(w, http.StatusBadRequest, "secret value is required")
+			return
+		}
+		if err := s.secrets.PutSecret(r.Context(), normalized); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, secretResponse(normalized))
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleSecretByID(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if s.secrets == nil {
+		writeErr(w, http.StatusInternalServerError, "secret store unavailable")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/v1/secrets/")
+	id = strings.TrimSpace(id)
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "secret id is required")
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		secret, found, err := s.secrets.GetSecret(r.Context(), id)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "secret not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, secretResponse(secret))
+	case http.MethodPut:
+		var secret provider.SettingsSecret
+		if err := json.NewDecoder(r.Body).Decode(&secret); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		if strings.TrimSpace(secret.ID) == "" {
+			secret.ID = id
+		}
+		if strings.TrimSpace(secret.ID) != id {
+			writeErr(w, http.StatusBadRequest, "id mismatch")
+			return
+		}
+		normalized, err := provider.NormalizeSettingsSecret(secret)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		existing, found, err := s.secrets.GetSecret(r.Context(), id)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "secret not found")
+			return
+		}
+		if strings.TrimSpace(normalized.Value) == "" {
+			normalized.Value = existing.Value
+		}
+		if strings.TrimSpace(normalized.Value) == "" {
+			writeErr(w, http.StatusBadRequest, "secret value is required")
+			return
+		}
+		if err := s.secrets.PutSecret(r.Context(), normalized); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, secretResponse(normalized))
+	case http.MethodDelete:
+		profiles, err := s.providers.ListProviderProfiles(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, profile := range profiles {
+			if strings.TrimSpace(profile.SecretRef) == id {
+				writeErr(w, http.StatusConflict, "secret is referenced by a provider profile")
+				return
+			}
+		}
+		if err := s.secrets.DeleteSecret(r.Context(), id); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func secretResponse(secret provider.SettingsSecret) map[string]any {
+	value := strings.TrimSpace(secret.Value)
+	out := map[string]any{
+		"id":          secret.ID,
+		"name":        secret.Name,
+		"description": secret.Description,
+		"updated_at":  secret.UpdatedAt,
+		"has_value":   value != "",
+	}
+	if value != "" {
+		out["value_masked"] = maskCredentialValue(value)
+	}
+	return out
+}
+
 func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 	if !s.authorized(r) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -2381,6 +2666,9 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		for i := range projects {
+			projects[i] = normalizeProjectContract(projects[i])
+		}
 		writeJSON(w, http.StatusOK, projects)
 	case http.MethodPost:
 		var p provider.Project
@@ -2391,6 +2679,11 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 		p.ID = strings.TrimSpace(p.ID)
 		if p.ID == "" {
 			writeErr(w, http.StatusBadRequest, "project id is required")
+			return
+		}
+		p = normalizeProjectContract(p)
+		if err := s.ensureProviderProfileExists(r.Context(), p.ProviderProfileID); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if err := s.projectStore.PutProject(r.Context(), p); err != nil {
@@ -2424,6 +2717,7 @@ func (s *server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusNotFound, "project not found")
 			return
 		}
+		p = normalizeProjectContract(p)
 		writeJSON(w, http.StatusOK, p)
 	case http.MethodPut:
 		var p provider.Project
@@ -2436,6 +2730,11 @@ func (s *server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 		}
 		if p.ID != id {
 			writeErr(w, http.StatusBadRequest, "id mismatch")
+			return
+		}
+		p = normalizeProjectContract(p)
+		if err := s.ensureProviderProfileExists(r.Context(), p.ProviderProfileID); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if err := s.projectStore.PutProject(r.Context(), p); err != nil {
@@ -2452,6 +2751,55 @@ func (s *server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (s *server) ensureProviderProfileExists(ctx context.Context, providerProfileID string) error {
+	providerProfileID = strings.TrimSpace(providerProfileID)
+	if providerProfileID == "" {
+		providerProfileID = provider.DefaultProviderProfileID
+	}
+	_, found, err := s.providers.GetProviderProfile(ctx, providerProfileID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("provider profile %q not found", providerProfileID)
+	}
+	return nil
+}
+
+func (s *server) ensureSecretExists(ctx context.Context, secretRef string) error {
+	secretRef = strings.TrimSpace(secretRef)
+	if secretRef == "" {
+		return nil
+	}
+	if s.secrets == nil {
+		return errors.New("secret store unavailable")
+	}
+	_, found, err := s.secrets.GetSecret(ctx, secretRef)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("secret %q not found", secretRef)
+	}
+	return nil
+}
+
+func normalizeProjectContract(in provider.Project) provider.Project {
+	in.ProviderProfileID = strings.TrimSpace(in.ProviderProfileID)
+	if in.ProviderProfileID == "" {
+		in.ProviderProfileID = provider.DefaultProviderProfileID
+	}
+	in.RuntimePullPolicy = strings.TrimSpace(in.RuntimePullPolicy)
+	if in.RuntimePullPolicy == "" {
+		in.RuntimePullPolicy = "IfNotPresent"
+	}
+	in.SkillsPullPolicy = strings.TrimSpace(in.SkillsPullPolicy)
+	if in.SkillsPullPolicy == "" {
+		in.SkillsPullPolicy = "IfNotPresent"
+	}
+	return in
 }
 
 func (s *server) authorized(r *http.Request) bool {
@@ -2484,6 +2832,46 @@ func newProjectStore(_ context.Context, cfg config) (provider.ProjectStore, erro
 		)
 	default:
 		return nil, fmt.Errorf("unsupported project store backend %q", cfg.authStoreBackend)
+	}
+}
+
+func newProviderProfileStore(_ context.Context, cfg config) (provider.ProviderProfileStore, error) {
+	backend := strings.ToLower(strings.TrimSpace(cfg.authStoreBackend))
+	switch backend {
+	case "", "file":
+		return provider.NewFileProviderProfileStore(), nil
+	case "kubernetes", "k8s":
+		clientset, err := kubeClient()
+		if err != nil {
+			return nil, fmt.Errorf("kubernetes clientset: %w", err)
+		}
+		return provider.NewConfigMapProviderProfileStore(
+			clientset,
+			cfg.authStoreK8sNamespace,
+			"smith-provider-profiles",
+		)
+	default:
+		return nil, fmt.Errorf("unsupported provider profile store backend %q", cfg.authStoreBackend)
+	}
+}
+
+func newSecretStore(_ context.Context, cfg config) (provider.SecretStore, error) {
+	backend := strings.ToLower(strings.TrimSpace(cfg.authStoreBackend))
+	switch backend {
+	case "", "file":
+		return provider.NewFileSecretStore(), nil
+	case "kubernetes", "k8s":
+		clientset, err := kubeClient()
+		if err != nil {
+			return nil, fmt.Errorf("kubernetes clientset: %w", err)
+		}
+		return provider.NewSecretSecretStore(
+			clientset,
+			cfg.authStoreK8sNamespace,
+			"smith-settings-secrets",
+		)
+	default:
+		return nil, fmt.Errorf("unsupported secret store backend %q", cfg.authStoreBackend)
 	}
 }
 

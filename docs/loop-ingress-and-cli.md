@@ -133,6 +133,12 @@ sequenceDiagram
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues
 - `POST /v1/ingress/prd` ingest PRD and emit loop specs
 
+Configuration endpoints used by Console Settings and automation:
+
+- `GET|POST /v1/providers` and `GET|PUT|DELETE /v1/providers/{id}` for provider profiles
+- `GET|POST /v1/projects` and `GET|PUT|DELETE /v1/projects/{id}` for project runtime records
+- `GET|POST /v1/secrets` and `GET|PUT|DELETE /v1/secrets/{id}` for reusable secret references
+
 ## smithctl (kubectl-style UX)
 
 CLI should be resource-oriented and scriptable.
@@ -210,6 +216,7 @@ classDiagram
         +String Name
         +String RepoURL
         +String GitHubUser
+        +String ProviderProfileID
         +String RuntimeImage
         +String RuntimePullPolicy
         +String UpdatedAt
