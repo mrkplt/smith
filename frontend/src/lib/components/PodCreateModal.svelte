@@ -3,6 +3,7 @@
 	import { fetchJSON, postJSON } from '$lib/api';
 	import { onDestroy } from 'svelte';
 	import { slugifySegment } from '$lib/utils';
+	import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
 	import { connectPRDChat, sendPRDChatMessage, type PRDChatMessage, type PRDChatSocket } from '$lib/chat/prd-chat';
   import { Modal, Button, Badge } from 'flowbite-svelte';
   import { ArrowLeftOutline, ArrowRightOutline, RocketOutline } from 'flowbite-svelte-icons';
@@ -32,7 +33,9 @@
 	let chatMessages = $state<PRDChatMessage[]>([]);
 	let chatSocket = $state<PRDChatSocket | null>(null);
 	let chatInput = $state('');
-	let chatProvider = $state('');
+	let chatProviderProfiles = $state<any[]>([]);
+	let chatProviderProfileID = $state('');
+	let chatDefaultModel = $state('');
 	let chatThinkingLevel = $state('balanced');
 	let finalPRD = $state<string | null>(null);
 
@@ -58,6 +61,30 @@
 		}
 	}
 
+	async function loadProviderProfiles() {
+		try {
+			const profiles = await fetchJSON('/v1/providers');
+			chatProviderProfiles = Array.isArray(profiles) ? profiles : [];
+		} catch {
+			chatProviderProfiles = [];
+		}
+	}
+
+	function applyStoredChatSettings() {
+		if (typeof window === 'undefined') {
+			return;
+		}
+		const settings = loadChatSettings(window.localStorage, chatProviderProfiles);
+		chatProviderProfileID = settings.providerProfileID;
+		chatDefaultModel = settings.defaultModel;
+		chatThinkingLevel = settings.thinkingLevel;
+	}
+
+	function chooseChatProviderProfile(nextProfileID: string) {
+		chatProviderProfileID = nextProfileID;
+		chatDefaultModel = resolveDefaultModel(chatProviderProfiles, nextProfileID, '');
+	}
+
 	function nextStep() {
 		if (step === 2 && !projectID) {
 			pushToast("Select a project first.", "err");
@@ -71,15 +98,8 @@
 
 	function startPRDChat() {
 		if (chatSocket) chatSocket.close();
-
-		if (typeof window !== 'undefined') {
-			if (chatProvider.trim() === '') {
-				chatProvider = window.localStorage.getItem('smith.chat.provider') || '';
-			}
-			const savedThinking = window.localStorage.getItem('smith.chat.thinkingLevel');
-			if (savedThinking === 'quick' || savedThinking === 'balanced' || savedThinking === 'deep') {
-				chatThinkingLevel = savedThinking;
-			}
+		if (chatProviderProfileID.trim() === '' && chatProviderProfiles.length > 0) {
+			applyStoredChatSettings();
 		}
 
 		let initialMsg = prompt;
@@ -98,13 +118,20 @@
 		const providerApiKey = typeof window !== 'undefined'
 			? (window.localStorage.getItem('smith.chat.providerApiKey') || '').trim()
 			: '';
+		const resolvedProvider = resolveProviderType(chatProviderProfiles, chatProviderProfileID, '');
 		if (projectID) {
 			context.project_id = projectID;
 		}
-		if (chatProvider.trim() !== '') {
-			context.provider = chatProvider.trim();
+		if (resolvedProvider !== '') {
+			context.provider = resolvedProvider;
 		}
-		const resolvedModel = modelForThinking(chatProvider, chatThinkingLevel);
+		if (chatProviderProfileID.trim() !== '') {
+			context.providerProfileID = chatProviderProfileID.trim();
+		}
+		let resolvedModel = resolveDefaultModel(chatProviderProfiles, chatProviderProfileID, chatDefaultModel);
+		if (resolvedModel === '') {
+			resolvedModel = modelForThinking(resolvedProvider, chatThinkingLevel);
+		}
 		if (resolvedModel !== '') {
 			context.model = resolvedModel;
 		}
@@ -182,7 +209,9 @@
 				chatSocket.close();
 				chatSocket = null;
 			}
+			return;
     }
+		void loadProviderProfiles().then(applyStoredChatSettings);
   });
 
 	onDestroy(() => {
@@ -239,10 +268,13 @@
         {finalPRD}
         {chatSocket}
         {chatInput}
-        {chatProvider}
+				chatProviderProfiles={chatProviderProfiles}
+				chatProviderProfileID={chatProviderProfileID}
+				chatDefaultModel={chatDefaultModel}
         {chatThinkingLevel}
         onChatInputChange={(value) => chatInput = value}
-        onChatProviderChange={(value) => chatProvider = value}
+				onChatProviderProfileChange={(value) => chooseChatProviderProfile(value)}
+				onChatDefaultModelChange={(value) => chatDefaultModel = value}
         onChatThinkingLevelChange={(value) => chatThinkingLevel = value}
         onSendChatMessage={sendChatMessage}
         onRestartChat={startPRDChat}

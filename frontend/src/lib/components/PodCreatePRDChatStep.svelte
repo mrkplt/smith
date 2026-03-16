@@ -8,10 +8,13 @@
     finalPRD: string | null;
     chatSocket: PRDChatSocket | null;
     chatInput: string;
-    chatProvider: string;
+		chatProviderProfiles: any[];
+		chatProviderProfileID: string;
+		chatDefaultModel: string;
     chatThinkingLevel: string;
     onChatInputChange: (value: string) => void;
-    onChatProviderChange: (value: string) => void;
+		onChatProviderProfileChange: (value: string) => void;
+		onChatDefaultModelChange: (value: string) => void;
     onChatThinkingLevelChange: (value: string) => void;
     onSendChatMessage: () => void;
     onRestartChat: () => void;
@@ -22,10 +25,13 @@
     finalPRD,
     chatSocket,
     chatInput,
-    chatProvider,
+		chatProviderProfiles,
+		chatProviderProfileID,
+		chatDefaultModel,
     chatThinkingLevel,
     onChatInputChange,
-    onChatProviderChange,
+		onChatProviderProfileChange,
+		onChatDefaultModelChange,
     onChatThinkingLevelChange,
     onSendChatMessage,
     onRestartChat
@@ -33,17 +39,27 @@
 </script>
 
 <div class="flex flex-col h-[400px]">
-  <div class="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+  <div class="mb-3 grid grid-cols-1 md:grid-cols-5 gap-2">
     <select
       class="bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
-      value={chatProvider}
-      oninput={(event) => onChatProviderChange((event.currentTarget as HTMLSelectElement).value)}
+      value={chatProviderProfileID}
+      oninput={(event) => onChatProviderProfileChange((event.currentTarget as HTMLSelectElement).value)}
     >
-      <option value="">Use service default provider</option>
-      <option value="openai">openai</option>
-      <option value="anthropic">anthropic</option>
-      <option value="google">google</option>
+      {#if chatProviderProfiles.length === 0}
+        <option value="">Provider Profile: service default</option>
+      {:else}
+        {#each chatProviderProfiles as profile}
+          <option value={profile.id}>{profile.name || profile.id}</option>
+        {/each}
+      {/if}
     </select>
+    <Input
+      type="text"
+      class="md:col-span-2 bg-slate-900 border-gray-800 text-white rounded-none"
+      placeholder="Model override (optional)"
+      value={chatDefaultModel}
+      oninput={(event) => onChatDefaultModelChange((event.currentTarget as HTMLInputElement).value)}
+    />
     <select
       class="bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
       value={chatThinkingLevel}
