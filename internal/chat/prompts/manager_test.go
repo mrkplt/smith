@@ -81,6 +81,36 @@ func TestManager_BuildSystemPrompt(t *testing.T) {
 		assert.Contains(t, prompt, "Current Content:\nPRD Content here")
 	})
 
+	t.Run("Includes Application Context Hints", func(t *testing.T) {
+		bridge := &mockBridge{}
+		manager := NewManager(bridge)
+		session := &chat.Session{
+			Type: chat.SessionTypePRDRefinement,
+			Context: map[string]string{
+				"app":              "smith-console",
+				"surface":          "projects",
+				"route":            "/projects",
+				"projectId":        "proj-123",
+				"provider":         "openai",
+				"thinkingLevel":    "balanced",
+				"projectsCount":    "4",
+				"activeLoopsCount": "2",
+			},
+		}
+
+		prompt, err := manager.BuildSystemPrompt(ctx, session)
+		assert.NoError(t, err)
+		assert.Contains(t, prompt, "CONTEXT: Application")
+		assert.Contains(t, prompt, "Application: smith-console")
+		assert.Contains(t, prompt, "Surface: projects")
+		assert.Contains(t, prompt, "Route: /projects")
+		assert.Contains(t, prompt, "Project ID: proj-123")
+		assert.Contains(t, prompt, "Preferred Provider: openai")
+		assert.Contains(t, prompt, "Thinking Level: balanced")
+		assert.Contains(t, prompt, "Projects Loaded: 4")
+		assert.Contains(t, prompt, "Active Pods: 2")
+	})
+
 	t.Run("PRD Refinement - Document Error Fallback", func(t *testing.T) {
 		bridge := &mockBridge{
 			getDocumentFn: func(ctx context.Context, docID string) (*model.Document, error) {

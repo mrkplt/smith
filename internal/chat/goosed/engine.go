@@ -34,14 +34,9 @@ func (e *Engine) Stream(ctx context.Context, session *chat.Session, message stri
 		cmd.Dir = wd
 	}
 
-	if provider := firstNonEmpty(session.Context["gooseProvider"], session.Context["provider"]); provider != "" {
-		cmd.Env = append(cmd.Env, "GOOSE_PROVIDER="+provider)
-	}
-	if model := firstNonEmpty(session.Context["gooseModel"], session.Context["model"]); model != "" {
-		cmd.Env = append(cmd.Env, "GOOSE_MODEL="+model)
-	}
-	if len(cmd.Env) > 0 {
-		cmd.Env = append(os.Environ(), cmd.Env...)
+	overrides := gooseEnvOverrides(session.Context)
+	if len(overrides) > 0 {
+		cmd.Env = append(os.Environ(), overrides...)
 	}
 
 	stdin, err := cmd.StdinPipe()
@@ -246,4 +241,53 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func gooseEnvOverrides(sessionContext map[string]string) []string {
+	provider := strings.ToLower(firstNonEmpty(sessionContext["gooseProvider"], sessionContext["provider"]))
+	model := firstNonEmpty(sessionContext["gooseModel"], sessionContext["model"])
+	apiKey := firstNonEmpty(sessionContext["providerApiKey"], sessionContext["apiKey"])
+
+	var env []string
+	if provider != "" {
+		env = append(env, "GOOSE_PROVIDER="+provider)
+	}
+	if model != "" {
+		env = append(env, "GOOSE_MODEL="+model)
+	}
+	if thinkingLevel := normalizeThinkingLevel(sessionContext["thinkingLevel"]); thinkingLevel != "" {
+		env = append(env, "OPENAI_REASONING_EFFORT="+thinkingLevel)
+	}
+	if apiKey != "" {
+		for _, keyEnv := range providerKeyEnvVars(provider) {
+			env = append(env, keyEnv+"="+apiKey)
+		}
+	}
+	return env
+}
+
+func providerKeyEnvVars(provider string) []string {
+	switch provider {
+	case "anthropic":
+		return []string{"ANTHROPIC_API_KEY"}
+	case "google":
+		return []string{"GOOGLE_API_KEY", "GEMINI_API_KEY"}
+	case "openai", "":
+		return []string{"OPENAI_API_KEY"}
+	default:
+		return []string{"OPENAI_API_KEY"}
+	}
+}
+
+func normalizeThinkingLevel(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "quick":
+		return "low"
+	case "balanced":
+		return "medium"
+	case "deep":
+		return "high"
+	default:
+		return ""
+	}
 }
