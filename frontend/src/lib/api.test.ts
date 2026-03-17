@@ -1,6 +1,25 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 
-import { deleteJSON, fetchJSON, fetchWithTimeout, getJSON, postJSON, requestJSON } from '$lib/api';
+import {
+  attachLoopTerminal,
+  approveTaskContract,
+  cancelLoop,
+  createLoopFromTask,
+  createLoopIntervention,
+  createTaskContract,
+  deleteJSON,
+  fetchJSON,
+  fetchWithTimeout,
+  getJSON,
+  getTaskContract,
+  patchTaskContract,
+  pauseLoop,
+  postJSON,
+  requestJSON,
+  resumeLoop,
+  detachLoopTerminal,
+  sendLoopCommand
+} from '$lib/api';
 
 describe('api helpers', () => {
   let originalClearTimeout: any;
@@ -137,6 +156,39 @@ describe('api helpers', () => {
         method: 'GET',
         body: undefined
       }));
+    });
+
+    it('uses task and loop helper paths under /api base', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        json: async () => ({ ok: true })
+      } as Response);
+
+      await createTaskContract({ project_id: 'smith', provider_profile_id: 'codex-default', objective: 'obj' });
+      await getTaskContract('task-1');
+      await patchTaskContract('task-1', { objective: 'updated' });
+      await approveTaskContract('task-1');
+      await pauseLoop('loop-1', { actor: 'alice' });
+      await resumeLoop('loop-1', { actor: 'alice' });
+      await cancelLoop('loop-1', { actor: 'alice' });
+      await createLoopIntervention('loop-1', { instruction: 'avoid auth changes', event_id: 'evt-1' });
+      await attachLoopTerminal('loop-1', { actor: 'alice', terminal: 'console-pods' });
+      await sendLoopCommand('loop-1', { actor: 'alice', command: 'ls -la' });
+      await detachLoopTerminal('loop-1', { actor: 'alice' });
+      await createLoopFromTask('task-1', 'idem-1');
+
+      expect(fetch).toHaveBeenNthCalledWith(1, '/api/tasks', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(2, '/api/tasks/task-1', expect.objectContaining({ method: 'GET' }));
+      expect(fetch).toHaveBeenNthCalledWith(3, '/api/tasks/task-1', expect.objectContaining({ method: 'PATCH' }));
+      expect(fetch).toHaveBeenNthCalledWith(4, '/api/tasks/task-1/approve', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(5, '/api/loops/loop-1/pause', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(6, '/api/loops/loop-1/resume', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(7, '/api/loops/loop-1/cancel', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(8, '/api/loops/loop-1/interventions', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(9, '/api/v1/loops/loop-1/control/attach', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(10, '/api/v1/loops/loop-1/control/command', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(11, '/api/v1/loops/loop-1/control/detach', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(12, '/api/v1/loops', expect.objectContaining({ method: 'POST' }));
     });
   });
 });
