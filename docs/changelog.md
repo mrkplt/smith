@@ -9,11 +9,17 @@
 - Expanded Console Settings with side-nav sections and live Providers/Projects/Secrets management.
 - Added full-screen Assistant route (`/assistant`) while preserving drawer chat flow.
 - Added chat defaults for provider profile selection, optional model/API key overrides, and opaque thinking levels.
+- Added `smith-daemon` service for retention-based terminal loop cleanup with ConfigMap-driven policy reload.
+- Added manual operator cleanup endpoint `POST /v1/loops/cleanup` with active-loop safety guards and audit metadata.
+- Added Feature Capability runtime UI surface (`/feature-capability`) and Tasks/Onboarding routes with shared navigation model (API backend for feature-capability endpoints remains pending in `smith-api`).
+- Added pod detail terminal attach/detach controls and state-gated lifecycle actions.
+- Added task contract APIs/status model (`/v1/tasks`) and task-to-loop execution synchronization.
 
 ### Notes
 
 - Settings secrets are write-only from API/UI perspective: values can be created/rotated but are not returned in plaintext.
 - Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
+- Pods list defaults to healthy-state filtering; destructive cleanup is policy/API-driven rather than tile-level UI actions.
 
 ## v0.2.0
 

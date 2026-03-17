@@ -106,6 +106,9 @@ Smith is split into control-plane and data-plane components.
 API contracts, ingress flows, terminal control details, and contributor workflows are documented in:
 
 - [docs/loop-ingress-and-cli.md](docs/loop-ingress-and-cli.md)
+- [docs/loop-retention-cleanup.md](docs/loop-retention-cleanup.md)
+- [docs/task-contracts-and-feature-capability.md](docs/task-contracts-and-feature-capability.md)
+- [docs/documentation-audit-chat-wip.md](docs/documentation-audit-chat-wip.md)
 - [docs/contributing.md](docs/contributing.md)
 - [docs/local-dev-make-workflow.md](docs/local-dev-make-workflow.md)
 - [docs/index.md](docs/index.md)

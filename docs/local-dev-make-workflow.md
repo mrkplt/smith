@@ -41,6 +41,8 @@ This page describes the current make-first local development workflow. For the c
   - Build local artifacts used by the local cluster workflow.
 - `make deploy-local`
   - Build and deploy Smith into the active cluster, importing images only for `k3d`.
+- `make daemon-deploy-local`
+  - Build/load/restart only `smith-daemon` for retention-policy iteration without full stack redeploy.
 - `make undeploy-local`
   - Remove the local deployment from the cluster.
 
