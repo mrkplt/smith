@@ -943,6 +943,21 @@ func TestShouldPrimeCodexLogin(t *testing.T) {
 	}
 }
 
+func TestResolveCompletionGitBranch(t *testing.T) {
+	if got := resolveCompletionGitBranch("main", "smi-123_prd.loop", true); got != "smith-loop-smi-123-prd-loop" {
+		t.Fatalf("unexpected derived branch for default branch: %q", got)
+	}
+	if got := resolveCompletionGitBranch("master", "loop-1", true); got != "smith-loop-loop-1" {
+		t.Fatalf("unexpected derived branch for master: %q", got)
+	}
+	if got := resolveCompletionGitBranch("feature/branch", "loop-1", true); got != "feature/branch" {
+		t.Fatalf("expected explicit feature branch to be preserved, got %q", got)
+	}
+	if got := resolveCompletionGitBranch("main", "loop-1", false); got != "main" {
+		t.Fatalf("expected main when PR disabled, got %q", got)
+	}
+}
+
 func TestEnsureCodexLoginRunsWhenCredentialPresent(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 	ms := store.NewMemStore()

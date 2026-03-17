@@ -176,11 +176,13 @@ func main() {
 		gitBranch := strings.TrimSpace(os.Getenv("SMITH_GIT_BRANCH"))
 		gitUserName := strings.TrimSpace(os.Getenv("SMITH_GIT_USER_NAME"))
 		gitUserEmail := strings.TrimSpace(os.Getenv("SMITH_GIT_USER_EMAIL"))
+		createPR := parseBoolEnv(os.Getenv("SMITH_GIT_CREATE_PR"), true)
+		completionBranch := resolveCompletionGitBranch(gitBranch, loopID, createPR)
 
 		protocol := completion.NewProtocol(storeClient, &completion.RealGit{
 			Workspace:  workspace,
 			Repository: gitRepo,
-			Branch:     gitBranch,
+			Branch:     completionBranch,
 			PAT:        gitPAT,
 			UserName:   gitUserName,
 			UserEmail:  gitUserEmail,
@@ -195,12 +197,11 @@ func main() {
 			Message:       "starting completion saga (commit + sync)",
 			CorrelationID: correlationID,
 			Metadata: map[string]string{
-				"repository": gitRepo,
-				"branch":     gitBranch,
+				"repository":    gitRepo,
+				"branch":        completionBranch,
+				"target_branch": normalizeGitBranch(gitBranch),
 			},
 		})
-
-		createPR := parseBoolEnv(os.Getenv("SMITH_GIT_CREATE_PR"), true)
 
 		result, err := protocol.Execute(ctx, completion.CommitRequest{
 			LoopID:        loopID,
@@ -817,6 +818,48 @@ func normalizeGitBranch(branch string) string {
 		return "main"
 	}
 	return value
+}
+
+func resolveCompletionGitBranch(branch, loopID string, createPR bool) string {
+	baseBranch := normalizeGitBranch(branch)
+	if !createPR {
+		return baseBranch
+	}
+	lower := strings.ToLower(strings.TrimSpace(baseBranch))
+	if lower != "main" && lower != "master" {
+		return baseBranch
+	}
+	suffix := sanitizeGitBranchToken(loopID)
+	if suffix == "" {
+		return "smith-loop"
+	}
+	return "smith-loop-" + suffix
+}
+
+func sanitizeGitBranchToken(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	lastDash := false
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+	sanitized := strings.Trim(builder.String(), "-")
+	if len(sanitized) > 56 {
+		sanitized = strings.Trim(sanitized[:56], "-")
+	}
+	return sanitized
 }
 
 func shouldUseInteractivePRDGate(cfg loopExecutionConfig, anomaly model.Anomaly) bool {
