@@ -50,6 +50,14 @@
 		flatline: $appState.loops.filter((l: any) => l.status === "flatline").length
 	});
 
+	const missingOnboardingRequirements = $derived(
+		Array.isArray($appState.onboardingState?.missing) ? $appState.onboardingState.missing : []
+	);
+	const providerSetupMissing = $derived(
+		missingOnboardingRequirements.includes('provider_catalog') ||
+		missingOnboardingRequirements.includes('provider_binding')
+	);
+
 	function selectLoop(id: string) {
 		appState.update(s => ({ ...s, selectedLoop: id }));
 	}
@@ -69,15 +77,17 @@
 <section class="tiles-shell px-4">
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" role="list">
     {#if $appState.onboardingChecked && !$appState.onboardingReady}
-      <div class="col-span-full py-12">
-        <EmptyState
-          title="Setup Required"
-          description="This dashboard is gated until onboarding is complete. Configure a provider first, then add a project repository."
-          buttonText="Open Onboarding"
-          buttonHref="/onboarding"
-          icon="🧭"
-        />
-      </div>
+		<div class="col-span-full py-12">
+			<EmptyState
+				title={providerSetupMissing ? 'Provider Setup Required' : 'Setup Required'}
+				description={providerSetupMissing
+					? 'This dashboard is gated until at least one provider profile is configured. Add a provider to continue creating and attaching loops.'
+					: 'This dashboard is gated until onboarding is complete. Configure a provider first, then add a project repository.'}
+				buttonText={providerSetupMissing ? 'Open Providers' : 'Open Onboarding'}
+				buttonHref={providerSetupMissing ? '/providers' : '/onboarding'}
+				icon="🧭"
+			/>
+		</div>
     {:else if $appState.projects.length === 0}
       <div class="col-span-full py-12">
         <EmptyState 
