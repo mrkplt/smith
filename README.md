@@ -83,6 +83,7 @@ Smith is split into control-plane and data-plane components.
 - `smith-api` (`cmd/smith-api`): HTTP API for loop create/list/get, GitHub + PRD ingress, operator override actions, provider auth lifecycle, and cost reporting. Includes Swagger UI at `/swagger/` and gRPC support on port 8081.
 - `smith-chat` (`cmd/smith-chat`): dedicated chat service for session creation, message streaming (SSE), and chat action commit forwarding.
 - `smith-core` (`cmd/smith-core`): watches unresolved loop state in etcd, acquires per-loop locks, transitions loop state, and schedules replica Jobs in Kubernetes.
+- `smith-daemon` (`cmd/smith-daemon`): background control-plane worker for retention-based cleanup of terminal loops and runtime artifact pruning.
 - `smithctl` (`cmd/smithctl`): kubectl-style operator CLI for `loop` and `prd` resources with context/config support and scriptable JSON output.
 - `smith` (`cmd/smith`): PRD launcher CLI (`smith --prd`) for interactive PRD generation before build loops.
 - `smith-mcp` (`cmd/smith-mcp`): Model Context Protocol (MCP) server for tool-based AI integration.
@@ -105,6 +106,9 @@ Smith is split into control-plane and data-plane components.
 API contracts, ingress flows, terminal control details, and contributor workflows are documented in:
 
 - [docs/loop-ingress-and-cli.md](docs/loop-ingress-and-cli.md)
+- [docs/loop-retention-cleanup.md](docs/loop-retention-cleanup.md)
+- [docs/task-contracts-and-feature-capability.md](docs/task-contracts-and-feature-capability.md)
+- [docs/documentation-audit-chat-wip.md](docs/documentation-audit-chat-wip.md)
 - [docs/contributing.md](docs/contributing.md)
 - [docs/local-dev-make-workflow.md](docs/local-dev-make-workflow.md)
 - [docs/index.md](docs/index.md)

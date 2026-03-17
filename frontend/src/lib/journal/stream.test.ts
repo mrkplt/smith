@@ -8,6 +8,7 @@ class MockEventSource {
   url: string;
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
   onerror: (() => void) | null = null;
+  listeners: Record<string, Array<(event: MessageEvent<string>) => void>> = {};
   closed = false;
 
   constructor(url: string) {
@@ -17,6 +18,17 @@ class MockEventSource {
   close() {
     this.closed = true;
   }
+
+  addEventListener(type: string, listener: (event: MessageEvent<string>) => void) {
+    this.listeners[type] = this.listeners[type] || [];
+    this.listeners[type].push(listener);
+  }
+
+  emit(type: string, data: string) {
+    for (const listener of this.listeners[type] || []) {
+      listener({ data } as MessageEvent<string>);
+    }
+  }
 }
 
 describe('journal stream helpers', () => {
@@ -24,7 +36,8 @@ describe('journal stream helpers', () => {
     appState.set({
       ...get(appState),
       journalEntries: [],
-      journalLastSeq: 0
+      journalLastSeq: 0,
+      latencySamplesMs: []
     });
     vi.stubGlobal('EventSource', MockEventSource);
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -38,6 +51,15 @@ describe('journal stream helpers', () => {
     const state = get(appState);
     expect(state.journalLastSeq).toBe(2);
     expect(state.journalEntries).toHaveLength(2);
+  });
+
+  it('records latency samples for fresh timestamped entries', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-03-16T00:00:00Z').getTime());
+    appendJournalEntry({ sequence: 1, timestamp: '2026-03-15T23:59:59.900Z', message: 'recent' });
+    appendJournalEntry({ sequence: 2, timestamp: '2026-03-15T23:50:00.000Z', message: 'stale' });
+
+    const state = get(appState);
+    expect(state.latencySamplesMs).toEqual([100]);
   });
 
   it('renders human-readable journal text', () => {
@@ -55,14 +77,15 @@ describe('journal stream helpers', () => {
     const entries: any[] = [];
     const onError = vi.fn();
 
-    const source = openJournalStream('alpha/loop', entry => entries.push(entry), onError) as unknown as MockEventSource;
-    expect(source.url).toBe('/api/v1/loops/alpha%2Floop/journal/stream');
+    const source = openJournalStream('alpha/loop', entry => entries.push(entry), onError, 7) as unknown as MockEventSource;
+    expect(source.url).toBe('/api/v1/loops/alpha%2Floop/journal/stream?since_seq=7');
 
-    source.onmessage?.({ data: JSON.stringify({ id: 1 }) } as MessageEvent<string>);
+    source.emit('entry', JSON.stringify({ entry: { id: 1 } }));
+    source.onmessage?.({ data: JSON.stringify({ id: 2 }) } as MessageEvent<string>);
     source.onmessage?.({ data: 'bad-json' } as MessageEvent<string>);
     source.onerror?.();
 
-    expect(entries).toEqual([{ id: 1 }]);
+    expect(entries).toEqual([{ id: 1 }, { id: 2 }]);
     expect(source.closed).toBe(true);
     expect(onError).toHaveBeenCalled();
   });

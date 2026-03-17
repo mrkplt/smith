@@ -53,6 +53,7 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 		"SMITH_CORRELATION_ID",
 		"SMITH_ETCD_ENDPOINTS",
 		"SMITH_LOOP_PROVIDER",
+		"SMITH_LOOP_MODEL",
 		"SMITH_LOOP_INVOCATION_METHOD",
 		"SMITH_LOOP_SOURCE_TYPE",
 		"SMITH_LOOP_SOURCE_REF",
@@ -76,6 +77,9 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	}
 	if env["SMITH_LOOP_PROVIDER"].Value != "codex" {
 		t.Fatalf("expected SMITH_LOOP_PROVIDER=codex, got %q", env["SMITH_LOOP_PROVIDER"].Value)
+	}
+	if env["SMITH_LOOP_MODEL"].Value != "gpt-5-codex" {
+		t.Fatalf("expected SMITH_LOOP_MODEL=gpt-5-codex, got %q", env["SMITH_LOOP_MODEL"].Value)
 	}
 	if env["SMITH_LOOP_INVOCATION_METHOD"].Value != "github_issue" {
 		t.Fatalf("expected SMITH_LOOP_INVOCATION_METHOD=github_issue, got %q", env["SMITH_LOOP_INVOCATION_METHOD"].Value)
@@ -591,6 +595,7 @@ func validRequest() JobRequest {
 		LoopID:             "loop-123",
 		CorrelationID:      "corr-123",
 		ProviderID:         "codex",
+		Model:              "gpt-5-codex",
 		InvocationMethod:   "github_issue",
 		SourceType:         "github_issue",
 		SourceRef:          "acme/repo#123",

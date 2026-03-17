@@ -11,6 +11,7 @@ SMITH_CORE_IMAGE ?= ghcr.io/smith/core:v0.1.0
 SMITH_API_IMAGE ?= ghcr.io/smith/api:v0.1.0
 SMITH_REPLICA_IMAGE ?= ghcr.io/smith/replica:v0.1.0
 SMITH_CONSOLE_IMAGE ?= ghcr.io/smith/console:v0.1.0
+SMITH_DAEMON_IMAGE ?= ghcr.io/smith/daemon:v0.1.0
 SMITH_TEST_ARTIFACTS_DIR ?= /tmp/smith-test-artifacts
 ACT ?= act
 MISE ?= mise
@@ -24,6 +25,9 @@ SMITH_LOCAL_API_IMAGE ?= smith-api:local
 SMITH_LOCAL_REPLICA_IMAGE ?= smith-replica:local
 SMITH_LOCAL_CONSOLE_IMAGE ?= smith-console:local
 SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
+SMITH_LOCAL_DAEMON_IMAGE ?= smith-daemon:local
+SMITH_LOCAL_GIT_PAT ?=
+SMITH_LOCAL_RUNTIME_CREDENTIALS ?=
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
@@ -38,6 +42,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
+	daemon-build-local daemon-load-local daemon-rollout-local daemon-deploy-local \
 	test test-unit test-frontend hook-fast-pre-commit hook-fast-pre-push \
 	\
 	teardown \
@@ -118,6 +123,7 @@ build-services: ## Build all service binaries
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/smith-api ./cmd/smith-api
 	$(GO) build -o $(BIN_DIR)/smith-core ./cmd/smith-core
+	$(GO) build -o $(BIN_DIR)/smith-daemon ./cmd/smith-daemon
 	$(GO) build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
 	$(GO) build -o $(BIN_DIR)/smith ./cmd/smith
 
@@ -197,10 +203,20 @@ deploy: ## Deploy Smith with Helm using SMITH_VALUES profile
 	  --create-namespace \
 	  -f "$(SMITH_VALUES)"
 deploy-local: ## Deploy Smith via Helm using local values profile
+	@if [[ -z "$(SMITH_LOCAL_GIT_PAT)" ]]; then \
+	  echo "deploy-local: SMITH_LOCAL_GIT_PAT is required"; \
+	  exit 1; \
+	fi
+	@if [[ -z "$(SMITH_LOCAL_RUNTIME_CREDENTIALS)" ]]; then \
+	  echo "deploy-local: SMITH_LOCAL_RUNTIME_CREDENTIALS is required"; \
+	  exit 1; \
+	fi
 	$(MAKE) --no-print-directory images-local
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
+	  --set-string secrets.managed.gitPat="$(SMITH_LOCAL_GIT_PAT)" \
+	  --set-string secrets.managed.runtimeCredentials="$(SMITH_LOCAL_RUNTIME_CREDENTIALS)" \
 	  --set global.rolloutId="$(shell date +%s)" \
 	  -f "$(SMITH_LOCAL_VALUES)"
 	$(MAKE) --no-print-directory rollout-local
@@ -246,15 +262,29 @@ chat-load-local: ## Load only the smith-chat image when using k3d
 	  echo "chat-load-local: skipping image import for current-cluster provider"; \
 	fi
 chat-deploy-local: chat-build-local chat-load-local ## Build and load only the smith-chat
+daemon-build-local: ## Build only the smith-daemon local image
+	docker build -f docker/daemon.Dockerfile -t "$(SMITH_LOCAL_DAEMON_IMAGE)" .
+daemon-load-local: ## Load only the smith-daemon image when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import "$(SMITH_LOCAL_DAEMON_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "daemon-load-local: skipping image import for current-cluster provider"; \
+	fi
+daemon-rollout-local: ## Restart only the smith-daemon deployment
+	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-daemon -n $(SMITH_NAMESPACE)
+	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-daemon -n $(SMITH_NAMESPACE)
+daemon-deploy-local: daemon-build-local daemon-load-local daemon-rollout-local ## Build, load, and restart only the smith-daemon
 console-api-deploy-local: console-build-local console-load-local api-build-local api-load-local rollout-local ## Build, load, and restart console + api
 rollout-local: ## Force restart local deployments to pick up new images
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
+	-kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-daemon -n $(SMITH_NAMESPACE)
 	-kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-chat -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-console -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-core -n $(SMITH_NAMESPACE)
+	-kubectl rollout status deployment/$(SMITH_RELEASE)-smith-daemon -n $(SMITH_NAMESPACE)
 deploy-staging: ## Deploy Smith via Helm using staging values profile
 	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
@@ -290,6 +320,9 @@ test-acceptance-bdd: ## Run acceptance BDD suite with JSON artifact output
 
 test-acceptance: test-acceptance-smoke test-acceptance-bdd ## Run all Go-native acceptance harness suites
 
+test-observability-latency: ## Measure journal-to-console propagation latency (requires running API and loop)
+	./scripts/integration/measure-observability-latency.sh
+
 test-frontend: ## Run Playwright frontend/component tests for console
 	@if [ ! -d test/playwright/node_modules ]; then $(NPM) --prefix test/playwright install; fi
 	@if [ ! -d frontend/node_modules ]; then $(NPM) --prefix frontend install; fi
@@ -300,7 +333,7 @@ test-frontend: ## Run Playwright frontend/component tests for console
 trivy-scan-local: ## Run local vulnerability scans on all Smith images
 	@echo "[trivy] scanning images for critical vulnerabilities..."
 	@vulnerabilities=0; \
-	for img in core api replica console chat; do \
+	for img in core api replica console chat daemon; do \
 	  echo "Scanning smith-$$img:local..."; \
 	  if ! trivy image --severity CRITICAL --exit-code 1 "smith-$$img:local" > /tmp/trivy-$$img.log 2>&1; then \
 	    cat /tmp/trivy-$$img.log; \
@@ -320,6 +353,7 @@ image-build-local: ## Build local Smith container images with deploy-local tags
 	docker build -f docker/replica.Dockerfile -t "$(SMITH_LOCAL_REPLICA_IMAGE)" .
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
 	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
+	docker build -f docker/daemon.Dockerfile -t "$(SMITH_LOCAL_DAEMON_IMAGE)" .
 
 build-local: image-build-local ## Backward-compatible alias for local image builds
 
@@ -330,7 +364,8 @@ image-load-local: ## Import local Smith container images when using k3d
 	    "$(SMITH_LOCAL_API_IMAGE)" \
 	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
 	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
-	    "$(SMITH_LOCAL_CHAT_IMAGE)"; \
+	    "$(SMITH_LOCAL_CHAT_IMAGE)" \
+	    "$(SMITH_LOCAL_DAEMON_IMAGE)"; \
 	else \
 	  echo "image-load-local: skipping image import for current-cluster provider"; \
 	fi

@@ -3,6 +3,7 @@ package completion
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"smith/internal/source/model"
@@ -68,6 +69,116 @@ func TestExecuteSuccessWithPullRequest(t *testing.T) {
 	}
 	if !foundPR {
 		t.Fatal("PR URL not found in journal")
+	}
+}
+
+func TestExecuteRetriesTransientCommitPushFailure(t *testing.T) {
+	store := &fakeStore{}
+	git := &fakeGit{commitSeq: []gitCommitResult{
+		{err: errors.New("i/o timeout")},
+		{sha: "abc123"},
+	}}
+	p := NewProtocol(store, git)
+	p.retry.InitialBackoff = 0
+	p.retry.MaxBackoff = 0
+
+	result, err := p.Execute(context.Background(), CommitRequest{
+		LoopID:        "loop-retry-commit",
+		CorrelationID: "corr-retry-commit",
+		FinalDiff:     "diff",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Outcome != OutcomeSynced {
+		t.Fatalf("expected synced outcome, got %q", result.Outcome)
+	}
+	if git.commitCalls != 2 {
+		t.Fatalf("expected two commit attempts, got %d", git.commitCalls)
+	}
+}
+
+func TestExecutePullRequestFailureReturnsError(t *testing.T) {
+	store := &fakeStore{}
+	git := &fakeGit{commitSHA: "abc123", prErr: errors.New("permission denied")}
+	p := NewProtocol(store, git)
+
+	result, err := p.Execute(context.Background(), CommitRequest{
+		LoopID:        "loop-pr-fail",
+		CorrelationID: "corr-pr-fail",
+		FinalDiff:     "diff",
+		PullRequest:   true,
+	})
+	if err == nil {
+		t.Fatal("expected pull request failure")
+	}
+	if !errors.Is(err, ErrPullRequestFailed) {
+		t.Fatalf("expected ErrPullRequestFailed, got %v", err)
+	}
+	if result.Outcome != OutcomeRetryable {
+		t.Fatalf("expected retryable outcome, got %q", result.Outcome)
+	}
+	if store.unresolvedReason != "pr-create-failed" {
+		t.Fatalf("expected unresolved reason pr-create-failed, got %q", store.unresolvedReason)
+	}
+}
+
+func TestExecutePullRequestNoCommitsBetweenBranchesSkipsFailure(t *testing.T) {
+	store := &fakeStore{}
+	git := &fakeGit{commitSHA: "abc123", prErr: errors.New("gh pr create failed: GraphQL: No commits between main and main")}
+	p := NewProtocol(store, git)
+
+	result, err := p.Execute(context.Background(), CommitRequest{
+		LoopID:        "loop-pr-no-delta",
+		CorrelationID: "corr-pr-no-delta",
+		FinalDiff:     "diff",
+		PullRequest:   true,
+	})
+	if err != nil {
+		t.Fatalf("expected no error for no-commit delta PR, got %v", err)
+	}
+	if result.Outcome != OutcomeSynced {
+		t.Fatalf("expected synced outcome, got %q", result.Outcome)
+	}
+	if store.unresolvedReason != "" {
+		t.Fatalf("expected no unresolved reason, got %q", store.unresolvedReason)
+	}
+	foundSkipMessage := false
+	for _, journal := range store.phases {
+		if strings.Contains(journal.Message, "pull request skipped") {
+			foundSkipMessage = true
+			break
+		}
+	}
+	if !foundSkipMessage {
+		t.Fatal("expected pull request skipped journal entry")
+	}
+}
+
+func TestExecuteRetriesTransientPullRequestFailure(t *testing.T) {
+	store := &fakeStore{}
+	git := &fakeGit{commitSHA: "abc123", prSeq: []gitPRResult{
+		{err: errors.New("service unavailable")},
+		{url: "https://github.com/pr/2"},
+	}}
+	p := NewProtocol(store, git)
+	p.retry.InitialBackoff = 0
+	p.retry.MaxBackoff = 0
+
+	result, err := p.Execute(context.Background(), CommitRequest{
+		LoopID:        "loop-pr-retry",
+		CorrelationID: "corr-pr-retry",
+		FinalDiff:     "diff",
+		PullRequest:   true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Outcome != OutcomeSynced {
+		t.Fatalf("expected synced outcome, got %q", result.Outcome)
+	}
+	if git.prCalls != 2 {
+		t.Fatalf("expected two PR attempts, got %d", git.prCalls)
 	}
 }
 
@@ -208,14 +319,36 @@ func (f *fakeStore) AppendJournal(_ context.Context, entry model.JournalEntry) e
 type fakeGit struct {
 	commitSHA   string
 	commitErr   error
+	commitSeq   []gitCommitResult
 	prURL       string
 	prErr       error
+	prSeq       []gitPRResult
 	prCalls     int
+	commitCalls int
 	revertErr   error
 	revertCalls int
 }
 
+type gitCommitResult struct {
+	sha string
+	err error
+}
+
+type gitPRResult struct {
+	url string
+	err error
+}
+
 func (f *fakeGit) CommitAndPush(_ context.Context, _ string, _ string) (string, error) {
+	f.commitCalls++
+	if len(f.commitSeq) > 0 {
+		current := f.commitSeq[0]
+		f.commitSeq = f.commitSeq[1:]
+		if current.err != nil {
+			return "", current.err
+		}
+		return current.sha, nil
+	}
 	if f.commitErr != nil {
 		return "", f.commitErr
 	}
@@ -224,6 +357,14 @@ func (f *fakeGit) CommitAndPush(_ context.Context, _ string, _ string) (string, 
 
 func (f *fakeGit) CreatePullRequest(_ context.Context, _ string, _ string, _ string, _ string) (string, error) {
 	f.prCalls++
+	if len(f.prSeq) > 0 {
+		current := f.prSeq[0]
+		f.prSeq = f.prSeq[1:]
+		if current.err != nil {
+			return "", current.err
+		}
+		return current.url, nil
+	}
 	if f.prErr != nil {
 		return "", f.prErr
 	}

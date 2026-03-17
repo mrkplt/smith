@@ -11,9 +11,9 @@ export const loopsFixture = [
   {
     loopID: 'loop-alpha',
     project: 'alpha',
-    status: 'unresolved',
+    status: 'running',
     attempt: 1,
-    reason: 'awaiting execution',
+    reason: 'running worker',
     revision: 12,
   },
   {
@@ -115,6 +115,17 @@ export async function emitLoopUpdates(page, loops) {
  */
 export async function mockApiRoutes(page, options = {}) {
   const loops = options.loops || loopsFixture;
+  const providersState = options.providers || [
+    {
+      id: 'codex-default',
+      name: 'Codex Default',
+      provider_type: 'codex',
+      default_model: 'gpt-5.3-codex',
+      capabilities: ['chat', 'tools', 'loops'],
+      secret_ref: ''
+    }
+  ];
+  const secretsState = options.secrets || [];
   const projectsState = options.projects || [
     {
       id: 'alpha',
@@ -126,7 +137,10 @@ export async function mockApiRoutes(page, options = {}) {
 
   const authState = { connected: false };
   const overridePayloads = [];
+  const cancelPayloads = [];
   const commandPayloads = [];
+  const attachPayloads = [];
+  const detachPayloads = [];
 
   // ── runtime config ────────────────────────────────────────────────
   await page.addInitScript(() => {
@@ -148,6 +162,27 @@ export async function mockApiRoutes(page, options = {}) {
     });
   });
 
+  // GET /v1/loops/:id
+  await page.route(/\/v1\/loops\/[^/]+$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    const loopID = decodeURIComponent(url.pathname.split('/').pop() || '');
+    const loop = loops.find((item) => item.loopID === loopID) || loops[0];
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        state: {
+          loop_id: loop.loopID,
+          project_id: loop.project,
+          state: loop.status,
+          attempt: loop.attempt,
+          reason: loop.reason
+        }
+      })
+    });
+  });
+
   // GET /v1/projects
   await page.route(/\/v1\/projects$/, async (route) => {
     if (route.request().method() === 'GET') {
@@ -166,6 +201,86 @@ export async function mockApiRoutes(page, options = {}) {
     return route.fallback();
   });
 
+  // GET /v1/providers, POST /v1/providers
+  await page.route(/\/v1\/providers$/, async (route) => {
+    if (route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(providersState)
+      });
+    }
+    if (route.request().method() === 'POST') {
+      const payload = route.request().postDataJSON();
+      providersState.push(payload);
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(payload) });
+    }
+    return route.fallback();
+  });
+
+  // GET /v1/providers/catalog
+  await page.route(/\/v1\/providers\/catalog$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
+        { id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
+        { id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
+      ])
+    });
+  });
+
+  // PUT /v1/providers/:id
+  await page.route(/\/v1\/providers\/[^/]+$/, async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    const payload = route.request().postDataJSON();
+    const url = new URL(route.request().url());
+    const id = decodeURIComponent(url.pathname.split('/').pop() || '');
+    const idx = providersState.findIndex((provider) => provider.id === id);
+    if (idx >= 0) {
+      providersState[idx] = { ...providersState[idx], ...payload };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(providersState[idx]) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'provider not found' }) });
+  });
+
+  // GET /v1/secrets
+  await page.route(/\/v1\/secrets$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(secretsState)
+    });
+  });
+
+  // GET /v1/onboarding/readiness
+  await page.route(/\/v1\/onboarding\/readiness$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ready: true,
+        project_id: 'alpha',
+        missing: [],
+        next_step: '',
+        requirements: [
+          { id: 'provider_catalog', label: 'Provider configured', status: 'complete' },
+          { id: 'project_repository', label: 'Project configured', status: 'complete' }
+        ],
+        credential: {
+          project_id: 'alpha',
+          credential_set: true,
+          valid: true,
+          message: 'ok'
+        }
+      })
+    });
+  });
+
   // GET /v1/documents
   await page.route(/\/v1\/documents$/, async (route) => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
@@ -176,10 +291,32 @@ export async function mockApiRoutes(page, options = {}) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authState) });
   });
 
+  await page.route(/\/v1\/auth\/codex\/credential$/, async (route) => {
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authState) });
+  });
+
   // Auth connect via API key
   await page.route(/\/v1\/auth\/codex\/connect\/api-key$/, async (route) => {
     authState.connected = true;
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+
+  await page.route(/\/v1\/auth\/codex\/disconnect$/, async (route) => {
+    authState.connected = false;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+
+  // Attach/Detach terminal session
+  await page.route(/\/(?:api\/)?v1\/loops\/[^/]+\/control\/attach$/, async (route) => {
+    const payload = route.request().postDataJSON() || {};
+    attachPayloads.push(payload);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"attached":true}' });
+  });
+
+  await page.route(/\/(?:api\/)?v1\/loops\/[^/]+\/control\/detach$/, async (route) => {
+    const payload = route.request().postDataJSON() || {};
+    detachPayloads.push(payload);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"detached":true}' });
   });
 
   // Control override (cancel / terminate)
@@ -189,12 +326,29 @@ export async function mockApiRoutes(page, options = {}) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
   });
 
+  // Cancel endpoint used by pod detail controls.
+  await page.route(/\/(?:api\/)?(?:v1\/)?loops\/[^/]+\/cancel$/, async (route) => {
+    const payload = route.request().postDataJSON();
+    cancelPayloads.push(payload);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+
   // Command execution
-  await page.route(/\/v1\/loops\/[^/]+\/control\/command$/, async (route) => {
+  await page.route(/\/(?:api\/)?v1\/loops\/[^/]+\/control\/command$/, async (route) => {
     const payload = route.request().postDataJSON();
     commandPayloads.push(payload);
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"completed"}' });
   });
 
-  return { overridePayloads, commandPayloads, projectsState, authState };
+  return {
+    overridePayloads,
+    cancelPayloads,
+    commandPayloads,
+    attachPayloads,
+    detachPayloads,
+    projectsState,
+    providersState,
+    secretsState,
+    authState
+  };
 }

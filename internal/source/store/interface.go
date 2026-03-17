@@ -59,6 +59,11 @@ type StateStore interface {
 	DeleteDocument(ctx context.Context, docID string) error
 	WatchDocuments(ctx context.Context) <-chan model.Document
 
+	// Tasks
+	PutTaskContract(ctx context.Context, task model.TaskContract) error
+	GetTaskContract(ctx context.Context, taskID string) (model.TaskContract, bool, error)
+	ListTaskContracts(ctx context.Context) ([]model.TaskContract, error)
+
 	// Journal
 	AppendJournal(ctx context.Context, entry model.JournalEntry) error
 	ListJournal(ctx context.Context, loopID string, limit int64) ([]model.JournalEntry, error)

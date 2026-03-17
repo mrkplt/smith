@@ -64,3 +64,179 @@ export async function requestJSON(path: string, method: string, payload?: any) {
   }
   return body;
 }
+
+export interface TaskContract {
+  kind: string;
+  id: string;
+  project_id: string;
+  provider_profile_id: string;
+  source_document?: string;
+  objective: string;
+  constraints?: string[];
+  acceptance_criteria?: string[];
+  validation?: string[];
+  status: 'draft' | 'validated' | 'approved' | 'running' | 'completed' | 'blocked';
+  metadata?: Record<string, string>;
+  created_at?: string;
+  updated_at?: string;
+  correlation_id?: string;
+  schema_version?: string;
+}
+
+export interface TaskContractCreateRequest {
+  id?: string;
+  project_id: string;
+  provider_profile_id: string;
+  source_document?: string;
+  objective: string;
+  constraints?: string[];
+  acceptance_criteria?: string[];
+  validation?: string[];
+  status?: TaskContract['status'];
+  metadata?: Record<string, string>;
+  correlation_id?: string;
+  actor?: string;
+}
+
+export interface TaskContractPatchRequest {
+  project_id?: string;
+  provider_profile_id?: string;
+  source_document?: string;
+  objective?: string;
+  constraints?: string[];
+  acceptance_criteria?: string[];
+  validation?: string[];
+  status?: TaskContract['status'];
+  metadata?: Record<string, string>;
+  actor?: string;
+}
+
+export interface LoopLifecycleRequest {
+  actor?: string;
+  reason?: string;
+}
+
+export interface LoopInterventionRequest {
+  actor?: string;
+  type?: string;
+  instruction: string;
+  event_id?: string;
+}
+
+export interface LoopInterventionResponse {
+  loop_id: string;
+  event_id: string;
+  sequence: number;
+  idempotent: boolean;
+  instruction: string;
+}
+
+export interface LoopCleanupRequest {
+  actor?: string;
+  loop_ids?: string[];
+  states?: string[];
+}
+
+export interface LoopCleanupResponse {
+  actor: string;
+  matched_count: number;
+  deleted_count: number;
+  deleted: string[];
+  skipped_active?: string[];
+  not_found?: string[];
+}
+
+export interface LoopTerminalAttachRequest {
+  actor?: string;
+  terminal?: string;
+}
+
+export interface LoopTerminalDetachRequest {
+  actor?: string;
+}
+
+export interface LoopTerminalCommandRequest {
+  actor?: string;
+  command: string;
+}
+
+export interface LoopCreateResult {
+  loop_id: string;
+  status: string;
+  created: boolean;
+  message?: string;
+}
+
+/** Creates a task contract draft from the supplied payload. */
+export async function createTaskContract(payload: TaskContractCreateRequest): Promise<TaskContract> {
+  return requestJSON('/tasks', 'POST', payload);
+}
+
+/** Loads a single task contract by id. */
+export async function getTaskContract(taskID: string): Promise<TaskContract> {
+  return requestJSON(`/tasks/${taskID}`, 'GET');
+}
+
+/** Applies a partial update to an existing task contract. */
+export async function patchTaskContract(taskID: string, payload: TaskContractPatchRequest): Promise<TaskContract> {
+  return requestJSON(`/tasks/${taskID}`, 'PATCH', payload);
+}
+
+/** Approves a task contract for loop creation and execution. */
+export async function approveTaskContract(taskID: string, actor = 'operator'): Promise<TaskContract> {
+  return requestJSON(`/tasks/${taskID}/approve`, 'POST', { actor });
+}
+
+/** Requests the control plane to pause a running loop. */
+export async function pauseLoop(loopID: string, payload: LoopLifecycleRequest = {}): Promise<any> {
+  return requestJSON(`/loops/${loopID}/pause`, 'POST', payload);
+}
+
+/** Requests the control plane to resume a paused loop. */
+export async function resumeLoop(loopID: string, payload: LoopLifecycleRequest = {}): Promise<any> {
+  return requestJSON(`/loops/${loopID}/resume`, 'POST', payload);
+}
+
+/** Requests cancellation of an active loop. */
+export async function cancelLoop(loopID: string, payload: LoopLifecycleRequest = {}): Promise<any> {
+  return requestJSON(`/loops/${loopID}/cancel`, 'POST', payload);
+}
+
+/** Deletes a non-active loop. */
+export async function deleteLoop(loopID: string, payload: { actor?: string } = {}): Promise<any> {
+  return requestJSON(`/loops/${loopID}`, 'DELETE', payload);
+}
+
+/** Deletes non-active loops in bulk by ids or state selectors. */
+export async function cleanupLoops(payload: LoopCleanupRequest): Promise<LoopCleanupResponse> {
+  return requestJSON('/v1/loops/cleanup', 'POST', payload);
+}
+
+/** Sends an intervention instruction to a loop event stream. */
+export async function createLoopIntervention(loopID: string, payload: LoopInterventionRequest): Promise<LoopInterventionResponse> {
+  return requestJSON(`/loops/${loopID}/interventions`, 'POST', payload);
+}
+
+/** Attaches an operator terminal session to a running loop runtime target. */
+export async function attachLoopTerminal(loopID: string, payload: LoopTerminalAttachRequest = {}): Promise<any> {
+  return requestJSON(`/v1/loops/${loopID}/control/attach`, 'POST', payload);
+}
+
+/** Detaches an operator terminal session from a running loop runtime target. */
+export async function detachLoopTerminal(loopID: string, payload: LoopTerminalDetachRequest = {}): Promise<any> {
+  return requestJSON(`/v1/loops/${loopID}/control/detach`, 'POST', payload);
+}
+
+/** Sends a command to the active loop runtime terminal session. */
+export async function sendLoopCommand(loopID: string, payload: LoopTerminalCommandRequest): Promise<any> {
+  return requestJSON(`/v1/loops/${loopID}/control/command`, 'POST', payload);
+}
+
+/** Creates a loop from an approved task contract. */
+export async function createLoopFromTask(taskContractID: string, idempotencyKey = ''): Promise<LoopCreateResult> {
+  const payload: Record<string, string> = { task_contract_id: taskContractID };
+  if (idempotencyKey.trim() !== '') {
+    payload.idempotency_key = idempotencyKey.trim();
+  }
+  return requestJSON('/v1/loops', 'POST', payload);
+}

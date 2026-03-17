@@ -2,7 +2,7 @@
 	import { appState, pushToast } from '$lib/stores';
 	import { postJSON, requestJSON, deleteJSON, fetchJSON } from '$lib/api';
 	import { slugifySegment } from '$lib/utils';
-  import { Drawer, Button } from 'flowbite-svelte';
+  import { Drawer, Button, Label } from 'flowbite-svelte';
   import { ArchiveOutline, TrashBinOutline, CheckOutline, CloseOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
   import ProjectBasicsSection from '$lib/components/ProjectBasicsSection.svelte';
@@ -12,10 +12,11 @@
 	interface Props {
 		open: boolean;
 		onClose: () => void;
+		onSaved?: () => void;
 		projectToEdit?: any;
 	}
 
-	let { open = $bindable(), onClose, projectToEdit = null }: Props = $props();
+	let { open = $bindable(), onClose, onSaved = () => {}, projectToEdit = null }: Props = $props();
 
 	let isEditing = $derived(!!projectToEdit);
 	
@@ -25,8 +26,12 @@
 	let repoUrl = $state('');
 	let githubUser = $state('');
 	let githubCredential = $state('');
+	let providerProfileID = $state('codex-default');
+	let providerProfiles = $state<any[]>([]);
 	let runtimeImage = $state('');
 	let skillsImage = $state('');
+	let credentialTestBusy = $state(false);
+	let credentialTestResult = $state<{ valid: boolean; message: string } | null>(null);
 	let busy = $state(false);
 
   // Use bind:hidden for drawer control
@@ -42,10 +47,12 @@
 
 	$effect(() => {
 		if (open) {
+			void loadProviderProfiles();
 			if (projectToEdit) {
 				id = projectToEdit.id || '';
 				name = projectToEdit.name || '';
 				repoUrl = projectToEdit.repo_url || '';
+				providerProfileID = projectToEdit.provider_profile_id || 'codex-default';
 				githubUser = projectToEdit.github_user || '';
 				runtimeImage = projectToEdit.runtime_image || '';
 				skillsImage = projectToEdit.skills_image || '';
@@ -54,6 +61,7 @@
 				id = '';
 				name = '';
 				repoUrl = '';
+				providerProfileID = 'codex-default';
 				githubUser = '';
 				githubCredential = '';
 				runtimeImage = '';
@@ -61,6 +69,15 @@
 			}
 		}
 	});
+
+	async function loadProviderProfiles() {
+		try {
+			const profiles = await fetchJSON('/v1/providers');
+			providerProfiles = Array.isArray(profiles) ? profiles : [];
+		} catch {
+			providerProfiles = [];
+		}
+	}
 
 	async function saveProject() {
 		if (!name || !repoUrl) {
@@ -73,6 +90,7 @@
 			id: projectId,
 			name,
 			repo_url: repoUrl,
+			provider_profile_id: providerProfileID || 'codex-default',
 			github_user: githubUser,
 			runtime_image: runtimeImage,
 			skills_image: skillsImage,
@@ -80,6 +98,7 @@
 			skills_pull_policy: 'IfNotPresent'
 		};
 		try {
+			credentialTestResult = null;
 			if (isEditing) {
 				await requestJSON(`/v1/projects/${projectId}`, "PUT", projectPayload);
 			} else {
@@ -93,11 +112,45 @@
 			pushToast(`Project ${isEditing ? 'updated' : 'created'} successfully`, "ok");
 			const projects = await fetchJSON("/v1/projects");
 			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
+			onSaved();
 			onClose();
 		} catch (err: any) {
 			pushToast(err.message || "Failed to save project", "err");
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function testProjectCredential() {
+		const projectId = isEditing ? id : slugifySegment(name);
+		if (projectId.trim() === '') {
+			pushToast('Save project details first to test credentials', 'err');
+			return;
+		}
+		credentialTestBusy = true;
+		credentialTestResult = null;
+		try {
+			const response = await postJSON('/v1/projects/credentials/github/test', {
+				actor: 'operator',
+				project_id: projectId
+			});
+			credentialTestResult = {
+				valid: !!response?.valid,
+				message: String(response?.message || (response?.valid ? 'Repository access verified' : 'Repository access check failed'))
+			};
+			if (response?.valid) {
+				pushToast('Credential test passed', 'ok');
+			} else {
+				pushToast(credentialTestResult.message, 'err');
+			}
+		} catch (err: any) {
+			credentialTestResult = {
+				valid: false,
+				message: err?.message || 'Failed to test project credential'
+			};
+			pushToast(credentialTestResult.message, 'err');
+		} finally {
+			credentialTestBusy = false;
 		}
 	}
 
@@ -109,6 +162,7 @@
 			pushToast("Project deleted", "ok");
 			const projects = await fetchJSON("/v1/projects");
 			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
+			onSaved();
 			onClose();
 		} catch (err: any) {
 			pushToast(err.message || "Failed to delete project", "err");
@@ -158,6 +212,24 @@
           onRepoUrlChange={(value) => repoUrl = value}
         />
 
+				<div>
+					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Provider Profile</Label>
+					<select
+						class="w-full bg-black border border-gray-800 text-white text-sm rounded-none px-3 py-2"
+						value={providerProfileID}
+						oninput={(event) => providerProfileID = (event.currentTarget as HTMLSelectElement).value}
+						disabled={busy}
+					>
+						{#if providerProfiles.length === 0}
+							<option value="codex-default">codex-default</option>
+						{:else}
+							{#each providerProfiles as profile}
+								<option value={profile.id}>{profile.name || profile.id}</option>
+							{/each}
+						{/if}
+					</select>
+				</div>
+
         <div class="my-8 border-t border-gray-900"></div>
 
         <ProjectAuthSection
@@ -167,6 +239,31 @@
           onGitHubUserChange={(value) => githubUser = value}
           onGitHubCredentialChange={(value) => githubCredential = value}
         />
+
+				<div class="space-y-2">
+					<Button
+						color="alternative"
+						size="xs"
+						data-testid="project-credential-test"
+						class="rounded-none border-gray-700 bg-slate-900 text-gray-300"
+						onclick={testProjectCredential}
+						disabled={busy || credentialTestBusy || !isEditing}
+					>
+						Test Repository Access
+					</Button>
+					<p class="text-[10px] uppercase tracking-widest text-gray-600">
+						{#if isEditing}
+							Uses the stored project PAT to verify repository access.
+						{:else}
+							Save project first to enable credential test.
+						{/if}
+					</p>
+					{#if credentialTestResult}
+						<p class={`text-[11px] ${credentialTestResult.valid ? 'text-[#86BC25]' : 'text-red-400'}`}>
+							{credentialTestResult.message}
+						</p>
+					{/if}
+				</div>
 
         <div class="my-8 border-t border-gray-900"></div>
 

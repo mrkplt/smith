@@ -20,6 +20,7 @@
     onSaveDocument: () => void;
     onCancelEdit: () => void;
     onBuildDoc: () => void;
+    onCreateTask: () => void;
     onArchiveDoc: () => void;
     onDeleteDoc: () => void;
   }
@@ -39,6 +40,7 @@
     onSaveDocument,
     onCancelEdit,
     onBuildDoc,
+    onCreateTask,
     onArchiveDoc,
     onDeleteDoc
   }: Props = $props();
@@ -62,6 +64,7 @@
         {onSaveDocument}
         {onCancelEdit}
         {onBuildDoc}
+        {onCreateTask}
         {onArchiveDoc}
         {onDeleteDoc}
       />

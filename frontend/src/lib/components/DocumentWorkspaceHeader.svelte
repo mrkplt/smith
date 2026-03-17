@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Input, Select } from 'flowbite-svelte';
-  import { ArchiveOutline, CloseOutline, CloudArrowUpOutline, EditOutline, RocketOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+  import { ArchiveOutline, CloseOutline, CloudArrowUpOutline, EditOutline, FileLinesOutline, RocketOutline, TrashBinOutline } from 'flowbite-svelte-icons';
 
   interface Props {
     isEditing: boolean;
@@ -13,6 +13,7 @@
     onSaveDocument: () => void;
     onCancelEdit: () => void;
     onBuildDoc: () => void;
+    onCreateTask: () => void;
     onArchiveDoc: () => void;
     onDeleteDoc: () => void;
   }
@@ -28,6 +29,7 @@
     onSaveDocument,
     onCancelEdit,
     onBuildDoc,
+    onCreateTask,
     onArchiveDoc,
     onDeleteDoc
   }: Props = $props();
@@ -79,6 +81,10 @@
         <Button color="alternative" class="bg-[#86BC25] text-black font-bold rounded-none text-[9px] tracking-widest px-3 h-7" onclick={onBuildDoc} title="Build">
           <RocketOutline size="xs" class="mr-1.5" />
           BUILD
+        </Button>
+        <Button color="alternative" class="border-gray-800 text-[#86BC25] hover:text-white rounded-none font-bold text-[9px] tracking-widest px-3 h-7" onclick={onCreateTask} title="Create Task Contract">
+          <FileLinesOutline size="xs" class="mr-1.5" />
+          TASK
         </Button>
         <Button color="alternative" class="border-gray-800 text-gray-400 hover:text-white rounded-none px-2 h-7" onclick={onArchiveDoc} title="Archive">
           <ArchiveOutline size="xs" />

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +41,7 @@ type startupContext struct {
 
 type loopExecutionConfig struct {
 	ProviderID           string
+	Model                string
 	InvocationMethod     string
 	SourceType           string
 	SourceRef            string
@@ -123,6 +124,7 @@ func main() {
 			current.Reason = "environment-setup-failed"
 			return current, nil
 		})
+		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "environment-setup-failed")
 		log.Fatalf("environment setup failed: %v", setupErr)
 	}
 	loopMeta := loopExecutionMetadata(loopCfg)
@@ -161,6 +163,7 @@ func main() {
 	)
 	if runErr != nil {
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, runErr)
+		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "replica-runtime-failed")
 		log.Fatalf("replica loop failed: %v", runErr)
 	}
 
@@ -173,11 +176,13 @@ func main() {
 		gitBranch := strings.TrimSpace(os.Getenv("SMITH_GIT_BRANCH"))
 		gitUserName := strings.TrimSpace(os.Getenv("SMITH_GIT_USER_NAME"))
 		gitUserEmail := strings.TrimSpace(os.Getenv("SMITH_GIT_USER_EMAIL"))
+		createPR := parseBoolEnv(os.Getenv("SMITH_GIT_CREATE_PR"), true)
+		completionBranch := resolveCompletionGitBranch(gitBranch, loopID, createPR)
 
 		protocol := completion.NewProtocol(storeClient, &completion.RealGit{
 			Workspace:  workspace,
 			Repository: gitRepo,
-			Branch:     gitBranch,
+			Branch:     completionBranch,
 			PAT:        gitPAT,
 			UserName:   gitUserName,
 			UserEmail:  gitUserEmail,
@@ -192,12 +197,11 @@ func main() {
 			Message:       "starting completion saga (commit + sync)",
 			CorrelationID: correlationID,
 			Metadata: map[string]string{
-				"repository": gitRepo,
-				"branch":     gitBranch,
+				"repository":    gitRepo,
+				"branch":        completionBranch,
+				"target_branch": normalizeGitBranch(gitBranch),
 			},
 		})
-
-		createPR := parseBoolEnv(os.Getenv("SMITH_GIT_CREATE_PR"), false)
 
 		result, err := protocol.Execute(ctx, completion.CommitRequest{
 			LoopID:        loopID,
@@ -223,8 +227,10 @@ func main() {
 
 	if finalizeErr != nil {
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, finalizeErr)
+		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "replica-runtime-failed")
 		log.Fatalf("failed to finalize state: %v", finalizeErr)
 	}
+	syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, finalState, finalizeReason)
 
 	handoffMetadata := map[string]string{
 		"executor": hostnameOr("smith-replica"),
@@ -288,6 +294,7 @@ func loadLoopExecutionConfigFromEnv() loopExecutionConfig {
 	if providerID == "" {
 		providerID = model.DefaultProviderID
 	}
+	modelID := strings.TrimSpace(os.Getenv("SMITH_LOOP_MODEL"))
 	method := normalizeInvocationMethod(os.Getenv("SMITH_LOOP_INVOCATION_METHOD"))
 	sourceType := strings.TrimSpace(os.Getenv("SMITH_LOOP_SOURCE_TYPE"))
 	sourceRef := strings.TrimSpace(os.Getenv("SMITH_LOOP_SOURCE_REF"))
@@ -320,6 +327,7 @@ func loadLoopExecutionConfigFromEnv() loopExecutionConfig {
 	issueWorkflowEnabled := parseBoolEnv(os.Getenv("SMITH_ISSUE_WORKFLOW_ENABLED"), true)
 	cfg := loopExecutionConfig{
 		ProviderID:           providerID,
+		Model:                modelID,
 		InvocationMethod:     method,
 		SourceType:           sourceType,
 		SourceRef:            sourceRef,
@@ -351,6 +359,7 @@ func loadLoopExecutionConfigFromEnv() loopExecutionConfig {
 func loopExecutionMetadata(cfg loopExecutionConfig) map[string]string {
 	return map[string]string{
 		"loop_provider":          cfg.ProviderID,
+		"loop_model":             cfg.Model,
 		"loop_invocation_method": cfg.InvocationMethod,
 		"loop_stage":             cfg.Stage,
 		"loop_source_type":       cfg.SourceType,
@@ -471,14 +480,14 @@ func shouldRunIssueWorkflow(cfg loopExecutionConfig, anomaly model.Anomaly) bool
 	if anomaly.Metadata != nil {
 		metadataPrompt = strings.TrimSpace(anomaly.Metadata["workspace_prompt"])
 	}
-	if sourceType == "github_issue" || sourceType == "prompt" || sourceType == "interactive_prompt" {
+	if sourceType == "github_issue" || sourceType == "prompt" || sourceType == "interactive_prompt" || sourceType == "prd" || sourceType == "prd_story" {
 		return true
 	}
 	if metadataPrompt != "" {
 		return true
 	}
 	switch method {
-	case "github_issue", "issue", "issue_based", "prompt", "interactive_prompt", "generate_prd":
+	case "github_issue", "issue", "issue_based", "prompt", "interactive_prompt", "generate_prd", "prd", "prd_story":
 		return true
 	default:
 		return false
@@ -496,6 +505,38 @@ func runIssueWorkflow(
 ) (model.LoopState, string, error) {
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		return model.LoopStateFlatline, "workspace-create-failed", err
+	}
+	repository := strings.TrimSpace(os.Getenv("SMITH_GIT_REPOSITORY"))
+	branch := strings.TrimSpace(os.Getenv("SMITH_GIT_BRANCH"))
+	gitPAT := strings.TrimSpace(os.Getenv("SMITH_GIT_PAT"))
+	gitDirPresent, err := ensureGitWorkspace(ctx, runner, workspace, repository, branch, gitPAT)
+	if err != nil {
+		return model.LoopStateFlatline, "workspace-clone-failed", err
+	}
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "clone", "repository workspace prepared", map[string]string{
+		"workspace":       workspace,
+		"git_dir_present": strconv.FormatBool(gitDirPresent),
+		"repository":      repository,
+		"branch":          normalizeGitBranch(branch),
+	})
+
+	taskContract, validationCommands, err := resolveTaskContractAndValidationCommands(ctx, storeClient, anomaly)
+	if err != nil {
+		return model.LoopStateFlatline, "task-contract-read-failed", err
+	}
+	if taskContract != nil {
+		appendWorkflowStep(ctx, storeClient, loopID, correlationID, "read-task", "task contract loaded", map[string]string{
+			"task_contract_id": taskContract.ID,
+			"task_status":      string(taskContract.Status),
+			"validation_count": strconv.Itoa(len(validationCommands)),
+		})
+	} else {
+		appendWorkflowStep(ctx, storeClient, loopID, correlationID, "read-task", "task contract not bound; continuing with metadata defaults", map[string]string{
+			"validation_count": strconv.Itoa(len(validationCommands)),
+		})
+	}
+	if err := ensureCodexLogin(ctx, runner, workspace, cfg, loopID, correlationID, storeClient); err != nil {
+		return model.LoopStateFlatline, "provider-auth-setup-failed", err
 	}
 	prdPath := cfg.PRDPath
 	if anomaly.Metadata != nil {
@@ -558,7 +599,15 @@ func runIssueWorkflow(
 		prdPrompt := buildIssuePRDPrompt(anomaly, prdPath, prdStoryCount)
 		interactivePromptPath := ""
 		interactiveCommandHint := ""
-		if cfg.InteractivePRD {
+		interactivePRDEnabled := shouldUseInteractivePRDGate(cfg, anomaly)
+		if cfg.InteractivePRD && !interactivePRDEnabled {
+			appendWorkflowStep(ctx, storeClient, loopID, correlationID, "prd", "interactive PRD gate skipped for autonomous PRD ingress", map[string]string{
+				"source_type":      strings.TrimSpace(anomaly.SourceType),
+				"loop_source_type": strings.TrimSpace(cfg.SourceType),
+				"ingress_mode":     strings.TrimSpace(anomaly.Metadata["ingress_mode"]),
+			})
+		}
+		if interactivePRDEnabled {
 			promptPath := filepath.Join(workspace, defaultIssuePRDPrompt)
 			if err := writePromptFileAtPath(promptPath, prdPrompt); err != nil {
 				return model.LoopStateFlatline, "issue-prd-prompt-prepare-failed", err
@@ -567,7 +616,7 @@ func runIssueWorkflow(
 			interactiveCommandHint = interactivePRDCommandHint(promptPath, prdPath, prdStoryCount, cfg.CodexCommand)
 		}
 
-		if cfg.InteractivePRD {
+		if interactivePRDEnabled {
 			resolvedInteractivePath, waitReason, err := waitForInteractivePRD(ctx, storeClient, loopID, correlationID, cfg, prdPath, interactivePromptPath, interactiveCommandHint)
 			if err != nil {
 				return model.LoopStateFlatline, waitReason, err
@@ -658,10 +707,17 @@ func runIssueWorkflow(
 		return state, reason, nil
 	}
 
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "plan", "starting planning stage", map[string]string{
+		"stage": cfg.Stage,
+	})
 	techSpecPath, implementationPlanPath, err := runTechPlanning(ctx, storeClient, loopID, correlationID, cfg, anomaly, workspace, runner, prdPath)
 	if err != nil {
 		return model.LoopStateFlatline, "tech-planning-failed", err
 	}
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "plan", "planning stage complete", map[string]string{
+		"tech_spec_path":      techSpecPath,
+		"implementation_plan": implementationPlanPath,
+	})
 
 	if cfg.Stage == "tech_planning" || cfg.Stage == "planning" {
 		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
@@ -687,7 +743,180 @@ func runIssueWorkflow(
 		return state, reason, nil
 	}
 
-	return runIssueBuildIterations(ctx, storeClient, loopID, correlationID, cfg, anomaly, workspace, runner, prdPath, implementationPlanPath)
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "edit", "starting implementation stage", map[string]string{
+		"implementation_plan": implementationPlanPath,
+	})
+	buildState, buildReason, buildErr := runIssueBuildIterations(ctx, storeClient, loopID, correlationID, cfg, anomaly, workspace, runner, prdPath, implementationPlanPath, validationCommands)
+	if buildErr != nil {
+		return buildState, buildReason, buildErr
+	}
+	if buildState != model.LoopStateSynced {
+		return buildState, buildReason, nil
+	}
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "edit", "implementation stage complete", map[string]string{
+		"build_reason": buildReason,
+	})
+
+	if err := runTaskValidationCommands(ctx, runner, workspace, loopID, correlationID, storeClient, validationCommands); err != nil {
+		return model.LoopStateFlatline, "task-validation-failed", err
+	}
+
+	return model.LoopStateSynced, buildReason, nil
+}
+
+func ensureGitWorkspace(ctx context.Context, runner execRunner, workspace, repository, branch, gitPAT string) (bool, error) {
+	if stat, err := os.Stat(filepath.Join(workspace, ".git")); err == nil && stat.IsDir() {
+		return true, nil
+	}
+	repo := strings.TrimSpace(repository)
+	if repo == "" || strings.EqualFold(repo, "unknown") {
+		return false, errors.New("git repository is required to prepare workspace")
+	}
+	branchName := normalizeGitBranch(branch)
+	fetchURL := repo
+	if strings.TrimSpace(gitPAT) != "" && strings.HasPrefix(repo, "https://") {
+		fetchURL = "https://" + strings.TrimSpace(gitPAT) + "@" + strings.TrimPrefix(repo, "https://")
+	}
+	if output, err := runner.Run(ctx, workspace, "git", "config", "--global", "--add", "safe.directory", workspace); err != nil {
+		return false, formatCommandError("git safe.directory config failed", output, err)
+	}
+
+	if output, err := runner.Run(ctx, workspace, "git", "init"); err != nil {
+		return false, formatCommandError("git init failed", output, err)
+	}
+	_, _ = runner.Run(ctx, workspace, "git", "remote", "remove", "origin")
+	if output, err := runner.Run(ctx, workspace, "git", "remote", "add", "origin", repo); err != nil {
+		if setOutput, setErr := runner.Run(ctx, workspace, "git", "remote", "set-url", "origin", repo); setErr != nil {
+			return false, formatCommandError("git remote add failed", output, err)
+		} else if strings.TrimSpace(string(setOutput)) != "" {
+			log.Printf("git remote set-url output: %s", strings.TrimSpace(string(setOutput)))
+		}
+	}
+	if output, err := runner.Run(ctx, workspace, "git", "fetch", "--depth", "1", fetchURL, branchName); err != nil {
+		return false, formatCommandError("git fetch failed", output, err)
+	}
+	if output, err := runner.Run(ctx, workspace, "git", "checkout", "-B", branchName, "FETCH_HEAD"); err != nil {
+		return false, formatCommandError("git checkout failed", output, err)
+	}
+	return true, nil
+}
+
+func formatCommandError(prefix string, output []byte, err error) error {
+	if err == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+	return fmt.Errorf("%s: %w (output: %s)", prefix, err, trimmed)
+}
+
+func normalizeGitBranch(branch string) string {
+	value := strings.TrimSpace(branch)
+	if value == "" || strings.EqualFold(value, "unknown") {
+		return "main"
+	}
+	return value
+}
+
+func resolveCompletionGitBranch(branch, loopID string, createPR bool) string {
+	baseBranch := normalizeGitBranch(branch)
+	if !createPR {
+		return baseBranch
+	}
+	lower := strings.ToLower(strings.TrimSpace(baseBranch))
+	if lower != "main" && lower != "master" {
+		return baseBranch
+	}
+	suffix := sanitizeGitBranchToken(loopID)
+	if suffix == "" {
+		return "smith-loop"
+	}
+	return "smith-loop-" + suffix
+}
+
+func sanitizeGitBranchToken(value string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(trimmed))
+	lastDash := false
+	for _, r := range trimmed {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+	sanitized := strings.Trim(builder.String(), "-")
+	if len(sanitized) > 56 {
+		sanitized = strings.Trim(sanitized[:56], "-")
+	}
+	return sanitized
+}
+
+func shouldUseInteractivePRDGate(cfg loopExecutionConfig, anomaly model.Anomaly) bool {
+	if !cfg.InteractivePRD {
+		return false
+	}
+	sourceType := strings.ToLower(strings.TrimSpace(cfg.SourceType))
+	if sourceType == "" {
+		sourceType = strings.ToLower(strings.TrimSpace(anomaly.SourceType))
+	}
+	if sourceType == "prd" || sourceType == "prd_story" {
+		return false
+	}
+	method := strings.ToLower(strings.TrimSpace(cfg.InvocationMethod))
+	if method == "prd" || method == "prd_story" {
+		return false
+	}
+	ingressMode := ""
+	if anomaly.Metadata != nil {
+		ingressMode = strings.ToLower(strings.TrimSpace(anomaly.Metadata["ingress_mode"]))
+	}
+	if ingressMode == "prd" {
+		return false
+	}
+	return true
+}
+
+func ensureCodexLogin(
+	ctx context.Context,
+	runner execRunner,
+	workspace string,
+	cfg loopExecutionConfig,
+	loopID, correlationID string,
+	storeClient store.StateStore,
+) error {
+	if !shouldPrimeCodexLogin(cfg) {
+		return nil
+	}
+	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" && strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")) == "" {
+		appendWorkflowStep(ctx, storeClient, loopID, correlationID, "auth", "codex login skipped: runtime credential missing", nil)
+		return nil
+	}
+	output, err := runner.Run(ctx, workspace, "sh", "-lc", "if [ -z \"$OPENAI_API_KEY\" ]; then export OPENAI_API_KEY=\"$SMITH_RUNTIME_CREDENTIALS\"; fi; if [ -n \"$OPENAI_API_KEY\" ]; then printf '%s' \"$OPENAI_API_KEY\" | codex login --with-api-key; fi")
+	if err != nil {
+		return formatCommandError("codex login failed", output, err)
+	}
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "auth", "codex login prepared", nil)
+	return nil
+}
+
+func shouldPrimeCodexLogin(cfg loopExecutionConfig) bool {
+	provider := strings.ToLower(strings.TrimSpace(cfg.ProviderID))
+	if provider == "codex" {
+		return true
+	}
+	command := strings.ToLower(strings.TrimSpace(cfg.CodexCommand))
+	return strings.HasPrefix(command, "codex ") || command == "codex"
 }
 
 type prdProgress struct {
@@ -775,6 +1004,7 @@ func runIssueBuildIterations(
 	runner execRunner,
 	prdPath string,
 	implementationPlanPath string,
+	validationCommands []string,
 ) (model.LoopState, string, error) {
 
 	maxIterations := cfg.MaxIterations
@@ -796,7 +1026,7 @@ func runIssueBuildIterations(
 			return model.LoopStateSynced, "issue-prd-build-complete", nil
 		}
 
-		buildPrompt := buildIssueBuildPrompt(anomaly, prdPath, implementationPlanPath, iteration, maxIterations, before)
+		buildPrompt := buildIssueBuildPrompt(anomaly, prdPath, implementationPlanPath, validationCommands, iteration, maxIterations, before)
 
 		stepName := fmt.Sprintf("build-%02d", iteration)
 		if err := runCodexStep(ctx, runner, workspace, cfg.CodexCommand, stepName, buildPrompt, loopID, correlationID, storeClient); err != nil {
@@ -841,6 +1071,183 @@ func runIssueBuildIterations(
 	}
 
 	return model.LoopStateFlatline, "issue-build-max-iterations-reached", nil
+}
+
+func appendWorkflowStep(
+	ctx context.Context,
+	storeClient store.StateStore,
+	loopID, correlationID, step, message string,
+	metadata map[string]string,
+) {
+	meta := map[string]string{
+		"workflow_step": strings.TrimSpace(step),
+	}
+	for key, value := range metadata {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		meta[key] = trimmed
+	}
+	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "replica",
+		Level:         "info",
+		ActorType:     "replica",
+		ActorID:       hostnameOr("smith-replica"),
+		Message:       message,
+		CorrelationID: correlationID,
+		Metadata:      meta,
+	})
+}
+
+func resolveTaskContractAndValidationCommands(ctx context.Context, storeClient store.StateStore, anomaly model.Anomaly) (*model.TaskContract, []string, error) {
+	commands, err := validationCommandsFromMetadata(anomaly.Metadata)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	taskID := ""
+	if anomaly.Metadata != nil {
+		taskID = strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+	}
+	if taskID == "" {
+		return nil, normalizeValidationCommands(commands), nil
+	}
+
+	task, found, err := storeClient.GetTaskContract(ctx, taskID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read task contract %q: %w", taskID, err)
+	}
+	if !found {
+		return nil, nil, fmt.Errorf("task contract %q not found", taskID)
+	}
+
+	resolved := normalizeValidationCommands(task.Validation)
+	if len(resolved) == 0 {
+		resolved = normalizeValidationCommands(commands)
+	}
+	return &task, resolved, nil
+}
+
+func validationCommandsFromMetadata(metadata map[string]string) ([]string, error) {
+	if len(metadata) == 0 {
+		return nil, nil
+	}
+	rawJSON := strings.TrimSpace(metadata["task_validation_commands_json"])
+	if rawJSON != "" {
+		var parsed []string
+		if err := json.Unmarshal([]byte(rawJSON), &parsed); err != nil {
+			return nil, fmt.Errorf("decode task_validation_commands_json: %w", err)
+		}
+		return normalizeValidationCommands(parsed), nil
+	}
+	raw := strings.TrimSpace(metadata["task_validation_commands"])
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, "\n")
+	return normalizeValidationCommands(parts), nil
+}
+
+func normalizeValidationCommands(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, item := range in {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func runTaskValidationCommands(
+	ctx context.Context,
+	runner execRunner,
+	workspace, loopID, correlationID string,
+	storeClient store.StateStore,
+	commands []string,
+) error {
+	commands = normalizeValidationCommands(commands)
+	if len(commands) == 0 {
+		appendWorkflowStep(ctx, storeClient, loopID, correlationID, "validate", "no task validation commands configured; skipping", nil)
+		return nil
+	}
+
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "validate", "starting task validation commands", map[string]string{
+		"validation_count": strconv.Itoa(len(commands)),
+	})
+
+	for idx, command := range commands {
+		started := time.Now().UTC()
+		output, err := runner.Run(ctx, workspace, "sh", "-lc", command)
+		duration := time.Since(started)
+		exitCode := commandExitCode(err)
+		level := "info"
+		status := "passed"
+		message := "validation command passed"
+		if err != nil {
+			level = "warn"
+			status = "failed"
+			message = "validation command failed"
+		}
+
+		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "replica",
+			Level:         level,
+			ActorType:     "replica",
+			ActorID:       hostnameOr("smith-replica"),
+			Message:       message,
+			CorrelationID: correlationID,
+			Metadata: map[string]string{
+				"workflow_step":     "validate",
+				"command":           command,
+				"command_index":     strconv.Itoa(idx + 1),
+				"command_total":     strconv.Itoa(len(commands)),
+				"duration_ms":       strconv.FormatInt(duration.Milliseconds(), 10),
+				"exit_code":         strconv.Itoa(exitCode),
+				"validation_status": status,
+			},
+		})
+
+		for _, line := range commandOutputLines(string(output), 40) {
+			_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+				LoopID:        loopID,
+				Phase:         "replica",
+				Level:         level,
+				ActorType:     "replica",
+				ActorID:       hostnameOr("smith-replica"),
+				Message:       fmt.Sprintf("[validate %d] %s", idx+1, line),
+				CorrelationID: correlationID,
+				Metadata: map[string]string{
+					"workflow_step": "validate",
+					"command_index": strconv.Itoa(idx + 1),
+				},
+			})
+		}
+
+		if err != nil {
+			return fmt.Errorf("validation command %d failed (exit=%d): %w", idx+1, exitCode, err)
+		}
+	}
+
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "validate", "task validation stage complete", map[string]string{
+		"validation_count": strconv.Itoa(len(commands)),
+	})
+	return nil
+}
+
+func commandExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 func waitForInteractivePRD(
@@ -1007,8 +1414,7 @@ func resolveIssuePRDPath(expectedPath string) (string, string, error) {
 	case 1:
 		return files[0], "single_json_in_tasks", nil
 	default:
-		sort.Strings(files)
-		return "", "", fmt.Errorf("multiple PRD files found in %s; expected 1 (found: %s)", tasksDir, strings.Join(files, ", "))
+		return "", "", os.ErrNotExist
 	}
 }
 
@@ -1308,7 +1714,7 @@ func buildIssuePRDPrompt(anomaly model.Anomaly, prdPath string, storyCount int) 
 	return strings.Join(lines, "\n")
 }
 
-func buildIssueBuildPrompt(anomaly model.Anomaly, prdPath, planPath string, iteration, maxIterations int, progress prdProgress) string {
+func buildIssueBuildPrompt(anomaly model.Anomaly, prdPath, planPath string, validationCommands []string, iteration, maxIterations int, progress prdProgress) string {
 	lines := []string{
 		"You are an autonomous coding agent.",
 		"Use the PRD JSON at: " + prdPath,
@@ -1328,6 +1734,12 @@ func buildIssueBuildPrompt(anomaly model.Anomaly, prdPath, planPath string, iter
 		"",
 		"Issue Context:",
 		"- title: " + strings.TrimSpace(anomaly.Title),
+	}
+	if len(validationCommands) > 0 {
+		lines = append(lines, "", "Task Validation Commands (must pass before completion):")
+		for _, command := range normalizeValidationCommands(validationCommands) {
+			lines = append(lines, "- "+command)
+		}
 	}
 	if fullContext := fullIssueContextForPrompt(anomaly.Metadata); fullContext != "" {
 		lines = append(lines, "", "GitHub Issue Full Context (JSON):", fullContext)
@@ -1427,6 +1839,8 @@ func normalizeInvocationMethod(raw string) string {
 
 var agentCommandMap = map[string]string{
 	"codex":            "codex exec --yolo --skip-git-repo-check -",
+	"claude":           "claude -p --dangerously-skip-permissions",
+	"gemini":           "gemini -p --yolo",
 	"upstream-tooling": "upstream-tooling build --yolo -",
 	"openai":           "openai-agent exec -",
 }
@@ -1595,6 +2009,10 @@ func runtimeMetadataFromEnv() map[string]string {
 	if provider != "" {
 		out["loop_provider"] = provider
 	}
+	modelID := strings.TrimSpace(os.Getenv("SMITH_LOOP_MODEL"))
+	if modelID != "" {
+		out["loop_model"] = modelID
+	}
 	sourceType := strings.TrimSpace(os.Getenv("SMITH_LOOP_SOURCE_TYPE"))
 	if sourceType != "" {
 		out["loop_source_type"] = sourceType
@@ -1680,14 +2098,23 @@ func recordStartupFailure(ctx context.Context, storeClient store.StateStore, loo
 			"error": startupErr.Error(),
 		},
 	})
-	_, _ = storeClient.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
+	if _, err := storeClient.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
 		if current.State == model.LoopStateSynced || current.State == model.LoopStateFlatline || current.State == model.LoopStateCancelled {
 			return current, nil
 		}
 		current.State = model.LoopStateFlatline
 		current.Reason = "startup-context-load-failed"
 		return current, nil
-	})
+	}); err == nil {
+		return
+	}
+
+	_, _ = storeClient.PutState(ctx, model.StateRecord{
+		LoopID:        loopID,
+		State:         model.LoopStateFlatline,
+		Reason:        "startup-context-load-failed",
+		CorrelationID: correlationID,
+	}, 0)
 }
 
 func recordRuntimeFailure(ctx context.Context, storeClient store.StateStore, loopID, correlationID string, runtimeErr error) {
@@ -1711,4 +2138,71 @@ func recordRuntimeFailure(ctx context.Context, storeClient store.StateStore, loo
 		current.Reason = "replica-runtime-failed"
 		return current, nil
 	})
+}
+
+func syncTaskContractStatusFromAnomaly(ctx context.Context, storeClient store.StateStore, anomaly model.Anomaly, loopState model.LoopState, reason string) {
+	taskID := strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+	if taskID == "" {
+		return
+	}
+	task, found, err := storeClient.GetTaskContract(ctx, taskID)
+	if err != nil || !found {
+		return
+	}
+	target, ok := taskContractStatusForLoopState(loopState)
+	if !ok || task.Status == target {
+		return
+	}
+	before := task.Status
+	task.Status = target
+	if strings.TrimSpace(task.CorrelationID) == "" {
+		task.CorrelationID = anomaly.CorrelationID
+	}
+	if err := storeClient.PutTaskContract(ctx, task); err != nil {
+		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        anomaly.ID,
+			Phase:         "replica",
+			Level:         "warn",
+			ActorType:     "replica",
+			ActorID:       hostnameOr("smith-replica"),
+			Message:       "failed to synchronize task contract status",
+			CorrelationID: anomaly.CorrelationID,
+			Metadata: map[string]string{
+				"task_contract_id": taskID,
+				"loop_state":       string(loopState),
+				"target_status":    string(target),
+				"error":            err.Error(),
+			},
+		})
+		return
+	}
+	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+		LoopID:        anomaly.ID,
+		Phase:         "replica",
+		Level:         "info",
+		ActorType:     "replica",
+		ActorID:       hostnameOr("smith-replica"),
+		Message:       "task contract status synchronized",
+		CorrelationID: anomaly.CorrelationID,
+		Metadata: map[string]string{
+			"task_contract_id": taskID,
+			"status_from":      string(before),
+			"status_to":        string(target),
+			"loop_state":       string(loopState),
+			"reason":           reason,
+		},
+	})
+}
+
+func taskContractStatusForLoopState(loopState model.LoopState) (model.TaskContractStatus, bool) {
+	switch loopState {
+	case model.LoopStateRunning:
+		return model.TaskContractStatusRunning, true
+	case model.LoopStateSynced:
+		return model.TaskContractStatusCompleted, true
+	case model.LoopStateCancelled, model.LoopStateFlatline:
+		return model.TaskContractStatusBlocked, true
+	default:
+		return "", false
+	}
 }

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
+	import { createTaskContract } from '$lib/api';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import DocChatModal from '$lib/components/DocChatModal.svelte';
 	import DocumentsSidebar from '$lib/components/DocumentsSidebar.svelte';
 	import DocumentWorkspace from '$lib/components/DocumentWorkspace.svelte';
 	import DocumentsPageActions from '$lib/components/DocumentsPageActions.svelte';
 	import { buildDocument, deleteDocument, saveDocumentDraft, toggleDocumentArchive } from '$lib/documents/mutations';
+	import { goto } from '$app/navigation';
 
 	let showAll = $state(false);
 	let chatOpen = $state(false);
@@ -93,6 +95,37 @@
 		}
 	}
 
+	async function createTaskFromDocument() {
+		if (!selectedDoc) {
+			pushToast('select a document first', 'err');
+			return;
+		}
+		try {
+			const providerProfileID = 'codex-default';
+			const projectID = String(selectedDoc.project_id || $appState.projects[0]?.id || 'smith');
+			const objective = String(selectedDoc.title || 'Document-derived task').trim();
+			const sourceDocument = String(selectedDoc.source_ref || `doc:${selectedDoc.id}`);
+			const validation = ['go test ./...'];
+			const created = await createTaskContract({
+				project_id: projectID,
+				provider_profile_id: providerProfileID,
+				source_document: sourceDocument,
+				objective,
+				validation,
+				metadata: {
+					document_id: String(selectedDoc.id || ''),
+					document_title: objective,
+					created_from: 'documents-page',
+				},
+				actor: 'operator',
+			});
+			pushToast(`task contract ${created.id} created`, 'ok');
+			await goto('/tasks');
+		} catch (err: any) {
+			pushToast(err.message || 'failed to create task from document', 'err');
+		}
+	}
+
 	function createNew() {
 		selectedDocId = null;
 		editTitle = "Untitled Document";
@@ -153,6 +186,7 @@
 		onSaveDocument={saveDocument}
 		onCancelEdit={cancelEdit}
 		onBuildDoc={buildDoc}
+		onCreateTask={createTaskFromDocument}
 		onArchiveDoc={archiveDoc}
 		onDeleteDoc={deleteDoc}
 	/>

@@ -20,6 +20,7 @@
         size="sm"
         class="bg-black border-gray-800 text-gray-400 text-[10px] uppercase font-bold rounded-none h-7"
       >
+        <option value="healthy">Healthy (Run + Done)</option>
         <option value="all">All States</option>
         <option value="active">Active Only</option>
         <option value="unresolved">Unresolved</option>

@@ -1,6 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
+    import { fetchJSON } from '$lib/api';
+    import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
     import { chatSession } from '$lib/chat/store.svelte';
     import { buildChatPageURL, contextSignature } from '$lib/chat/context';
     import MessageList from './MessageList.svelte';
@@ -26,7 +28,9 @@
         onClose
     }: Props = $props();
 
-    let provider = $state('');
+    let providerProfiles = $state<any[]>([]);
+    let providerProfileID = $state('');
+    let defaultModel = $state('');
     let thinkingLevel = $state<ThinkingLevel>('balanced');
     let providerApiKey = $state('');
     let debugOpen = $state(false);
@@ -37,10 +41,14 @@
     function buildContext(): Record<string, string> {
         const nextContext: Record<string, string> = { ...(context || {}) };
         nextContext.sessionType = type;
-        if (provider.trim() !== '') {
-            nextContext.provider = provider.trim();
+        const resolvedProvider = resolveProviderType(providerProfiles, providerProfileID, '');
+        if (resolvedProvider !== '') {
+            nextContext.provider = resolvedProvider;
         }
-        const resolvedModel = modelForThinking(provider, thinkingLevel);
+        if (providerProfileID.trim() !== '') {
+            nextContext.providerProfileID = providerProfileID.trim();
+        }
+        const resolvedModel = resolveModelForSession(resolvedProvider);
         if (resolvedModel !== '') {
             nextContext.model = resolvedModel;
         }
@@ -76,7 +84,23 @@
 
     async function applySettings() {
         if (typeof window !== 'undefined') {
-            window.localStorage.setItem('smith.chat.provider', provider);
+            const normalizedProfileID = providerProfileID.trim();
+            if (normalizedProfileID === '') {
+                window.localStorage.removeItem('smith.chat.providerProfileID');
+            } else {
+                window.localStorage.setItem('smith.chat.providerProfileID', normalizedProfileID);
+            }
+            const resolvedProvider = resolveProviderType(providerProfiles, normalizedProfileID, '');
+            if (resolvedProvider === '') {
+                window.localStorage.removeItem('smith.chat.provider');
+            } else {
+                window.localStorage.setItem('smith.chat.provider', resolvedProvider);
+            }
+            if (defaultModel.trim() === '') {
+                window.localStorage.removeItem('smith.chat.defaultModel');
+            } else {
+                window.localStorage.setItem('smith.chat.defaultModel', defaultModel.trim());
+            }
             window.localStorage.setItem('smith.chat.thinkingLevel', thinkingLevel);
         }
         await startSession();
@@ -92,22 +116,45 @@
     }
 
     onMount(() => {
-        if (typeof window !== 'undefined') {
-            provider = window.localStorage.getItem('smith.chat.provider') || '';
-            const saved = window.localStorage.getItem('smith.chat.thinkingLevel');
-            if (saved === 'quick' || saved === 'balanced' || saved === 'deep') {
-                thinkingLevel = saved;
+        void loadProviderProfiles().then(() => {
+            if (typeof window !== 'undefined') {
+                const settings = loadChatSettings(window.localStorage, providerProfiles);
+                providerProfileID = settings.providerProfileID;
+                defaultModel = settings.defaultModel;
+                thinkingLevel = settings.thinkingLevel;
+                providerApiKey = settings.providerApiKey;
             }
-            providerApiKey = window.localStorage.getItem('smith.chat.providerApiKey') || '';
-        }
 
-        if (chatSession.sessionId) {
-            appliedContextSig = contextSignature(buildContext());
-            return;
-        }
+            if (chatSession.sessionId) {
+                appliedContextSig = contextSignature(buildContext());
+                return;
+            }
 
-        void startSession();
+            void startSession();
+        });
     });
+
+    async function loadProviderProfiles() {
+        try {
+            const profiles = await fetchJSON('/v1/providers');
+            providerProfiles = Array.isArray(profiles) ? profiles : [];
+        } catch {
+            providerProfiles = [];
+        }
+    }
+
+    function selectProviderProfile(nextProfileID: string) {
+        providerProfileID = nextProfileID;
+        defaultModel = resolveDefaultModel(providerProfiles, nextProfileID, '');
+    }
+
+    function resolveModelForSession(resolvedProvider: string): string {
+        const selected = resolveDefaultModel(providerProfiles, providerProfileID, defaultModel);
+        if (selected !== '') {
+            return selected;
+        }
+        return modelForThinking(resolvedProvider, thinkingLevel);
+    }
 
     function modelForThinking(activeProvider: string, level: ThinkingLevel): string {
         const normalizedProvider = activeProvider.trim().toLowerCase();
@@ -176,14 +223,24 @@
         <div class="grid grid-cols-1 gap-2">
             <select
                 class="bg-gray-900 border border-gray-800 text-gray-100 text-xs rounded px-2 py-2"
-                value={provider}
-                oninput={(event) => provider = (event.currentTarget as HTMLSelectElement).value}
+                value={providerProfileID}
+                oninput={(event) => selectProviderProfile((event.currentTarget as HTMLSelectElement).value)}
             >
-                <option value="">Provider: service default</option>
-                <option value="openai">Provider: openai</option>
-                <option value="anthropic">Provider: anthropic</option>
-                <option value="google">Provider: google</option>
+                {#if providerProfiles.length === 0}
+                    <option value="">Provider Profile: service default</option>
+                {:else}
+                    {#each providerProfiles as profile}
+                        <option value={profile.id}>Provider Profile: {profile.name || profile.id}</option>
+                    {/each}
+                {/if}
             </select>
+            <input
+                type="text"
+                class="bg-gray-900 border border-gray-800 text-gray-100 text-xs rounded px-2 py-2"
+                value={defaultModel}
+                placeholder="Model: profile default"
+                oninput={(event) => defaultModel = (event.currentTarget as HTMLInputElement).value}
+            />
             <div class="flex gap-2">
                 <select
                     class="flex-1 bg-gray-900 border border-gray-800 text-gray-100 text-xs rounded px-2 py-2"

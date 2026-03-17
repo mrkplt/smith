@@ -72,7 +72,27 @@ sequenceDiagram
     Note over client,etcd: Loop starts (Interactive Terminal Flow)
 ```
 
-## Control Plane API (Proposed)
+### 4. Task Contract Ingress
+
+- Operators create task contracts, validate, and approve them before execution.
+- Approved tasks can start loops through `POST /v1/loops` with `task_contract_id`.
+- Loop lifecycle transitions synchronize task contract execution status.
+
+```mermaid
+sequenceDiagram
+    participant operator as Operator / Console
+    participant api as smith-api
+    participant etcd as etcd
+
+    operator->>api: POST /v1/tasks (draft)
+    api->>etcd: Store task contract
+    operator->>api: PATCH /v1/tasks/{id} (validated)
+    operator->>api: POST /v1/tasks/{id}/approve
+    operator->>api: POST /v1/loops {task_contract_id}
+    api->>etcd: Create loop + bind task metadata
+```
+
+## Control Plane API
 
 ### Loop Lifecycle Flow
 
@@ -124,35 +144,54 @@ sequenceDiagram
 ```
 
 - `POST /v1/loops` create a single loop
-- `POST /v1/loops/batch` create multiple loops atomically by request
+- `POST /v1/loops` with `{ "loops": [...] }` performs batch loop creation in one request
 - `GET /v1/loops/{id}` loop status/details
 - `GET /v1/loops/{id}/journal/stream` live journal stream
 - `POST /v1/loops/{id}/control/attach` attach interactive terminal session
 - `POST /v1/loops/{id}/control/command` issue interactive terminal command (attach required)
 - `POST /v1/loops/{id}/control/detach` detach interactive terminal session
+- `POST /v1/loops/cleanup` delete non-active loops by ids/states with guardrails
 - `POST /v1/ingress/github/issues` ingest one or more GitHub issues
 - `POST /v1/ingress/prd` ingest PRD and emit loop specs
+
+Task contract endpoints:
+
+- `GET|POST /v1/tasks`
+- `GET|PATCH /v1/tasks/{id}`
+- `POST /v1/tasks/{id}/approve`
+
+Onboarding readiness endpoints:
+
+- `GET /v1/onboarding/readiness`
+- `POST /v1/onboarding/repository`
+- `POST /v1/onboarding/credentials/validate`
+
+Configuration endpoints used by Console Settings and automation:
+
+- `GET|POST /v1/providers` and `GET|PUT|DELETE /v1/providers/{id}` for provider profiles
+- `GET|POST /v1/projects` and `GET|PUT|DELETE /v1/projects/{id}` for project runtime records
+- `GET|POST /v1/secrets` and `GET|PUT|DELETE /v1/secrets/{id}` for reusable secret references
 
 ## smithctl (kubectl-style UX)
 
 CLI should be resource-oriented and scriptable.
 
 Example command surface:
-- `smith loop create -f loop.yaml`
-- `smith loop create --from-github 123`
-- `smith loop create --from-prd docs/prd1.md`
-- `smith loop create --batch issues.yaml`
+- `smithctl loop create -f loop.yaml`
+- `smithctl loop create --from-github 123`
+- `smithctl loop create --from-prd docs/prd1.md`
+- `smithctl loop create --batch issues.yaml`
 - `smithctl loop create ... --env-preset standard`
 - `smithctl loop create ... --env-image-ref ghcr.io/acme/replica:v2 --env-image-pull-policy Always`
 - `smithctl loop create ... --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22`
-- `smith loop get <id>`
-- `smith loop logs <id> --follow`
-- `smith loop attach <id>`
-- `smith loop command <id> --command "pause|resume|..."` (attach required)
-- `smith loop detach <id>`
-- `smith loop cancel <id>`
-- `smith prd create <name> --template <tpl>`
-- `smith prd submit <file>`
+- `smithctl loop get <id>`
+- `smithctl loop logs <id> --follow`
+- `smithctl loop attach <id>`
+- `smithctl loop command <id> --command "pause|resume|..."` (attach required)
+- `smithctl loop detach <id>`
+- `smithctl loop cancel <id>`
+- `smithctl prd create <name> --template <tpl>`
+- `smithctl prd submit <file>`
 
 ## Go Client Library
 
@@ -210,6 +249,7 @@ classDiagram
         +String Name
         +String RepoURL
         +String GitHubUser
+        +String ProviderProfileID
         +String RuntimeImage
         +String RuntimePullPolicy
         +String UpdatedAt

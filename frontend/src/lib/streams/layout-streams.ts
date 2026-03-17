@@ -1,4 +1,4 @@
-import { fetchJSON } from '$lib/api';
+import { apiBaseUrl, fetchJSON } from '$lib/api';
 import { appState, pushToast } from '$lib/stores';
 
 /** Normalizes a loop stream payload into the UI loop shape. */
@@ -7,10 +7,16 @@ export function normalizeLoop(item: any) {
   const loopID = record.loop_id || record.LoopID || item.loop_id || item.LoopID || 'unknown-loop';
   const status = (record.state || record.State || 'unknown').toLowerCase();
   const attempt = Number(record.attempt || record.Attempt || 0);
+  const currentCount = Number(record.current_count || record.CurrentCount || attempt || 0);
+  const targetCount = Number(record.target_count || record.TargetCount || currentCount || 1);
+  const displayTitle = record.display_title || record.DisplayTitle || record.title || record.Title || loopID;
   const reason = record.reason || record.Reason || '';
   const revision = Number(item.revision || item.Revision || record.observed_revision || 0);
   return {
     loopID,
+    displayTitle,
+    currentCount,
+    targetCount,
     project: record.project_id || record.project || record.project_name || 'default',
     status,
     attempt,
@@ -22,8 +28,17 @@ export function normalizeLoop(item: any) {
 /** Loads initial layout data required before opening realtime streams. */
 export async function initLayoutState() {
   try {
-    const projects = await fetchJSON('/v1/projects');
-    appState.update(state => ({ ...state, projects: Array.isArray(projects) ? projects : [] }));
+    const [projects, onboarding] = await Promise.all([
+      fetchJSON('/v1/projects'),
+      fetchJSON('/v1/onboarding/readiness').catch(() => null)
+    ]);
+    appState.update(state => ({
+      ...state,
+      projects: Array.isArray(projects) ? projects : [],
+      onboardingReady: !!onboarding?.ready,
+      onboardingChecked: onboarding !== null,
+      onboardingState: onboarding
+    }));
   } catch (err) {
     console.error('Failed to load projects', err);
   }
@@ -31,7 +46,7 @@ export async function initLayoutState() {
 
 /** Connects the layout-level SSE streams and returns a disposer. */
 export function connectLayoutStreams() {
-  const loopsSource = new EventSource('/api/v1/loops/stream');
+  const loopsSource = new EventSource(`${apiBaseUrl}/v1/loops/stream`);
   loopsSource.addEventListener('update', event => {
     try {
       const normalized = normalizeLoop(JSON.parse((event as MessageEvent).data));
@@ -48,7 +63,7 @@ export function connectLayoutStreams() {
     } catch {}
   });
 
-  const docsSource = new EventSource('/api/v1/documents/stream');
+  const docsSource = new EventSource(`${apiBaseUrl}/v1/documents/stream`);
   docsSource.addEventListener('update', event => {
     try {
       const doc = JSON.parse((event as MessageEvent).data);
@@ -65,7 +80,7 @@ export function connectLayoutStreams() {
     } catch {}
   });
 
-  const auditSource = new EventSource('/api/v1/audit/stream');
+  const auditSource = new EventSource(`${apiBaseUrl}/v1/audit/stream`);
   auditSource.addEventListener('update', event => {
     try {
       const rec = JSON.parse((event as MessageEvent).data);

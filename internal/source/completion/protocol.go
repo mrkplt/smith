@@ -4,15 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"smith/internal/source/model"
 )
 
 var (
 	ErrCodeCommitFailed       = errors.New("code commit failed")
+	ErrPullRequestFailed      = errors.New("pull request creation failed")
 	ErrStateFinalizeFailed    = errors.New("state finalize failed")
 	ErrCompensationFailed     = errors.New("compensation failed")
 	ErrAmbiguousTerminalGuard = errors.New("ambiguous terminal prevented")
+)
+
+const (
+	defaultCommitPushMaxAttempts = 3
+	defaultPRCreateMaxAttempts   = 3
+	defaultRetryInitialBackoff   = 1 * time.Second
+	defaultRetryMaxBackoff       = 8 * time.Second
 )
 
 type Phase string
@@ -81,15 +91,33 @@ type GitWriter interface {
 	Revert(ctx context.Context, loopID string, commitSHA string) error
 }
 
+type retryPolicy struct {
+	CommitPushMaxAttempts int
+	PRCreateMaxAttempts   int
+	InitialBackoff        time.Duration
+	MaxBackoff            time.Duration
+}
+
+func defaultRetryPolicy() retryPolicy {
+	return retryPolicy{
+		CommitPushMaxAttempts: defaultCommitPushMaxAttempts,
+		PRCreateMaxAttempts:   defaultPRCreateMaxAttempts,
+		InitialBackoff:        defaultRetryInitialBackoff,
+		MaxBackoff:            defaultRetryMaxBackoff,
+	}
+}
+
 type Protocol struct {
 	store PhaseStore
 	git   GitWriter
+	retry retryPolicy
 }
 
 func NewProtocol(store PhaseStore, git GitWriter) *Protocol {
 	return &Protocol{
 		store: store,
 		git:   git,
+		retry: defaultRetryPolicy(),
 	}
 }
 
@@ -106,7 +134,7 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 		return CommitResult{}, err
 	}
 
-	commitSHA, err := p.git.CommitAndPush(ctx, req.LoopID, req.FinalDiff)
+	commitSHA, err := p.commitAndPushWithRetry(ctx, req)
 	if err != nil {
 		_ = p.store.SetStateUnresolved(ctx, req.LoopID, "commit-push-failed")
 		return CommitResult{
@@ -124,20 +152,40 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 	}
 
 	if req.PullRequest {
-		prURL, err := p.git.CreatePullRequest(ctx, req.LoopID, commitSHA, req.PRTitle, req.PRBody)
+		prURL, err := p.createPullRequestWithRetry(ctx, req, commitSHA)
 		if err != nil {
-			_ = p.store.AppendJournal(ctx, model.JournalEntry{
-				LoopID:        req.LoopID,
-				Phase:         "completion",
-				Level:         "warn",
-				ActorType:     "replica",
-				ActorID:       "smith-replica",
-				Message:       "pull request creation failed; proceeding with commit only",
-				CorrelationID: req.CorrelationID,
-				Metadata: map[string]string{
-					"error": err.Error(),
-				},
-			})
+			if isNoCommitsBetweenPR(err) {
+				_ = p.store.AppendJournal(ctx, model.JournalEntry{
+					LoopID:        req.LoopID,
+					Phase:         "completion",
+					Level:         "info",
+					ActorType:     "replica",
+					ActorID:       "smith-replica",
+					Message:       "pull request skipped: no branch delta to merge",
+					CorrelationID: req.CorrelationID,
+					Metadata: map[string]string{
+						"reason": "no_commits_between_head_and_base",
+					},
+				})
+			} else {
+				_ = p.store.SetStateUnresolved(ctx, req.LoopID, "pr-create-failed")
+				_ = p.store.AppendJournal(ctx, model.JournalEntry{
+					LoopID:        req.LoopID,
+					Phase:         "completion",
+					Level:         "warn",
+					ActorType:     "replica",
+					ActorID:       "smith-replica",
+					Message:       "pull request creation failed after retries",
+					CorrelationID: req.CorrelationID,
+					Metadata: map[string]string{
+						"error": err.Error(),
+					},
+				})
+				return CommitResult{
+					Outcome:   OutcomeRetryable,
+					CommitSHA: commitSHA,
+				}, fmt.Errorf("%w: %v", ErrPullRequestFailed, err)
+			}
 		} else {
 			_ = p.store.AppendJournal(ctx, model.JournalEntry{
 				LoopID:        req.LoopID,
@@ -201,4 +249,147 @@ func (p *Protocol) Execute(ctx context.Context, req CommitRequest) (CommitResult
 		Outcome:   OutcomeSynced,
 		CommitSHA: commitSHA,
 	}, nil
+}
+
+func (p *Protocol) commitAndPushWithRetry(ctx context.Context, req CommitRequest) (string, error) {
+	attempts := p.retry.CommitPushMaxAttempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+	for attempt := 1; attempt <= attempts; attempt++ {
+		commitSHA, err := p.git.CommitAndPush(ctx, req.LoopID, req.FinalDiff)
+		if err == nil {
+			return commitSHA, nil
+		}
+		transient := isTransientTransportError(err)
+		_ = p.store.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        req.LoopID,
+			Phase:         "completion",
+			Level:         "warn",
+			ActorType:     "replica",
+			ActorID:       "smith-replica",
+			Message:       "commit/push attempt failed",
+			CorrelationID: req.CorrelationID,
+			Metadata: map[string]string{
+				"operation": "commit_push",
+				"attempt":   fmt.Sprintf("%d", attempt),
+				"max":       fmt.Sprintf("%d", attempts),
+				"transient": fmt.Sprintf("%t", transient),
+				"error":     err.Error(),
+			},
+		})
+		if !transient || attempt == attempts {
+			return "", err
+		}
+		if err := waitForRetryBackoff(ctx, p.retry, attempt); err != nil {
+			return "", err
+		}
+	}
+	return "", errors.New("commit/push retries exhausted")
+}
+
+func (p *Protocol) createPullRequestWithRetry(ctx context.Context, req CommitRequest, commitSHA string) (string, error) {
+	attempts := p.retry.PRCreateMaxAttempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+	for attempt := 1; attempt <= attempts; attempt++ {
+		prURL, err := p.git.CreatePullRequest(ctx, req.LoopID, commitSHA, req.PRTitle, req.PRBody)
+		if err == nil {
+			return prURL, nil
+		}
+		transient := isTransientTransportError(err)
+		_ = p.store.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        req.LoopID,
+			Phase:         "completion",
+			Level:         "warn",
+			ActorType:     "replica",
+			ActorID:       "smith-replica",
+			Message:       "pull request attempt failed",
+			CorrelationID: req.CorrelationID,
+			Metadata: map[string]string{
+				"operation": "create_pr",
+				"attempt":   fmt.Sprintf("%d", attempt),
+				"max":       fmt.Sprintf("%d", attempts),
+				"transient": fmt.Sprintf("%t", transient),
+				"error":     err.Error(),
+			},
+		})
+		if !transient || attempt == attempts {
+			return "", err
+		}
+		if err := waitForRetryBackoff(ctx, p.retry, attempt); err != nil {
+			return "", err
+		}
+	}
+	return "", errors.New("pr creation retries exhausted")
+}
+
+func waitForRetryBackoff(ctx context.Context, retry retryPolicy, attempt int) error {
+	backoff := retry.InitialBackoff
+	if backoff <= 0 {
+		backoff = defaultRetryInitialBackoff
+	}
+	maxBackoff := retry.MaxBackoff
+	if maxBackoff <= 0 {
+		maxBackoff = defaultRetryMaxBackoff
+	}
+	if attempt > 1 {
+		for i := 1; i < attempt; i++ {
+			backoff *= 2
+			if backoff >= maxBackoff {
+				backoff = maxBackoff
+				break
+			}
+		}
+	}
+	if backoff <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func isTransientTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	transientTokens := []string{
+		"timeout",
+		"temporarily unavailable",
+		"temporary failure",
+		"connection reset",
+		"connection refused",
+		"network is unreachable",
+		"i/o timeout",
+		"tls handshake timeout",
+		"gateway timeout",
+		"bad gateway",
+		"service unavailable",
+		"eof",
+		"rpc failed",
+		"remote end hung up unexpectedly",
+		"dial tcp",
+	}
+	for _, token := range transientTokens {
+		if strings.Contains(message, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNoCommitsBetweenPR(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no commits between")
 }

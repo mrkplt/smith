@@ -54,6 +54,8 @@ type config struct {
 	workspaceSeedImage  string
 	workspaceSeedPolicy string
 	runtimeCredentials  string
+	gitPATSecretName    string
+	gitPATSecretKey     string
 	dockerfileRepo      string
 	dockerfileBuild     bool
 	gitPolicy           gitpolicy.Policy
@@ -231,7 +233,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 	anomalyPtr = &anomaly
 	executionImage, err := resolveExecutionImageSelection(ctx, anomalyPtr, o.cfg, intent.LoopID)
 	if err != nil {
-		_, _ = o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
+		updated, _ := o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
 			if current.State != model.LoopStateUnresolved {
 				return current, nil
 			}
@@ -239,6 +241,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 			current.Reason = "execution-image-resolution-failed"
 			return current, nil
 		})
+		o.syncTaskContractStatus(ctx, anomaly, updated.Record.State, updated.Record.Reason)
 		_ = o.store.AppendJournal(ctx, model.JournalEntry{
 			LoopID:        intent.LoopID,
 			Phase:         "core",
@@ -268,9 +271,10 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 	if _, putErr := o.store.PutState(ctx, next, current.Revision); putErr != nil {
 		return putErr
 	}
+	o.syncTaskContractStatus(ctx, anomaly, next.State, next.Reason)
 
 	if err := o.createReplicaJob(ctx, intent.LoopID, jobName, next.CorrelationID, executionImage, anomaly, resolvedSkillMounts); err != nil {
-		_, _ = o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
+		updated, _ := o.store.PutStateFromCurrent(ctx, intent.LoopID, func(current model.StateRecord) (model.StateRecord, error) {
 			if current.State != model.LoopStateRunning {
 				return current, nil
 			}
@@ -278,6 +282,7 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 			current.Reason = "replica-job-create-failed"
 			return current, nil
 		})
+		o.syncTaskContractStatus(ctx, anomaly, updated.Record.State, updated.Record.Reason)
 		_ = o.store.AppendJournal(ctx, model.JournalEntry{
 			LoopID:        intent.LoopID,
 			Phase:         "core",
@@ -330,6 +335,73 @@ func (o *orchestrator) HandleIntent(ctx context.Context, intent core.ExecutionIn
 	return nil
 }
 
+func (o *orchestrator) syncTaskContractStatus(ctx context.Context, anomaly model.Anomaly, loopState model.LoopState, reason string) {
+	taskID := strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+	if taskID == "" {
+		return
+	}
+	task, found, err := o.store.GetTaskContract(ctx, taskID)
+	if err != nil || !found {
+		return
+	}
+	target, ok := taskStatusForLoopState(loopState)
+	if !ok || task.Status == target {
+		return
+	}
+	before := task.Status
+	task.Status = target
+	if strings.TrimSpace(task.CorrelationID) == "" {
+		task.CorrelationID = anomaly.CorrelationID
+	}
+	if err := o.store.PutTaskContract(ctx, task); err != nil {
+		_ = o.store.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        anomaly.ID,
+			Phase:         "core",
+			Level:         "warn",
+			ActorType:     "core",
+			ActorID:       o.cfg.holderID,
+			Message:       "failed to synchronize task contract status",
+			CorrelationID: anomaly.CorrelationID,
+			Metadata: map[string]string{
+				"task_contract_id": taskID,
+				"loop_state":       string(loopState),
+				"target_status":    string(target),
+				"error":            err.Error(),
+			},
+		})
+		return
+	}
+	_ = o.store.AppendJournal(ctx, model.JournalEntry{
+		LoopID:        anomaly.ID,
+		Phase:         "core",
+		Level:         "info",
+		ActorType:     "core",
+		ActorID:       o.cfg.holderID,
+		Message:       "task contract status synchronized",
+		CorrelationID: anomaly.CorrelationID,
+		Metadata: map[string]string{
+			"task_contract_id": taskID,
+			"status_from":      string(before),
+			"status_to":        string(target),
+			"loop_state":       string(loopState),
+			"reason":           reason,
+		},
+	})
+}
+
+func taskStatusForLoopState(loopState model.LoopState) (model.TaskContractStatus, bool) {
+	switch loopState {
+	case model.LoopStateRunning:
+		return model.TaskContractStatusRunning, true
+	case model.LoopStateSynced:
+		return model.TaskContractStatusCompleted, true
+	case model.LoopStateCancelled, model.LoopStateFlatline:
+		return model.TaskContractStatusBlocked, true
+	default:
+		return "", false
+	}
+}
+
 func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, correlationID string, executionImage executionImageSelection, anomaly model.Anomaly, skillMounts []replica.SkillMount) error {
 	if err := o.ensureSkillSourcesExist(ctx, skillMounts); err != nil {
 		return err
@@ -346,6 +418,7 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		LoopID:                    loopID,
 		CorrelationID:             correlationID,
 		ProviderID:                loopProviderFor(anomaly),
+		Model:                     strings.TrimSpace(anomaly.Model),
 		InvocationMethod:          loopInvocationMethodFor(anomaly),
 		SourceType:                anomaly.SourceType,
 		SourceRef:                 anomaly.SourceRef,
@@ -368,6 +441,7 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		ActiveDeadlineSeconds:     int64(o.cfg.defaultPolicy.Timeout.Seconds()),
 		TTLSecondsAfterFinished:   o.jobTTL,
 	}
+	request.GitAuth = gitAuthFor(o.cfg)
 	prdPayload, hasWorkspacePRD, err := workspacePRDPayload(anomaly.Metadata)
 	if err != nil {
 		return err
@@ -808,6 +882,19 @@ func loopProviderFor(anomaly model.Anomaly) string {
 	return model.DefaultProviderID
 }
 
+func gitAuthFor(cfg config) *replica.GitAuthConfig {
+	secretName := strings.TrimSpace(cfg.gitPATSecretName)
+	secretKey := strings.TrimSpace(cfg.gitPATSecretKey)
+	if secretName == "" || secretKey == "" {
+		return nil
+	}
+	return &replica.GitAuthConfig{
+		Provider:      replica.GitAuthProviderPAT,
+		PATSecretName: secretName,
+		PATSecretKey:  secretKey,
+	}
+}
+
 func handoffConfigMapName(loopID string) string {
 	base := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-").Replace(strings.ToLower(loopID))
 	base = strings.Trim(base, "-")
@@ -816,6 +903,10 @@ func handoffConfigMapName(loopID string) string {
 	}
 	if len(base) > 40 {
 		base = base[:40]
+		base = strings.Trim(base, "-")
+		if base == "" {
+			base = "loop"
+		}
 	}
 	return "handoff-" + base
 }
@@ -828,6 +919,10 @@ func workspacePRDConfigMapName(loopID string) string {
 	}
 	if len(base) > 44 {
 		base = base[:44]
+		base = strings.Trim(base, "-")
+		if base == "" {
+			base = "loop"
+		}
 	}
 	return "workspace-prd-" + base
 }
@@ -1074,6 +1169,8 @@ func loadConfig() (config, error) {
 		workspaceSeedImage:  strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
 		workspaceSeedPolicy: envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
 		runtimeCredentials:  strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
+		gitPATSecretName:    strings.TrimSpace(os.Getenv("SMITH_GIT_PAT_SECRET_NAME")),
+		gitPATSecretKey:     envString("SMITH_GIT_PAT_SECRET_KEY", "git_pat"),
 		dockerfileRepo:      strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),
 		dockerfileBuild:     envBool("SMITH_DOCKERFILE_BUILD_ENABLED", false),
 		gitPolicy:           gitpolicy.DefaultPolicy(),

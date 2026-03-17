@@ -8,7 +8,7 @@
 	import PodsStatsStrip from '$lib/components/PodsStatsStrip.svelte';
   import { GridOutline } from 'flowbite-svelte-icons';
 
-	let stateFilter = $state('all');
+	let stateFilter = $state('healthy');
 	let searchQuery = $state('');
 
 	function normalizeLoop(item: any) {
@@ -36,9 +36,11 @@
 		$appState.loops.filter((loop: any) => {
 			const matchesState =
 				stateFilter === "all" ||
+				(stateFilter === "healthy" && (loop.status === "running" || loop.status === "synced")) ||
 				(stateFilter === "active" && (loop.status === "unresolved" || loop.status === "running")) ||
 				loop.status === stateFilter;
-			const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(searchQuery.toLowerCase());
+			const query = searchQuery.toLowerCase();
+			const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(query) || String(loop.displayTitle || '').toLowerCase().includes(query);
 			return matchesState && matchesSearch;
 		})
 	);
@@ -48,6 +50,14 @@
 		active: $appState.loops.filter((l: any) => l.status === "unresolved" || l.status === "running").length,
 		flatline: $appState.loops.filter((l: any) => l.status === "flatline").length
 	});
+
+	const missingOnboardingRequirements = $derived(
+		Array.isArray($appState.onboardingState?.missing) ? $appState.onboardingState.missing : []
+	);
+	const providerSetupMissing = $derived(
+		missingOnboardingRequirements.includes('provider_catalog') ||
+		missingOnboardingRequirements.includes('provider_binding')
+	);
 
 	function selectLoop(id: string) {
 		appState.update(s => ({ ...s, selectedLoop: id }));
@@ -67,7 +77,19 @@
 
 <section class="tiles-shell px-4">
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" role="list">
-    {#if $appState.projects.length === 0}
+    {#if $appState.onboardingChecked && !$appState.onboardingReady}
+		<div class="col-span-full py-12">
+			<EmptyState
+				title={providerSetupMissing ? 'Provider Setup Required' : 'Setup Required'}
+				description={providerSetupMissing
+					? 'This dashboard is gated until at least one provider profile is configured. Add a provider to continue creating and attaching loops.'
+					: 'This dashboard is gated until onboarding is complete. Configure a provider first, then add a project repository.'}
+				buttonText={providerSetupMissing ? 'Open Providers' : 'Open Onboarding'}
+				buttonHref={providerSetupMissing ? '/providers' : '/onboarding'}
+				icon="🧭"
+			/>
+		</div>
+    {:else if $appState.projects.length === 0}
       <div class="col-span-full py-12">
         <EmptyState 
           title="Welcome to SMITH" 

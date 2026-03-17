@@ -43,6 +43,9 @@ export interface AppState {
   docCreateStep: number;
   docCreateMethod: string;
   docSearchQuery: string;
+  onboardingReady: boolean;
+  onboardingChecked: boolean;
+  onboardingState: any;
 }
 
 export const appState = writable<AppState>({
@@ -98,6 +101,9 @@ export const appState = writable<AppState>({
   docCreateStep: 1,
   docCreateMethod: "issue",
   docSearchQuery: "",
+  onboardingReady: false,
+  onboardingChecked: false,
+  onboardingState: null,
 });
 
 export const sidebarOpen = writable(false);

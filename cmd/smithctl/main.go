@@ -161,6 +161,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runConfig(flags.Config, rest[1:], stdout, stderr)
 	case "loop":
 		return runLoop(client, cfg.Output, rest[1:], stdout, stderr)
+	case "provider":
+		return runProvider(client, cfg.Output, rest[1:], stdout, stderr)
+	case "project":
+		return runProject(client, cfg.Output, rest[1:], stdout, stderr)
 	case "prd":
 		return runPRD(client, cfg.Output, rest[1:], stdout, stderr)
 	case "version":
@@ -655,6 +659,393 @@ func runPRD(client *client.Client, output string, args []string, stdout, stderr 
 	}
 }
 
+func runProvider(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printProviderHelp(stdout)
+		return 0
+	}
+	switch args[0] {
+	case "list":
+		return cmdProviderList(client, output, stdout, stderr)
+	case "add":
+		return cmdProviderAdd(client, output, args[1:], stdout, stderr)
+	case "configure":
+		return cmdProviderConfigure(client, output, args[1:], stdout, stderr)
+	case "help", "-h", "--help":
+		printProviderHelp(stdout)
+		return 0
+	default:
+		fmt.Fprintf(stderr, "unknown provider command %q\n", args[0])
+		printProviderHelp(stderr)
+		return 2
+	}
+}
+
+func cmdProviderList(client *client.Client, output string, stdout, stderr io.Writer) int {
+	var out any
+	err := client.Do(context.Background(), http.MethodGet, "/v1/providers", nil, &out)
+	return writeOperationResult(output, stdout, stderr, "provider.list", out, err)
+}
+
+func cmdProviderAdd(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("provider add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		id           string
+		name         string
+		providerType string
+		endpoint     string
+		defaultModel string
+		capabilities string
+		secretRef    string
+	)
+	fs.StringVar(&id, "id", "", "Provider profile id")
+	fs.StringVar(&name, "name", "", "Provider display name")
+	fs.StringVar(&providerType, "type", "codex", "Provider type: codex|claude|gemini")
+	fs.StringVar(&endpoint, "endpoint", "", "Provider endpoint override")
+	fs.StringVar(&defaultModel, "default-model", "", "Default provider model")
+	fs.StringVar(&capabilities, "capabilities", "chat,tools,loops", "Comma-delimited capabilities")
+	fs.StringVar(&secretRef, "secret-ref", "", "Settings secret reference")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintln(stderr, "usage: smithctl provider add --id <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+		return 2
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		fmt.Fprintln(stderr, "provider add requires --id")
+		return 2
+	}
+	normalizedType, err := normalizeProviderType(providerType)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	payload := map[string]any{
+		"id":            id,
+		"name":          strings.TrimSpace(name),
+		"provider_type": normalizedType,
+		"endpoint":      strings.TrimSpace(endpoint),
+		"default_model": strings.TrimSpace(defaultModel),
+		"capabilities":  splitCommaList(capabilities),
+		"secret_ref":    strings.TrimSpace(secretRef),
+	}
+	var out any
+	err = client.Do(context.Background(), http.MethodPost, "/v1/providers", payload, &out)
+	return writeOperationResult(output, stdout, stderr, "provider.add", out, err)
+}
+
+func cmdProviderConfigure(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+		return 2
+	}
+	providerID := strings.TrimSpace(args[0])
+	fs := flag.NewFlagSet("provider configure", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		name         string
+		providerType string
+		endpoint     string
+		defaultModel string
+		capabilities string
+		secretRef    string
+	)
+	fs.StringVar(&name, "name", "", "Provider display name")
+	fs.StringVar(&providerType, "type", "", "Provider type: codex|claude|gemini")
+	fs.StringVar(&endpoint, "endpoint", "", "Provider endpoint override")
+	fs.StringVar(&defaultModel, "default-model", "", "Default provider model")
+	fs.StringVar(&capabilities, "capabilities", "", "Comma-delimited capabilities")
+	fs.StringVar(&secretRef, "secret-ref", "", "Settings secret reference")
+	if err := fs.Parse(args[1:]); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+		return 2
+	}
+	payload := map[string]any{"id": providerID}
+	changed := false
+	if strings.TrimSpace(name) != "" {
+		payload["name"] = strings.TrimSpace(name)
+		changed = true
+	}
+	if strings.TrimSpace(providerType) != "" {
+		normalizedType, err := normalizeProviderType(providerType)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 2
+		}
+		payload["provider_type"] = normalizedType
+		changed = true
+	}
+	if strings.TrimSpace(endpoint) != "" {
+		payload["endpoint"] = strings.TrimSpace(endpoint)
+		changed = true
+	}
+	if strings.TrimSpace(defaultModel) != "" {
+		payload["default_model"] = strings.TrimSpace(defaultModel)
+		changed = true
+	}
+	if strings.TrimSpace(secretRef) != "" {
+		payload["secret_ref"] = strings.TrimSpace(secretRef)
+		changed = true
+	}
+	if strings.TrimSpace(capabilities) != "" {
+		payload["capabilities"] = splitCommaList(capabilities)
+		changed = true
+	}
+	if !changed {
+		fmt.Fprintln(stderr, "provider configure requires at least one field to update")
+		return 2
+	}
+	var out any
+	err := client.Do(context.Background(), http.MethodPut, "/v1/providers/"+providerID, payload, &out)
+	return writeOperationResult(output, stdout, stderr, "provider.configure", out, err)
+}
+
+func runProject(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printProjectHelp(stdout)
+		return 0
+	}
+	switch args[0] {
+	case "list":
+		return cmdProjectList(client, output, stdout, stderr)
+	case "add":
+		return cmdProjectAdd(client, output, args[1:], stdout, stderr)
+	case "configure":
+		return cmdProjectConfigure(client, output, args[1:], stdout, stderr)
+	case "help", "-h", "--help":
+		printProjectHelp(stdout)
+		return 0
+	default:
+		fmt.Fprintf(stderr, "unknown project command %q\n", args[0])
+		printProjectHelp(stderr)
+		return 2
+	}
+}
+
+func cmdProjectList(client *client.Client, output string, stdout, stderr io.Writer) int {
+	var out any
+	err := client.Do(context.Background(), http.MethodGet, "/v1/projects", nil, &out)
+	return writeOperationResult(output, stdout, stderr, "project.list", out, err)
+}
+
+func cmdProjectAdd(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("project add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		id                string
+		name              string
+		repoURL           string
+		providerProfileID string
+		githubUser        string
+		runtimeImage      string
+		skillsImage       string
+	)
+	fs.StringVar(&id, "id", "", "Project id")
+	fs.StringVar(&name, "name", "", "Project name")
+	fs.StringVar(&repoURL, "repo-url", "", "Repository URL")
+	fs.StringVar(&providerProfileID, "provider-profile-id", "codex-default", "Provider profile id (configure provider first)")
+	fs.StringVar(&githubUser, "github-user", "", "GitHub username for project credentials")
+	fs.StringVar(&runtimeImage, "runtime-image", "", "Runtime image override")
+	fs.StringVar(&skillsImage, "skills-image", "", "Skills image override")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintln(stderr, "usage: smithctl project add --id <id> --repo-url <url> [--name <name>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+		return 2
+	}
+	id = strings.TrimSpace(id)
+	repoURL = strings.TrimSpace(repoURL)
+	if id == "" || repoURL == "" {
+		fmt.Fprintln(stderr, "project add requires --id and --repo-url")
+		return 2
+	}
+	if code := ensureProviderFirstOnboarding(client, output, stdout, stderr, "project.add"); code != 0 {
+		return code
+	}
+	payload := map[string]any{
+		"id":                  id,
+		"name":                strings.TrimSpace(name),
+		"repo_url":            repoURL,
+		"provider_profile_id": strings.TrimSpace(providerProfileID),
+		"github_user":         strings.TrimSpace(githubUser),
+		"runtime_image":       strings.TrimSpace(runtimeImage),
+		"skills_image":        strings.TrimSpace(skillsImage),
+	}
+	var out any
+	err := client.Do(context.Background(), http.MethodPost, "/v1/projects", payload, &out)
+	return writeOperationResult(output, stdout, stderr, "project.add", out, err)
+}
+
+func cmdProjectConfigure(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintln(stderr, "usage: smithctl project configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+		return 2
+	}
+	projectID := strings.TrimSpace(args[0])
+	fs := flag.NewFlagSet("project configure", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		name              string
+		repoURL           string
+		providerProfileID string
+		githubUser        string
+		runtimeImage      string
+		skillsImage       string
+	)
+	fs.StringVar(&name, "name", "", "Project name")
+	fs.StringVar(&repoURL, "repo-url", "", "Repository URL")
+	fs.StringVar(&providerProfileID, "provider-profile-id", "", "Provider profile id")
+	fs.StringVar(&githubUser, "github-user", "", "GitHub username")
+	fs.StringVar(&runtimeImage, "runtime-image", "", "Runtime image override")
+	fs.StringVar(&skillsImage, "skills-image", "", "Skills image override")
+	if err := fs.Parse(args[1:]); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintln(stderr, "usage: smithctl project configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+		return 2
+	}
+	if code := ensureProviderFirstOnboarding(client, output, stdout, stderr, "project.configure"); code != 0 {
+		return code
+	}
+	payload := map[string]any{"id": projectID}
+	changed := false
+	if strings.TrimSpace(name) != "" {
+		payload["name"] = strings.TrimSpace(name)
+		changed = true
+	}
+	if strings.TrimSpace(repoURL) != "" {
+		payload["repo_url"] = strings.TrimSpace(repoURL)
+		changed = true
+	}
+	if strings.TrimSpace(providerProfileID) != "" {
+		payload["provider_profile_id"] = strings.TrimSpace(providerProfileID)
+		changed = true
+	}
+	if strings.TrimSpace(githubUser) != "" {
+		payload["github_user"] = strings.TrimSpace(githubUser)
+		changed = true
+	}
+	if strings.TrimSpace(runtimeImage) != "" {
+		payload["runtime_image"] = strings.TrimSpace(runtimeImage)
+		changed = true
+	}
+	if strings.TrimSpace(skillsImage) != "" {
+		payload["skills_image"] = strings.TrimSpace(skillsImage)
+		changed = true
+	}
+	if !changed {
+		fmt.Fprintln(stderr, "project configure requires at least one field to update")
+		return 2
+	}
+	var out any
+	err := client.Do(context.Background(), http.MethodPut, "/v1/projects/"+projectID, payload, &out)
+	return writeOperationResult(output, stdout, stderr, "project.configure", out, err)
+}
+
+func splitCommaList(raw string) []string {
+	parts := strings.Split(strings.TrimSpace(raw), ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return []string{"chat", "tools", "loops"}
+	}
+	return out
+}
+
+func normalizeProviderType(raw string) (string, error) {
+	providerType := strings.ToLower(strings.TrimSpace(raw))
+	switch providerType {
+	case "", "codex":
+		return "codex", nil
+	case "claude":
+		return "claude", nil
+	case "gemini":
+		return "gemini", nil
+	default:
+		return "", fmt.Errorf("unsupported provider type %q (supported: codex, claude, gemini)", strings.TrimSpace(raw))
+	}
+}
+
+func ensureProviderFirstOnboarding(client *client.Client, output string, stdout, stderr io.Writer, operation string) int {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("SMITHCTL_SKIP_PROVIDER_FIRST")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("SMITHCTL_SKIP_PROVIDER_FIRST")), "true") {
+		return 0
+	}
+	var readiness map[string]any
+	if err := client.Do(context.Background(), http.MethodGet, "/v1/onboarding/readiness", nil, &readiness); err != nil {
+		return writeOperationResult(output, stdout, stderr, operation, nil, fmt.Errorf("provider readiness check failed: %w", err))
+	}
+	if providerCatalogConfigured(readiness) {
+		return 0
+	}
+
+	errorMessage := "provider setup is required before project/loop workflows"
+	if nextStep, ok := readiness["next_step"].(string); ok && strings.TrimSpace(nextStep) == "provider_catalog" {
+		errorMessage = "provider catalog is empty; configure a provider profile first"
+	}
+	suggested := "smithctl provider add --id codex-default --type codex"
+
+	if output == "json" {
+		printOutput(stdout, output, map[string]any{
+			"status":            "error",
+			"operation":         operation,
+			"error":             errorMessage,
+			"suggested_command": suggested,
+			"readiness":         readiness,
+		})
+		return 1
+	}
+
+	fmt.Fprintf(stderr, "%s\n", errorMessage)
+	fmt.Fprintf(stderr, "Run: %s\n", suggested)
+	return 1
+}
+
+func providerCatalogConfigured(readiness map[string]any) bool {
+	if readiness == nil {
+		return true
+	}
+	if missingRaw, ok := readiness["missing"].([]any); ok {
+		for _, item := range missingRaw {
+			if strings.TrimSpace(fmt.Sprint(item)) == "provider_catalog" {
+				return false
+			}
+		}
+	}
+	if requirementsRaw, ok := readiness["requirements"].([]any); ok {
+		for _, raw := range requirementsRaw {
+			requirement, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if strings.TrimSpace(fmt.Sprint(requirement["id"])) != "provider_catalog" {
+				continue
+			}
+			status := strings.ToLower(strings.TrimSpace(fmt.Sprint(requirement["status"])))
+			return status == "complete"
+		}
+	}
+	return true
+}
+
 func cmdLoopList(client *client.Client, output string, stdout, stderr io.Writer) int {
 	var out any
 	if err := client.Do(context.Background(), http.MethodGet, "/v1/loops", nil, &out); err != nil {
@@ -808,6 +1199,9 @@ func cmdLoopCreate(client *client.Client, output string, args []string, stdout, 
 	if envErr != nil {
 		fmt.Fprintf(stderr, "loop create failed: %v\n", envErr)
 		return 2
+	}
+	if code := ensureProviderFirstOnboarding(client, output, stdout, stderr, "loop.create"); code != 0 {
+		return code
 	}
 	if strings.TrimSpace(fromGitHub) != "" {
 		var payload any
@@ -1455,14 +1849,18 @@ func cmdPRDSubmit(client *client.Client, output string, args []string, stdout, s
 	fs := flag.NewFlagSet("prd submit", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var (
-		filePath  string
-		format    string
-		sourceRef string
+		filePath          string
+		format            string
+		sourceRef         string
+		projectID         string
+		providerProfileID string
 	)
 	fs.StringVar(&filePath, "file", "", "PRD file path")
 	fs.StringVar(&filePath, "f", "", "PRD file path")
 	fs.StringVar(&format, "format", "", "markdown|json")
 	fs.StringVar(&sourceRef, "source-ref", "", "PRD source reference")
+	fs.StringVar(&projectID, "project-id", "", "Project id to bind for PRD ingress loops")
+	fs.StringVar(&providerProfileID, "provider-profile-id", "", "Provider profile id to bind for PRD ingress loops")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
@@ -1484,6 +1882,16 @@ func cmdPRDSubmit(client *client.Client, output string, args []string, stdout, s
 		}
 	}
 	payload := map[string]any{"format": format, "source_ref": sourceRef}
+	metadata := map[string]string{}
+	if trimmed := strings.TrimSpace(projectID); trimmed != "" {
+		metadata["project_id"] = trimmed
+	}
+	if trimmed := strings.TrimSpace(providerProfileID); trimmed != "" {
+		metadata["provider_profile_id"] = trimmed
+	}
+	if len(metadata) > 0 {
+		payload["metadata"] = metadata
+	}
 	switch format {
 	case "markdown", "md":
 		payload["markdown"] = string(content)
@@ -1582,11 +1990,11 @@ func cmdPRDCreate(output string, args []string, stdout, stderr io.Writer) int {
 func renderPRDTemplate(templateName, name string) (string, error) {
 	switch templateName {
 	case "", "default":
-		return fmt.Sprintf("# %s\n\n## Context\nDescribe problem context.\n\n## Tasks\n- [ ] Describe first deliverable\n- [ ] Describe second deliverable\n", name), nil
+		return fmt.Sprintf("# %s\n\n## Project\n- smith\n\n## Overview\nDescribe the requested outcome and context.\n\n## Goals\n- Deliver the requested change end-to-end.\n\n## Non Goals\n- Do not change unrelated product surfaces.\n\n## Quality Gates\n- go test ./...\n\n## Stories\n### US-001: Deliver requested change\n#### Description\nAs an operator, I can submit this PRD and receive an autonomous loop implementation attempt.\n\n#### Acceptance Criteria\n- Submitting this PRD creates at least one loop result.\n- If required PRD fields are missing, ingress returns a validation error with diagnostics.\n", name), nil
 	case "feature":
-		return fmt.Sprintf("# %s\n\n## Goal\nDescribe user-facing outcome.\n\n## Scope\n- In scope:\n- Out of scope:\n\n## Tasks\n- [ ] API changes\n- [ ] Runtime changes\n- [ ] Validation and tests\n", name), nil
+		return fmt.Sprintf("# %s\n\n## Project\n- smith\n\n## Overview\nDescribe the user-facing feature outcome.\n\n## Goals\n- Enable the new feature behavior for operators.\n\n## Non Goals\n- Avoid redesigning unrelated workflows.\n\n## Quality Gates\n- go test ./...\n- npm --prefix frontend run test:unit\n\n## Stories\n### US-001: Add feature capability\n#### Description\nAs an operator, I can use the new feature flow and complete the intended task.\n\n#### Acceptance Criteria\n- Feature behavior is available through the intended UI or CLI entrypoint.\n- Invalid or incomplete input is rejected with a clear error.\n", name), nil
 	case "bugfix":
-		return fmt.Sprintf("# %s\n\n## Bug Summary\nDescribe failing behavior and impact.\n\n## Reproduction\n- [ ] Repro steps documented\n\n## Tasks\n- [ ] Root-cause analysis\n- [ ] Fix implementation\n- [ ] Regression test coverage\n", name), nil
+		return fmt.Sprintf("# %s\n\n## Project\n- smith\n\n## Overview\nDescribe the failing behavior and user impact.\n\n## Goals\n- Restore expected behavior for the affected workflow.\n\n## Non Goals\n- Do not broaden scope beyond the regression.\n\n## Quality Gates\n- go test ./...\n\n## Stories\n### US-001: Resolve regression\n#### Description\nAs an operator, I can run the affected workflow without the reported failure mode.\n\n#### Acceptance Criteria\n- Reproduction steps no longer trigger the original failure.\n- If an invalid request is made, the system still fails safely with a clear reason.\n", name), nil
 	default:
 		return "", fmt.Errorf("unknown template %q (expected default, feature, or bugfix)", templateName)
 	}
@@ -1641,6 +2049,46 @@ func writeStructuredAPIError(err error, output string, stdout, stderr io.Writer)
 	fmt.Fprintln(stderr, string(body))
 	return true
 }
+
+func writeOperationResult(output string, stdout, stderr io.Writer, operation string, result any, err error) int {
+	if err != nil {
+		if output == "json" {
+			payload := map[string]any{
+				"status":    "error",
+				"operation": operation,
+				"error":     err.Error(),
+			}
+			if body, ok := client.StructuredErrorBody(err); ok {
+				var structured map[string]any
+				if unmarshalErr := json.Unmarshal(body, &structured); unmarshalErr == nil {
+					payload["details"] = structured
+					if msg, ok := structured["error"]; ok {
+						payload["error"] = fmt.Sprint(msg)
+					}
+				}
+			}
+			printOutput(stdout, output, payload)
+			return 1
+		}
+		if writeStructuredAPIError(err, output, stdout, stderr) {
+			return 1
+		}
+		fmt.Fprintf(stderr, "%s failed: %v\n", operation, err)
+		return 1
+	}
+
+	if output == "json" {
+		printOutput(stdout, output, map[string]any{
+			"status":    "ok",
+			"operation": operation,
+			"result":    result,
+		})
+		return 0
+	}
+	printOutput(stdout, output, result)
+	return 0
+}
+
 func readJSONFile(path string) (map[string]any, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1827,6 +2275,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Resources:")
 	fmt.Fprintln(w, "  config  Manage smithctl configuration")
+	fmt.Fprintln(w, "  provider Manage provider profiles")
+	fmt.Fprintln(w, "  project  Manage project configuration")
 	fmt.Fprintln(w, "  loop    Manage loop resources")
 	fmt.Fprintln(w, "  prd     Manage PRD resources")
 	fmt.Fprintln(w, "  version Print the version information")
@@ -1834,6 +2284,10 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  smithctl loop list")
+	fmt.Fprintln(w, "  smithctl provider list")
+	fmt.Fprintln(w, "  smithctl provider add --id codex-default --type codex")
+	fmt.Fprintln(w, "  smithctl project add --id demo --repo-url https://github.com/acme/demo --provider-profile-id codex-default")
+	fmt.Fprintln(w, "  # Configure provider first, then create/configure projects")
 	fmt.Fprintln(w, "  smithctl loop get loop-abc123")
 	fmt.Fprintln(w, "  smithctl loop trace loop-abc123 --limit 100")
 	fmt.Fprintln(w, "  smithctl loop get loop-abc123 loop-def456")
@@ -1860,6 +2314,21 @@ func printHelp(w io.Writer) {
 func printConfigHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl config <command>")
 	fmt.Fprintln(w, "Commands: view, get-contexts, current-context, use-context, set-context, delete-context, rename-context")
+}
+
+func printProviderHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: smithctl provider <command>")
+	fmt.Fprintln(w, "Commands: list, add, configure")
+	fmt.Fprintln(w, "  add --id <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+	fmt.Fprintln(w, "  configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+}
+
+func printProjectHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: smithctl project <command>")
+	fmt.Fprintln(w, "Commands: list, add, configure")
+	fmt.Fprintln(w, "  add --id <id> --repo-url <url> [--name <name>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+	fmt.Fprintln(w, "  configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+	fmt.Fprintln(w, "  note: configure provider profiles before creating/updating projects")
 }
 
 func printLoopHelp(w io.Writer) {
@@ -1996,5 +2465,5 @@ func printPRDHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl prd <command>")
 	fmt.Fprintln(w, "Commands: create, submit")
 	fmt.Fprintln(w, "  create [name] [--template default|feature|bugfix] [--out path]")
-	fmt.Fprintln(w, "  submit --file <path> [--format markdown|json] [--source-ref ref]")
+	fmt.Fprintln(w, "  submit --file <path> [--format markdown|json] [--source-ref ref] [--project-id id] [--provider-profile-id id]")
 }

@@ -93,6 +93,9 @@ type State struct {
 	LoopID           string     `json:"loop_id"`
 	State            LoopState  `json:"state"`
 	Attempt          int        `json:"attempt"`
+	DisplayTitle     string     `json:"display_title"`
+	CurrentCount     int        `json:"current_count"`
+	TargetCount      int        `json:"target_count"`
 	Reason           string     `json:"reason,omitempty"`
 	WorkerJobName    string     `json:"worker_job_name,omitempty"`
 	LockHolder       string     `json:"lock_holder,omitempty"`
@@ -184,6 +187,35 @@ type Document struct {
 	SchemaVersion string            `json:"schema_version"`
 }
 
+type TaskContractStatus string
+
+const (
+	TaskContractStatusDraft     TaskContractStatus = "draft"
+	TaskContractStatusValidated TaskContractStatus = "validated"
+	TaskContractStatusApproved  TaskContractStatus = "approved"
+	TaskContractStatusRunning   TaskContractStatus = "running"
+	TaskContractStatusCompleted TaskContractStatus = "completed"
+	TaskContractStatusBlocked   TaskContractStatus = "blocked"
+)
+
+type TaskContract struct {
+	Kind               string             `json:"kind"`
+	ID                 string             `json:"id"`
+	ProjectID          string             `json:"project_id"`
+	ProviderProfileID  string             `json:"provider_profile_id"`
+	SourceDocument     string             `json:"source_document,omitempty"`
+	Objective          string             `json:"objective"`
+	Constraints        []string           `json:"constraints,omitempty"`
+	AcceptanceCriteria []string           `json:"acceptance_criteria,omitempty"`
+	Validation         []string           `json:"validation,omitempty"`
+	Status             TaskContractStatus `json:"status"`
+	Metadata           map[string]string  `json:"metadata,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	CorrelationID      string             `json:"correlation_id"`
+	SchemaVersion      string             `json:"schema_version"`
+}
+
 // GitHubIssue represents a GitHub issue source
 type GitHubIssue struct {
 	ID             string            `json:"id,omitempty"`
@@ -262,6 +294,58 @@ type ProjectCredentialDeleteRequest struct {
 	ProjectID string `json:"project_id"`
 }
 
+type ProjectCredentialTestRequest struct {
+	Actor     string `json:"actor,omitempty"`
+	ProjectID string `json:"project_id"`
+}
+
+type ProjectCredentialTestResponse struct {
+	ProjectID string `json:"project_id"`
+	RepoURL   string `json:"repo_url,omitempty"`
+	Valid     bool   `json:"valid"`
+	Message   string `json:"message,omitempty"`
+}
+
+type OnboardingRepositoryRequest struct {
+	Actor             string `json:"actor,omitempty"`
+	ProjectID         string `json:"project_id"`
+	Name              string `json:"name,omitempty"`
+	RepoURL           string `json:"repo_url"`
+	ProviderProfileID string `json:"provider_profile_id,omitempty"`
+	GitHubUser        string `json:"github_user,omitempty"`
+}
+
+type OnboardingCredentialValidateRequest struct {
+	Actor     string `json:"actor,omitempty"`
+	ProjectID string `json:"project_id"`
+}
+
+type OnboardingCredentialStatus struct {
+	ProjectID        string `json:"project_id"`
+	GitHubUser       string `json:"github_user,omitempty"`
+	CredentialSet    bool   `json:"credential_set"`
+	CredentialMasked string `json:"credential_masked,omitempty"`
+	UpdatedAt        string `json:"updated_at,omitempty"`
+	Valid            bool   `json:"valid"`
+	Message          string `json:"message,omitempty"`
+}
+
+type OnboardingRequirement struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Status  string `json:"status"`
+	Details string `json:"details,omitempty"`
+}
+
+type OnboardingReadinessResponse struct {
+	Ready      bool                       `json:"ready"`
+	ProjectID  string                     `json:"project_id,omitempty"`
+	Missing    []string                   `json:"missing"`
+	NextStep   string                     `json:"next_step,omitempty"`
+	Requires   []OnboardingRequirement    `json:"requirements"`
+	Credential OnboardingCredentialStatus `json:"credential"`
+}
+
 type TerminalAttachRequest struct {
 	Actor    string `json:"actor"`
 	Terminal string `json:"terminal"`
@@ -296,6 +380,41 @@ type LoopDeleteRequest struct {
 	Actor string `json:"actor"`
 }
 
+type LoopCleanupRequest struct {
+	Actor   string      `json:"actor,omitempty"`
+	LoopIDs []string    `json:"loop_ids,omitempty"`
+	States  []LoopState `json:"states,omitempty"`
+}
+
+type LoopCleanupResponse struct {
+	Actor         string   `json:"actor"`
+	MatchedCount  int      `json:"matched_count"`
+	DeletedCount  int      `json:"deleted_count"`
+	Deleted       []string `json:"deleted"`
+	SkippedActive []string `json:"skipped_active,omitempty"`
+	NotFound      []string `json:"not_found,omitempty"`
+}
+
+type LoopLifecycleRequest struct {
+	Actor  string `json:"actor,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type LoopInterventionRequest struct {
+	Actor       string `json:"actor,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Instruction string `json:"instruction"`
+	EventID     string `json:"event_id,omitempty"`
+}
+
+type LoopInterventionResponse struct {
+	LoopID      string `json:"loop_id"`
+	EventID     string `json:"event_id"`
+	Sequence    int64  `json:"sequence"`
+	Idempotent  bool   `json:"idempotent"`
+	Instruction string `json:"instruction"`
+}
+
 type DocumentRequest struct {
 	ID         string            `json:"id,omitempty"`
 	ProjectID  string            `json:"project_id"`
@@ -310,6 +429,38 @@ type DocumentRequest struct {
 
 type DocumentBuildRequest struct {
 	Actor string `json:"actor"`
+}
+
+type TaskContractCreateRequest struct {
+	ID                 string             `json:"id,omitempty"`
+	ProjectID          string             `json:"project_id"`
+	ProviderProfileID  string             `json:"provider_profile_id"`
+	SourceDocument     string             `json:"source_document,omitempty"`
+	Objective          string             `json:"objective"`
+	Constraints        []string           `json:"constraints,omitempty"`
+	AcceptanceCriteria []string           `json:"acceptance_criteria,omitempty"`
+	Validation         []string           `json:"validation,omitempty"`
+	Status             TaskContractStatus `json:"status,omitempty"`
+	Metadata           map[string]string  `json:"metadata,omitempty"`
+	CorrelationID      string             `json:"correlation_id,omitempty"`
+	Actor              string             `json:"actor,omitempty"`
+}
+
+type TaskContractPatchRequest struct {
+	ProjectID          *string             `json:"project_id,omitempty"`
+	ProviderProfileID  *string             `json:"provider_profile_id,omitempty"`
+	SourceDocument     *string             `json:"source_document,omitempty"`
+	Objective          *string             `json:"objective,omitempty"`
+	Constraints        *[]string           `json:"constraints,omitempty"`
+	AcceptanceCriteria *[]string           `json:"acceptance_criteria,omitempty"`
+	Validation         *[]string           `json:"validation,omitempty"`
+	Status             *TaskContractStatus `json:"status,omitempty"`
+	Metadata           map[string]string   `json:"metadata,omitempty"`
+	Actor              string              `json:"actor,omitempty"`
+}
+
+type TaskContractApproveRequest struct {
+	Actor string `json:"actor,omitempty"`
 }
 
 type ChatCreateSessionRequest struct {
@@ -353,6 +504,7 @@ type ChatCommitActionResponse struct {
 type LoopCreateRequest struct {
 	LoopID         string            `json:"loop_id,omitempty"`
 	IdempotencyKey string            `json:"idempotency_key,omitempty"`
+	TaskContractID string            `json:"task_contract_id,omitempty"`
 	Title          string            `json:"title"`
 	Description    string            `json:"description"`
 	SourceType     string            `json:"source_type"`

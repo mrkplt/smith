@@ -7,6 +7,7 @@ const layoutMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/api', () => ({
+  apiBaseUrl: '/api',
   fetchJSON: layoutMocks.fetchJSON
 }));
 
@@ -73,6 +74,9 @@ describe('layout stream helpers', () => {
       Revision: 9
     })).toEqual({
       loopID: 'loop-1',
+      displayTitle: 'loop-1',
+      currentCount: 2,
+      targetCount: 2,
       project: 'alpha',
       status: 'running',
       attempt: 2,
@@ -93,6 +97,9 @@ describe('layout stream helpers', () => {
     const dispose = connectLayoutStreams();
 
     const [loopsSource, docsSource, auditSource] = MockEventSource.instances;
+    expect(loopsSource.url).toBe('/api/v1/loops/stream');
+    expect(docsSource.url).toBe('/api/v1/documents/stream');
+    expect(auditSource.url).toBe('/api/v1/audit/stream');
     loopsSource.emit('update', {
       record: {
         loop_id: 'loop-1',
@@ -108,6 +115,9 @@ describe('layout stream helpers', () => {
 
     expect(get(appState).loops).toEqual([{
       loopID: 'loop-1',
+      displayTitle: 'loop-1',
+      currentCount: 3,
+      targetCount: 3,
       project: 'alpha',
       status: 'running',
       attempt: 3,

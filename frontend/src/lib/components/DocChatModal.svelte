@@ -3,6 +3,8 @@
   import { Modal, Button, Badge } from 'flowbite-svelte';
   import PRDChatTranscript from '$lib/components/PRDChatTranscript.svelte';
   import PRDChatComposer from '$lib/components/PRDChatComposer.svelte';
+  import { fetchJSON } from '$lib/api';
+  import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
   import { connectPRDChat, sendPRDChatMessage, type PRDChatMessage, type PRDChatSocket } from '$lib/chat/prd-chat';
 
 	interface Props {
@@ -20,9 +22,36 @@
 	let starting = $state(false);
 	let finalContent = $state<string | null>(null);
 	let finalTitle = $state<string | null>(null);
-	let chatProvider = $state('');
+	let chatProviderProfiles = $state<any[]>([]);
+	let chatProviderProfileID = $state('');
+	let chatDefaultModel = $state('');
 	let chatThinkingLevel = $state('balanced');
 	let chatSettingsDirty = $state(false);
+
+	async function loadProviderProfiles() {
+		try {
+			const profiles = await fetchJSON('/v1/providers');
+			chatProviderProfiles = Array.isArray(profiles) ? profiles : [];
+		} catch {
+			chatProviderProfiles = [];
+		}
+	}
+
+	function applyStoredChatSettings() {
+		if (typeof window === 'undefined') {
+			return;
+		}
+		const settings = loadChatSettings(window.localStorage, chatProviderProfiles);
+		chatProviderProfileID = settings.providerProfileID;
+		chatDefaultModel = settings.defaultModel;
+		chatThinkingLevel = settings.thinkingLevel;
+	}
+
+	function chooseProviderProfile(nextProfileID: string) {
+		chatProviderProfileID = nextProfileID;
+		chatDefaultModel = resolveDefaultModel(chatProviderProfiles, nextProfileID, '');
+		chatSettingsDirty = true;
+	}
 
 	function connectChat() {
 		if (chatSocket) {
@@ -34,10 +63,17 @@
 			? (window.localStorage.getItem('smith.chat.providerApiKey') || '').trim()
 			: '';
 		const context: Record<string, string> = {};
-		if (chatProvider.trim() !== '') {
-			context.provider = chatProvider.trim();
+		const resolvedProvider = resolveProviderType(chatProviderProfiles, chatProviderProfileID, '');
+		if (resolvedProvider !== '') {
+			context.provider = resolvedProvider;
 		}
-		const resolvedModel = modelForThinking(chatProvider, chatThinkingLevel);
+		if (chatProviderProfileID.trim() !== '') {
+			context.providerProfileID = chatProviderProfileID.trim();
+		}
+		let resolvedModel = resolveDefaultModel(chatProviderProfiles, chatProviderProfileID, chatDefaultModel);
+		if (resolvedModel === '') {
+			resolvedModel = modelForThinking(resolvedProvider, chatThinkingLevel);
+		}
 		if (resolvedModel !== '') {
 			context.model = resolvedModel;
 		}
@@ -90,16 +126,10 @@
 
 	$effect(() => {
 		if (open) {
-			if (typeof window !== 'undefined') {
-				if (chatProvider.trim() === '') {
-					chatProvider = window.localStorage.getItem('smith.chat.provider') || '';
-				}
-				const savedThinking = window.localStorage.getItem('smith.chat.thinkingLevel');
-				if (savedThinking === 'quick' || savedThinking === 'balanced' || savedThinking === 'deep') {
-					chatThinkingLevel = savedThinking;
-				}
-			}
-			connectChat();
+			void loadProviderProfiles().then(() => {
+				applyStoredChatSettings();
+				connectChat();
+			});
 		} else {
 			if (chatSocket) {
 				chatSocket.close();
@@ -115,22 +145,34 @@
 
 <Modal bind:open title="Draft Document with AI" size="lg" autoclose={false} class="bg-black border border-gray-800 rounded-none">
 	<div class="flex flex-col h-[500px]">
-		<div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+		<div class="grid grid-cols-1 md:grid-cols-5 gap-2 mb-3">
 			<select
 				class="bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
-				value={chatProvider}
+				value={chatProviderProfileID}
 				oninput={(event) => {
-					chatProvider = (event.currentTarget as HTMLSelectElement).value;
-					chatSettingsDirty = true;
+					chooseProviderProfile((event.currentTarget as HTMLSelectElement).value);
 				}}
 			>
-				<option value="">Service default provider</option>
-				<option value="openai">openai</option>
-				<option value="anthropic">anthropic</option>
-				<option value="google">google</option>
+				{#if chatProviderProfiles.length === 0}
+					<option value="">Provider Profile: service default</option>
+				{:else}
+					{#each chatProviderProfiles as profile}
+						<option value={profile.id}>{profile.name || profile.id}</option>
+					{/each}
+				{/if}
 			</select>
-			<select
+			<input
+				type="text"
 				class="md:col-span-2 bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
+				value={chatDefaultModel}
+				placeholder="Model override (optional)"
+				oninput={(event) => {
+					chatDefaultModel = (event.currentTarget as HTMLInputElement).value;
+					chatSettingsDirty = true;
+				}}
+			/>
+			<select
+				class="bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
 				value={chatThinkingLevel}
 				oninput={(event) => {
 					chatThinkingLevel = (event.currentTarget as HTMLSelectElement).value;

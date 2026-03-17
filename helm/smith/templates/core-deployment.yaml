@@ -70,6 +70,10 @@ spec:
                 secretKeyRef:
                   name: {{ $runtimeSecretName }}
                   key: {{ .Values.secrets.keys.gitPat }}
+            - name: SMITH_GIT_PAT_SECRET_NAME
+              value: {{ $runtimeSecretName | quote }}
+            - name: SMITH_GIT_PAT_SECRET_KEY
+              value: {{ .Values.secrets.keys.gitPat | quote }}
             - name: SMITH_RUNTIME_CREDENTIALS
               valueFrom:
                 secretKeyRef:

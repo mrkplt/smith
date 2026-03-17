@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,11 @@ import (
 	"gopkg.in/yaml.v3"
 	"smith/internal/source/model"
 )
+
+func TestMain(m *testing.M) {
+	_ = os.Setenv("SMITHCTL_SKIP_PROVIDER_FIRST", "1")
+	os.Exit(m.Run())
+}
 
 func TestResolveConfigFromFileAndOverrides(t *testing.T) {
 	t.Setenv("SMITH_API_URL", "")
@@ -1460,8 +1466,11 @@ func TestPRDCreateTemplateToFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read output file: %v", err)
 	}
-	if !strings.Contains(string(content), "## Goal") {
+	if !strings.Contains(string(content), "## Quality Gates") {
 		t.Fatalf("expected feature template content, got: %s", string(content))
+	}
+	if _, report := model.ValidatePRDMarkdown(content); !report.Valid {
+		t.Fatalf("expected generated template to pass PRD validation, report=%+v", report)
 	}
 	var out map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
@@ -1510,5 +1519,273 @@ func TestPRDSubmitIncludesLoopIDsAndValidationErrors(t *testing.T) {
 	errs, ok := out["validation_errors"].([]any)
 	if !ok || len(errs) != 1 {
 		t.Fatalf("expected one validation error, got %#v", out["validation_errors"])
+	}
+}
+
+func TestPRDSubmitIncludesProjectAndProviderMetadata(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/ingress/prd" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &received); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"results": []map[string]any{{"item_index": 0, "loop_id": "loop-meta", "status": "unresolved", "created": true}},
+		})
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	prdPath := filepath.Join(dir, "prd.md")
+	if err := os.WriteFile(prdPath, []byte("# PRD\n\n## Project\n- smith\n\n## Quality Gates\n- go test ./...\n\n## Stories\n### US-001: Story\n#### Description\nDesc\n#### Acceptance Criteria\n- Works\n- Reject invalid input\n"), 0o600); err != nil {
+		t.Fatalf("write prd file: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--server", srv.URL, "--output", "json", "prd", "submit",
+		"--file", prdPath,
+		"--project-id", "smith",
+		"--provider-profile-id", "codex-default",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+
+	metadata, ok := received["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected metadata map in payload, got %#v", received["metadata"])
+	}
+	if metadata["project_id"] != "smith" {
+		t.Fatalf("expected project_id metadata, got %#v", metadata)
+	}
+	if metadata["provider_profile_id"] != "codex-default" {
+		t.Fatalf("expected provider_profile_id metadata, got %#v", metadata)
+	}
+}
+
+func TestHelpListsProviderAndProjectResources(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "provider Manage provider profiles") {
+		t.Fatalf("expected provider resource in help, got %q", output)
+	}
+	if !strings.Contains(output, "project  Manage project configuration") {
+		t.Fatalf("expected project resource in help, got %q", output)
+	}
+	if !strings.Contains(output, "Configure provider first") {
+		t.Fatalf("expected provider-first ordering note in help, got %q", output)
+	}
+}
+
+func TestProviderAddOutputsMachineReadableSuccess(t *testing.T) {
+	var received map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/providers" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &received)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "claude-team", "provider_type": "claude"})
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "add", "--id", "claude-team", "--type", "ClAuDe", "--secret-ref", "claude-key"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if got, _ := received["provider_type"].(string); got != "claude" {
+		t.Fatalf("expected provider_type claude, got %#v", received)
+	}
+	if got, _ := received["secret_ref"].(string); got != "claude-key" {
+		t.Fatalf("expected secret_ref claude-key, got %#v", received)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out["status"] != "ok" || out["operation"] != "provider.add" {
+		t.Fatalf("expected machine-readable success envelope, got %#v", out)
+	}
+}
+
+func TestProviderAddRejectsUnsupportedType(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"provider", "add", "--id", "custom-provider", "--type", "custom"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected usage failure code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "unsupported provider type") {
+		t.Fatalf("expected unsupported provider type error, got %q", stderr.String())
+	}
+}
+
+func TestProviderConfigureRequiresUpdateFields(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"provider", "configure", "codex-default"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected usage failure code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "requires at least one field") {
+		t.Fatalf("expected configure field requirement error, got %q", stderr.String())
+	}
+}
+
+func TestProjectAddAndConfigureOutputMachineReadableSuccess(t *testing.T) {
+	var createPayload map[string]any
+	var configurePayload map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/projects":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &createPayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "proj-1", "repo_url": "https://github.com/acme/repo", "provider_profile_id": "codex-default"})
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/projects/proj-1":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &configurePayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "proj-1", "name": "Project One Updated"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	var createStdout, createStderr bytes.Buffer
+	createCode := run([]string{"--server", srv.URL, "--output", "json", "project", "add", "--id", "proj-1", "--repo-url", "https://github.com/acme/repo", "--provider-profile-id", "codex-default"}, &createStdout, &createStderr)
+	if createCode != 0 {
+		t.Fatalf("project add failed code=%d stderr=%s", createCode, createStderr.String())
+	}
+	if got, _ := createPayload["provider_profile_id"].(string); got != "codex-default" {
+		t.Fatalf("expected provider_profile_id codex-default, got %#v", createPayload)
+	}
+
+	var createOut map[string]any
+	if err := json.Unmarshal(createStdout.Bytes(), &createOut); err != nil {
+		t.Fatalf("unmarshal project add output: %v", err)
+	}
+	if createOut["status"] != "ok" || createOut["operation"] != "project.add" {
+		t.Fatalf("expected machine-readable project add output, got %#v", createOut)
+	}
+
+	var configureStdout, configureStderr bytes.Buffer
+	configureCode := run([]string{"--server", srv.URL, "--output", "json", "project", "configure", "proj-1", "--name", "Project One Updated"}, &configureStdout, &configureStderr)
+	if configureCode != 0 {
+		t.Fatalf("project configure failed code=%d stderr=%s", configureCode, configureStderr.String())
+	}
+	if got, _ := configurePayload["name"].(string); got != "Project One Updated" {
+		t.Fatalf("expected configure payload with updated name, got %#v", configurePayload)
+	}
+
+	var configureOut map[string]any
+	if err := json.Unmarshal(configureStdout.Bytes(), &configureOut); err != nil {
+		t.Fatalf("unmarshal project configure output: %v", err)
+	}
+	if configureOut["status"] != "ok" || configureOut["operation"] != "project.configure" {
+		t.Fatalf("expected machine-readable project configure output, got %#v", configureOut)
+	}
+}
+
+func TestProviderAddOutputsMachineReadableError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/providers" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"unsupported provider_type"}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "add", "--id", "invalid", "--type", "codex"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected command failure code 1, got %d", code)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out["status"] != "error" || out["operation"] != "provider.add" {
+		t.Fatalf("expected machine-readable error envelope, got %#v", out)
+	}
+	if !strings.Contains(fmt.Sprint(out["error"]), "unsupported provider_type") {
+		t.Fatalf("expected error message with provider type hint, got %#v", out)
+	}
+}
+
+func TestProjectAddEnforcesProviderFirstOnboarding(t *testing.T) {
+	t.Setenv("SMITHCTL_SKIP_PROVIDER_FIRST", "0")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/onboarding/readiness" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ready":     false,
+				"next_step": "provider_catalog",
+				"missing":   []string{"provider_catalog"},
+				"requirements": []map[string]any{{
+					"id":     "provider_catalog",
+					"status": "missing",
+				}},
+			})
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "project", "add", "--id", "proj-1", "--repo-url", "https://github.com/acme/repo"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected provider-first failure code 1, got %d", code)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out["status"] != "error" || out["operation"] != "project.add" {
+		t.Fatalf("expected provider-first error envelope, got %#v", out)
+	}
+	if !strings.Contains(fmt.Sprint(out["suggested_command"]), "smithctl provider add") {
+		t.Fatalf("expected provider setup suggestion, got %#v", out)
+	}
+}
+
+func TestLoopCreateEnforcesProviderFirstOnboarding(t *testing.T) {
+	t.Setenv("SMITHCTL_SKIP_PROVIDER_FIRST", "0")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/onboarding/readiness" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ready":     false,
+				"next_step": "provider_catalog",
+				"missing":   []string{"provider_catalog"},
+			})
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "loop", "create", "--title", "Test", "--description", "Test", "--source-type", "interactive", "--source-ref", "terminal/test"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected provider-first failure code 1, got %d", code)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out["status"] != "error" || out["operation"] != "loop.create" {
+		t.Fatalf("expected loop create provider-first error envelope, got %#v", out)
+	}
+	if !strings.Contains(fmt.Sprint(out["suggested_command"]), "smithctl provider add") {
+		t.Fatalf("expected provider setup suggestion, got %#v", out)
 	}
 }

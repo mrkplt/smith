@@ -13,6 +13,15 @@
 
 	let terminalEl: HTMLPreElement | null = $state(null);
 
+	function percentile(samples: number[], p: number): number | null {
+		if (samples.length === 0) return null;
+		const sorted = [...samples].sort((a, b) => a - b);
+		const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+		return sorted[idx];
+	}
+
+	const latencyP95Ms = $derived(percentile($appState.latencySamplesMs, 95));
+
 	function renderJournal() {
 		if (!terminalEl) return;
 		terminalEl.textContent = renderJournalText($appState.journalEntries);
@@ -40,7 +49,7 @@
 	}
 
   $effect(() => {
-		appState.update(s => ({ ...s, journalEntries: [], journalLastSeq: 0 }));
+		appState.update(s => ({ ...s, journalEntries: [], journalLastSeq: 0, latencySamplesMs: [] }));
 		connect();
   });
 
@@ -58,6 +67,9 @@
 			<span class="light maximize"></span>
 		</div>
 		<div class="terminal-title">Live Journal: {loopID}</div>
+		<div class={`latency-chip ${latencyP95Ms !== null && latencyP95Ms >= 100 ? 'warn' : 'ok'}`}>
+			p95 {latencyP95Ms === null ? '--' : `${latencyP95Ms}ms`}
+		</div>
 	</div>
 	<div class="terminal-scroll-area">
 		<pre bind:this={terminalEl} class="terminal-body">[journal] attaching to stream...</pre>
@@ -112,6 +124,25 @@
 		font-family: var(--mono);
 		color: #8fa2b9;
 		font-weight: 600;
+	}
+
+	.latency-chip {
+		margin-left: auto;
+		font-size: 0.7rem;
+		font-family: var(--mono);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 3px 8px;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		background: rgba(15, 17, 26, 0.75);
+	}
+
+	.latency-chip.ok {
+		color: #86bc25;
+	}
+
+	.latency-chip.warn {
+		color: #facc15;
 	}
 
 	.terminal-scroll-area {

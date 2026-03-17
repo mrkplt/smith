@@ -112,6 +112,7 @@
     "api": { "$ref": "#/definitions/componentConfigWithService" },
     "console": { "$ref": "#/definitions/componentConfigWithService" },
     "chat": { "$ref": "#/definitions/componentConfigWithService" },
+    "daemon": { "$ref": "#/definitions/daemonConfig" },
     "rbac": {
       "type": "object",
       "additionalProperties": false,
@@ -123,7 +124,7 @@
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" }
   },
-  "required": ["global", "etcd", "secrets", "core", "api", "console", "chat", "rbac", "nameOverride", "fullnameOverride"],
+  "required": ["global", "etcd", "secrets", "core", "api", "console", "chat", "daemon", "rbac", "nameOverride", "fullnameOverride"],
   "definitions": {
     "componentImage": {
       "type": "object",
@@ -334,6 +335,66 @@
         }
       },
       "required": ["enabled", "replicaCount", "autoscaling", "image", "service", "serviceAccount", "resources", "env"]
+    },
+    "daemonCleanupRetention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "flatline": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$"
+        },
+        "cancelled": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$"
+        },
+        "synced": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$"
+        }
+      },
+      "required": ["flatline", "cancelled", "synced"]
+    },
+    "daemonCleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "interval": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$"
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$"
+        },
+        "dryRun": { "type": "boolean" },
+        "maxDeletes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retention": { "$ref": "#/definitions/daemonCleanupRetention" }
+      },
+      "required": ["interval", "timeout", "dryRun", "maxDeletes", "retention"]
+    },
+    "daemonConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": { "$ref": "#/definitions/componentImage" },
+        "serviceAccount": { "$ref": "#/definitions/serviceAccount" },
+        "cleanup": { "$ref": "#/definitions/daemonCleanup" },
+        "resources": { "$ref": "#/definitions/resourceRequirements" },
+        "env": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/envVar" }
+        }
+      },
+      "required": ["enabled", "replicaCount", "image", "serviceAccount", "cleanup", "resources", "env"]
     }
   }
 }

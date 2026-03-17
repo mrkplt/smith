@@ -22,6 +22,7 @@ export type FeatureCapabilityRetryResult = {
   idempotencyKey: string;
 };
 
+/** Represents an API-level failure while executing or polling feature capability runs. */
 export class FeatureCapabilityExecutionError extends Error {
   status: number;
 
@@ -51,6 +52,7 @@ function getActionableErrorMessage(status: number, fallback: string): string {
   return fallback;
 }
 
+/** Generates an idempotency key used by execute/retry API requests. */
 export function generateIdempotencyKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -58,6 +60,7 @@ export function generateIdempotencyKey(): string {
   return `fc-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+/** Returns true when a run status is considered terminal by UI polling logic. */
 export function isTerminalRunStatus(status: string): boolean {
   return TERMINAL_RUN_STATUSES.includes(status as (typeof TERMINAL_RUN_STATUSES)[number]);
 }

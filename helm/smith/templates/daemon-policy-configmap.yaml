@@ -1,0 +1,15 @@
+{{- if .Values.daemon.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "smith.fullname" . }}-daemon-policy
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: daemon
+data:
+  policy.yaml: |
+    retention:
+      flatline: {{ .Values.daemon.cleanup.retention.flatline | quote }}
+      cancelled: {{ .Values.daemon.cleanup.retention.cancelled | quote }}
+      synced: {{ .Values.daemon.cleanup.retention.synced | quote }}
+{{- end }}

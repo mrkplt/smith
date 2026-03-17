@@ -19,7 +19,7 @@ test('renders loop tiles and summary stats', async ({ page }) => {
   await setupPods(page);
 
   await expect(page.locator('.grid > div').filter({ hasText: 'Total Pods' }).locator('span.text-3xl')).toHaveText('3');
-  await expect(page.locator('.pod-card-container')).toHaveCount(3);
+  await expect(page.locator('.pod-card-container')).toHaveCount(2);
 });
 
 test('pod detail and command execution', async ({ page }) => {
@@ -51,14 +51,14 @@ test('cancel and terminate from pod detail', async ({ page }) => {
   // Click Cancel button
   await page.getByRole('button', { name: 'Cancel' }).click();
 
-  await expect.poll(() => api.overridePayloads.length).toBe(1);
-  expect(api.overridePayloads[0].target_state).toBe('cancelled');
+  await expect.poll(() => api.cancelPayloads.length).toBe(1);
+  expect(api.cancelPayloads[0].reason).toBe('cancelled via console');
 
   // Click Terminate button
   await page.getByRole('button', { name: 'Terminate' }).click();
 
-  await expect.poll(() => api.overridePayloads.length).toBe(2);
-  expect(api.overridePayloads[1].target_state).toBe('flatline');
+  await expect.poll(() => api.overridePayloads.length).toBe(1);
+  expect(api.overridePayloads[0].target_state).toBe('flatline');
 });
 
 test('filters by state and search', async ({ page }) => {
@@ -70,7 +70,7 @@ test('filters by state and search', async ({ page }) => {
 
   // Clear search
   await page.getByPlaceholder('Filter ID...').fill('');
-  await expect(page.locator('.pod-card-container')).toHaveCount(3);
+  await expect(page.locator('.pod-card-container')).toHaveCount(2);
 
   // Filter by state
   await page.locator('select').selectOption('flatline');
@@ -85,13 +85,13 @@ test('provider API key config', async ({ page }) => {
   await page.goto('/providers');
 
   // Click Configure button to open drawer
-  await page.getByRole('button', { name: 'Configure' }).click();
+  await page.getByRole('button', { name: 'Configure' }).first().click();
 
   // Fill in the API key
-  await page.locator('#api-key').fill('sk-test-key');
+  await page.getByPlaceholder('sk-...').fill('sk-test-key');
 
   // Submit the form
-  await page.getByRole('button', { name: 'Update Credentials' }).click();
+  await page.getByRole('button', { name: 'Update Profile' }).click();
 
   // Verify auth state was updated
   await expect.poll(() => api.authState.connected).toBe(true);

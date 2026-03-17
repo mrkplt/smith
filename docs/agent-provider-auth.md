@@ -116,13 +116,49 @@ Lifecycle behavior:
 
 - `POST /v1/auth/codex/connect/start`
 - `POST /v1/auth/codex/connect/complete`
+- `POST /v1/auth/codex/connect/api-key`
 - `GET /v1/auth/codex/status`
+- `GET /v1/auth/codex/credential`
 - `POST /v1/auth/codex/disconnect`
+
+Provider profiles and project/provider binding:
+
+- `GET /v1/providers`
+- `POST /v1/providers`
+- `GET /v1/providers/{id}`
+- `PUT /v1/providers/{id}`
+- `DELETE /v1/providers/{id}`
+- `GET /v1/projects`
+- `POST /v1/projects`
+- `GET /v1/projects/{id}`
+- `PUT /v1/projects/{id}`
+- `DELETE /v1/projects/{id}`
+
+Settings secrets (write-only values, masked in API responses):
+
+- `GET /v1/secrets`
+- `POST /v1/secrets`
+- `GET /v1/secrets/{id}`
+- `PUT /v1/secrets/{id}`
+- `DELETE /v1/secrets/{id}`
+
+Validation behavior:
+
+- Provider profile `secret_ref` must reference an existing secret.
+- Project `provider_profile_id` defaults to `codex-default` when omitted.
+- Deleting a secret is rejected when referenced by a provider profile.
+- Deleting a provider profile is rejected when referenced by a project.
 
 Environment variables:
 - `SMITH_AUTH_STORE_PATH` for auth token storage path.
 - `SMITH_AUTH_STORE_BACKEND` (`file` or `kubernetes`).
 - `SMITH_AUTH_STORE_K8S_NAMESPACE`, `SMITH_AUTH_STORE_K8S_SECRET`, `SMITH_AUTH_STORE_K8S_KEY` for Kubernetes-backed storage.
 - `SMITH_OPERATOR_TOKEN` for operator auth gating.
+
+Current UI surface:
+
+- Settings navigation now centralizes configuration under `General`, `Providers`, `Projects`, `Chat`, `Integrations`, and `Secrets`.
+- Chat is available in drawer mode and a dedicated full-screen route at `/assistant`.
+- Chat defaults support provider profile selection, optional model/API key overrides, and opaque thinking level (`quick`, `balanced`, `deep`).
 
 Auth lifecycle actions emit audit records through Smith audit append path.

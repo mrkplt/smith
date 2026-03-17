@@ -11,8 +11,8 @@ etcd:
 secrets:
   create: true
   managed:
-    gitPat: local-dev-token
-    runtimeCredentials: local-runtime-token
+    gitPat: ""
+    runtimeCredentials: ""
 
 core:
   replicaCount: 1
@@ -53,3 +53,25 @@ chat:
     repository: smith-chat
     tag: local
     pullPolicy: Never
+
+daemon:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: smith-daemon
+    tag: local
+    pullPolicy: Never
+  serviceAccount:
+    create: true
+    name: ""
+  cleanup:
+    interval: 10m
+    timeout: 30s
+    dryRun: false
+    maxDeletes: 200
+    retention:
+      flatline: 48h
+      cancelled: 48h
+      synced: 0s
+  resources: {}
+  env: []

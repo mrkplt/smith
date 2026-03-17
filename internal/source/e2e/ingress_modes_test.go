@@ -442,6 +442,7 @@ func runSmithctlWithExitCode(serverURL string, args ...string) ([]byte, string, 
 	fullArgs := append([]string{"run", "./cmd/smithctl", "--server", serverURL}, args...)
 	cmd := exec.Command("go", fullArgs...)
 	cmd.Dir = filepath.Clean(filepath.Join(filepath.Dir(mustCallerFile()), "../../.."))
+	cmd.Env = append(os.Environ(), "SMITHCTL_SKIP_PROVIDER_FIRST=1")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

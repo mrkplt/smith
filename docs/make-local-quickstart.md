@@ -13,6 +13,13 @@ If `make doctor` fails, follow the remediation lines printed in output.
 
 ## 2. Start Local Cluster and Deploy Smith
 
+Set local runtime credentials in your shell (kept out of tracked values files):
+
+```bash
+export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
+export SMITH_LOCAL_RUNTIME_CREDENTIALS="<runtime-credential>"
+```
+
 ```bash
 make cluster-up
 make cluster-health
@@ -45,6 +52,13 @@ kubectl -n smith-system port-forward svc/smith-smith-console 3000:3000
 ```
 
 Keep this running while issuing `smithctl` commands.
+
+Verify control-plane deployments (including retention daemon):
+
+```bash
+kubectl get deployments -n smith-system
+kubectl get deployment smith-smith-daemon -n smith-system
+```
 
 Quick chat sanity check (new terminal):
 
@@ -96,6 +110,12 @@ Each target prints an `artifacts:` path for debugging evidence.
 ```bash
 make undeploy-local
 make cluster-down
+```
+
+If you only changed daemon policy/runtime and want a targeted restart:
+
+```bash
+make daemon-deploy-local
 ```
 
 ## Troubleshooting
