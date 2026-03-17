@@ -908,6 +908,29 @@ func TestShouldRunIssueWorkflow(t *testing.T) {
 	}
 }
 
+func TestShouldUseInteractivePRDGate(t *testing.T) {
+	cfg := loopExecutionConfig{InteractivePRD: true, InvocationMethod: "github_issue", SourceType: "github_issue"}
+	if !shouldUseInteractivePRDGate(cfg, model.Anomaly{}) {
+		t.Fatal("expected interactive gate enabled for github_issue")
+	}
+
+	if shouldUseInteractivePRDGate(loopExecutionConfig{InteractivePRD: false}, model.Anomaly{}) {
+		t.Fatal("expected interactive gate disabled when config false")
+	}
+
+	if shouldUseInteractivePRDGate(loopExecutionConfig{InteractivePRD: true, InvocationMethod: "prd"}, model.Anomaly{}) {
+		t.Fatal("expected interactive gate disabled for prd invocation")
+	}
+
+	if shouldUseInteractivePRDGate(loopExecutionConfig{InteractivePRD: true}, model.Anomaly{SourceType: "prd_story"}) {
+		t.Fatal("expected interactive gate disabled for prd_story source")
+	}
+
+	if shouldUseInteractivePRDGate(loopExecutionConfig{InteractivePRD: true}, model.Anomaly{Metadata: map[string]string{"ingress_mode": "prd"}}) {
+		t.Fatal("expected interactive gate disabled for prd ingress mode")
+	}
+}
+
 type runResult struct {
 	output []byte
 	err    error

@@ -595,7 +595,15 @@ func runIssueWorkflow(
 		prdPrompt := buildIssuePRDPrompt(anomaly, prdPath, prdStoryCount)
 		interactivePromptPath := ""
 		interactiveCommandHint := ""
-		if cfg.InteractivePRD {
+		interactivePRDEnabled := shouldUseInteractivePRDGate(cfg, anomaly)
+		if cfg.InteractivePRD && !interactivePRDEnabled {
+			appendWorkflowStep(ctx, storeClient, loopID, correlationID, "prd", "interactive PRD gate skipped for autonomous PRD ingress", map[string]string{
+				"source_type":      strings.TrimSpace(anomaly.SourceType),
+				"loop_source_type": strings.TrimSpace(cfg.SourceType),
+				"ingress_mode":     strings.TrimSpace(anomaly.Metadata["ingress_mode"]),
+			})
+		}
+		if interactivePRDEnabled {
 			promptPath := filepath.Join(workspace, defaultIssuePRDPrompt)
 			if err := writePromptFileAtPath(promptPath, prdPrompt); err != nil {
 				return model.LoopStateFlatline, "issue-prd-prompt-prepare-failed", err
@@ -604,7 +612,7 @@ func runIssueWorkflow(
 			interactiveCommandHint = interactivePRDCommandHint(promptPath, prdPath, prdStoryCount, cfg.CodexCommand)
 		}
 
-		if cfg.InteractivePRD {
+		if interactivePRDEnabled {
 			resolvedInteractivePath, waitReason, err := waitForInteractivePRD(ctx, storeClient, loopID, correlationID, cfg, prdPath, interactivePromptPath, interactiveCommandHint)
 			if err != nil {
 				return model.LoopStateFlatline, waitReason, err
@@ -806,6 +814,31 @@ func normalizeGitBranch(branch string) string {
 		return "main"
 	}
 	return value
+}
+
+func shouldUseInteractivePRDGate(cfg loopExecutionConfig, anomaly model.Anomaly) bool {
+	if !cfg.InteractivePRD {
+		return false
+	}
+	sourceType := strings.ToLower(strings.TrimSpace(cfg.SourceType))
+	if sourceType == "" {
+		sourceType = strings.ToLower(strings.TrimSpace(anomaly.SourceType))
+	}
+	if sourceType == "prd" || sourceType == "prd_story" {
+		return false
+	}
+	method := strings.ToLower(strings.TrimSpace(cfg.InvocationMethod))
+	if method == "prd" || method == "prd_story" {
+		return false
+	}
+	ingressMode := ""
+	if anomaly.Metadata != nil {
+		ingressMode = strings.ToLower(strings.TrimSpace(anomaly.Metadata["ingress_mode"]))
+	}
+	if ingressMode == "prd" {
+		return false
+	}
+	return true
 }
 
 type prdProgress struct {
