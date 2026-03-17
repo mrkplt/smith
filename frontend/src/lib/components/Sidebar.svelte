@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
+	import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
   import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
@@ -9,10 +10,12 @@
 	const navItems = [
 		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
 		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
+		{ id: 'feature-capability', label: 'Feature Flow', href: '/feature-capability', icon: ArchiveOutline },
 		{ id: 'projects', label: 'Projects', href: '/projects', icon: ArchiveOutline },
 		{ id: 'providers', label: 'Providers', href: '/providers', icon: UsersGroupOutline },
 		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
 	];
+  const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
 
   let transitionParams = {
     x: -320,
@@ -58,6 +61,7 @@
     <div class="px-0 flex-1">
       <SidebarGroup>
         {#each navItems as item}
+          {#if item.id !== 'feature-capability' || canAccessFeatureCapability}
           {@const active = currentPath.startsWith(item.href)}
           <SidebarItem 
             href={item.href} 
@@ -72,6 +76,7 @@
               </div>
             {/snippet}
           </SidebarItem>
+          {/if}
         {/each}
 
         <SidebarItem 
