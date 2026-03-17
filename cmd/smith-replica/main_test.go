@@ -765,7 +765,7 @@ func TestEnsureGitWorkspaceExistingGitDirSkipsCommands(t *testing.T) {
 
 func TestEnsureGitWorkspaceBootstrapsRepository(t *testing.T) {
 	workspace := t.TempDir()
-	runner := &sequenceRunner{results: []runResult{{}, {}, {}, {}, {}}}
+	runner := &sequenceRunner{results: []runResult{{}, {}, {}, {}, {}, {}}}
 
 	prepared, err := ensureGitWorkspace(
 		context.Background(),
@@ -781,20 +781,23 @@ func TestEnsureGitWorkspaceBootstrapsRepository(t *testing.T) {
 	if !prepared {
 		t.Fatal("expected prepared workspace")
 	}
-	if len(runner.calls) < 5 {
+	if len(runner.calls) < 6 {
 		t.Fatalf("expected bootstrap command sequence, got %#v", runner.calls)
 	}
-	if got := strings.Join(append([]string{runner.calls[0].name}, runner.calls[0].args...), " "); got != "git init" {
+	if got := strings.Join(append([]string{runner.calls[0].name}, runner.calls[0].args...), " "); !strings.HasPrefix(got, "git config --global --add safe.directory") {
 		t.Fatalf("unexpected first command: %q", got)
 	}
-	fetchCall := runner.calls[3]
+	if got := strings.Join(append([]string{runner.calls[1].name}, runner.calls[1].args...), " "); got != "git init" {
+		t.Fatalf("unexpected second command: %q", got)
+	}
+	fetchCall := runner.calls[4]
 	if fetchCall.name != "git" || len(fetchCall.args) < 5 || fetchCall.args[0] != "fetch" {
 		t.Fatalf("expected git fetch call, got %#v", fetchCall)
 	}
 	if !strings.Contains(fetchCall.args[3], "pat123@github.com/acme/repo") {
 		t.Fatalf("expected authenticated fetch URL, got %#v", fetchCall)
 	}
-	checkoutCall := runner.calls[4]
+	checkoutCall := runner.calls[5]
 	if checkoutCall.name != "git" || len(checkoutCall.args) < 4 || checkoutCall.args[0] != "checkout" {
 		t.Fatalf("expected git checkout call, got %#v", checkoutCall)
 	}
@@ -881,6 +884,20 @@ func TestShouldRunIssueWorkflow(t *testing.T) {
 	}
 	if !shouldRunIssueWorkflow(cfg, model.Anomaly{}) {
 		t.Fatal("expected prompt invocation to run issue workflow")
+	}
+	cfg = loopExecutionConfig{
+		InvocationMethod:     "prd",
+		IssueWorkflowEnabled: true,
+	}
+	if !shouldRunIssueWorkflow(cfg, model.Anomaly{}) {
+		t.Fatal("expected prd invocation to run issue workflow")
+	}
+	cfg = loopExecutionConfig{
+		InvocationMethod:     "manual",
+		IssueWorkflowEnabled: true,
+	}
+	if !shouldRunIssueWorkflow(cfg, model.Anomaly{SourceType: "prd_story"}) {
+		t.Fatal("expected prd_story source type fallback to run issue workflow")
 	}
 	cfg = loopExecutionConfig{
 		InvocationMethod:     "github_issue",

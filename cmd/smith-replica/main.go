@@ -480,14 +480,14 @@ func shouldRunIssueWorkflow(cfg loopExecutionConfig, anomaly model.Anomaly) bool
 	if anomaly.Metadata != nil {
 		metadataPrompt = strings.TrimSpace(anomaly.Metadata["workspace_prompt"])
 	}
-	if sourceType == "github_issue" || sourceType == "prompt" || sourceType == "interactive_prompt" {
+	if sourceType == "github_issue" || sourceType == "prompt" || sourceType == "interactive_prompt" || sourceType == "prd" || sourceType == "prd_story" {
 		return true
 	}
 	if metadataPrompt != "" {
 		return true
 	}
 	switch method {
-	case "github_issue", "issue", "issue_based", "prompt", "interactive_prompt", "generate_prd":
+	case "github_issue", "issue", "issue_based", "prompt", "interactive_prompt", "generate_prd", "prd", "prd_story":
 		return true
 	default:
 		return false
@@ -766,21 +766,39 @@ func ensureGitWorkspace(ctx context.Context, runner execRunner, workspace, repos
 	if strings.TrimSpace(gitPAT) != "" && strings.HasPrefix(repo, "https://") {
 		fetchURL = "https://" + strings.TrimSpace(gitPAT) + "@" + strings.TrimPrefix(repo, "https://")
 	}
+	if output, err := runner.Run(ctx, workspace, "git", "config", "--global", "--add", "safe.directory", workspace); err != nil {
+		return false, formatCommandError("git safe.directory config failed", output, err)
+	}
 
-	if _, err := runner.Run(ctx, workspace, "git", "init"); err != nil {
-		return false, fmt.Errorf("git init failed: %w", err)
+	if output, err := runner.Run(ctx, workspace, "git", "init"); err != nil {
+		return false, formatCommandError("git init failed", output, err)
 	}
 	_, _ = runner.Run(ctx, workspace, "git", "remote", "remove", "origin")
-	if _, err := runner.Run(ctx, workspace, "git", "remote", "add", "origin", repo); err != nil {
-		return false, fmt.Errorf("git remote add failed: %w", err)
+	if output, err := runner.Run(ctx, workspace, "git", "remote", "add", "origin", repo); err != nil {
+		if setOutput, setErr := runner.Run(ctx, workspace, "git", "remote", "set-url", "origin", repo); setErr != nil {
+			return false, formatCommandError("git remote add failed", output, err)
+		} else if strings.TrimSpace(string(setOutput)) != "" {
+			log.Printf("git remote set-url output: %s", strings.TrimSpace(string(setOutput)))
+		}
 	}
-	if _, err := runner.Run(ctx, workspace, "git", "fetch", "--depth", "1", fetchURL, branchName); err != nil {
-		return false, fmt.Errorf("git fetch failed: %w", err)
+	if output, err := runner.Run(ctx, workspace, "git", "fetch", "--depth", "1", fetchURL, branchName); err != nil {
+		return false, formatCommandError("git fetch failed", output, err)
 	}
-	if _, err := runner.Run(ctx, workspace, "git", "checkout", "-B", branchName, "FETCH_HEAD"); err != nil {
-		return false, fmt.Errorf("git checkout failed: %w", err)
+	if output, err := runner.Run(ctx, workspace, "git", "checkout", "-B", branchName, "FETCH_HEAD"); err != nil {
+		return false, formatCommandError("git checkout failed", output, err)
 	}
 	return true, nil
+}
+
+func formatCommandError(prefix string, output []byte, err error) error {
+	if err == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return fmt.Errorf("%s: %w", prefix, err)
+	}
+	return fmt.Errorf("%s: %w (output: %s)", prefix, err, trimmed)
 }
 
 func normalizeGitBranch(branch string) string {
