@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1304,8 +1303,7 @@ func resolveIssuePRDPath(expectedPath string) (string, string, error) {
 	case 1:
 		return files[0], "single_json_in_tasks", nil
 	default:
-		sort.Strings(files)
-		return "", "", fmt.Errorf("multiple PRD files found in %s; expected 1 (found: %s)", tasksDir, strings.Join(files, ", "))
+		return "", "", os.ErrNotExist
 	}
 }
 

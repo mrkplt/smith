@@ -647,8 +647,8 @@ func TestResolveIssuePRDPath(t *testing.T) {
 	if err := os.WriteFile(secondPath, []byte(`{"stories":[]}`), 0o644); err != nil {
 		t.Fatalf("write second prd: %v", err)
 	}
-	if _, _, err := resolveIssuePRDPath(expectedPath); err == nil || !strings.Contains(err.Error(), "multiple PRD files found") {
-		t.Fatalf("expected multiple-files error, got %v", err)
+	if _, _, err := resolveIssuePRDPath(expectedPath); !os.IsNotExist(err) {
+		t.Fatalf("expected not-exist when multiple candidates present, got %v", err)
 	}
 }
 
