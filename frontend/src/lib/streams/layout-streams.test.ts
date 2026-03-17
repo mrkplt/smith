@@ -74,6 +74,9 @@ describe('layout stream helpers', () => {
       Revision: 9
     })).toEqual({
       loopID: 'loop-1',
+      displayTitle: 'loop-1',
+      currentCount: 2,
+      targetCount: 2,
       project: 'alpha',
       status: 'running',
       attempt: 2,
@@ -112,6 +115,9 @@ describe('layout stream helpers', () => {
 
     expect(get(appState).loops).toEqual([{
       loopID: 'loop-1',
+      displayTitle: 'loop-1',
+      currentCount: 3,
+      targetCount: 3,
       project: 'alpha',
       status: 'running',
       attempt: 3,

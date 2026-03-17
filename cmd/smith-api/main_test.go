@@ -155,6 +155,115 @@ func TestHandleIngressPRDPropagatesBindingMetadata(t *testing.T) {
 	}
 }
 
+func TestHandleLoopsIncludesDisplayTitleAndProgress(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	state := model.State{
+		LoopID:        "loop-progress",
+		State:         model.LoopStateRunning,
+		Attempt:       2,
+		CorrelationID: "corr-progress",
+		SchemaVersion: "v1",
+		UpdatedAt:     time.Now().UTC(),
+	}
+	if _, err := ms.PutState(context.Background(), state, 0); err != nil {
+		t.Fatalf("put state: %v", err)
+	}
+	if err := ms.PutAnomaly(context.Background(), model.Anomaly{
+		ID:         state.LoopID,
+		Title:      "Implement workflow",
+		SourceType: "prd_story",
+		SourceRef:  "prd:demo#US-002",
+		Policy: model.LoopPolicy{
+			MaxAttempts: 5,
+		},
+		Metadata: map[string]string{
+			"prd_story_id": "US-002",
+		},
+		CorrelationID: "corr-progress",
+		SchemaVersion: "v1",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("put anomaly: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/loops", nil)
+	s.handleLoops(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload []api.LoopWithRevision
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload) != 1 {
+		t.Fatalf("expected one loop, got %d", len(payload))
+	}
+	if payload[0].Record.DisplayTitle != "US-002: Implement workflow" {
+		t.Fatalf("unexpected display_title: %q", payload[0].Record.DisplayTitle)
+	}
+	if payload[0].Record.CurrentCount != 2 || payload[0].Record.TargetCount != 5 {
+		t.Fatalf("unexpected progress counts: current=%d target=%d", payload[0].Record.CurrentCount, payload[0].Record.TargetCount)
+	}
+}
+
+func TestHandleLoopByIDIncludesDisplayTitleAndProgress(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	state := model.State{
+		LoopID:        "loop-detail-progress",
+		State:         model.LoopStateRunning,
+		Attempt:       3,
+		CorrelationID: "corr-detail",
+		SchemaVersion: "v1",
+		UpdatedAt:     time.Now().UTC(),
+	}
+	if _, err := ms.PutState(context.Background(), state, 0); err != nil {
+		t.Fatalf("put state: %v", err)
+	}
+	if err := ms.PutAnomaly(context.Background(), model.Anomaly{
+		ID:         state.LoopID,
+		Title:      "Fallback Title",
+		SourceType: "github_issue",
+		SourceRef:  "callmeradical/smith#123",
+		Policy: model.LoopPolicy{
+			MaxAttempts: 1,
+		},
+		Metadata: map[string]string{
+			"display_title": "Issue #123: Harden completion",
+		},
+		CorrelationID: "corr-detail",
+		SchemaVersion: "v1",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("put anomaly: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/loops/loop-detail-progress", nil)
+	s.handleLoopByID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload api.LoopResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.State.DisplayTitle != "Issue #123: Harden completion" {
+		t.Fatalf("unexpected display_title: %q", payload.State.DisplayTitle)
+	}
+	if payload.State.CurrentCount != 3 || payload.State.TargetCount != 3 {
+		t.Fatalf("unexpected progress counts: current=%d target=%d", payload.State.CurrentCount, payload.State.TargetCount)
+	}
+}
+
 func TestHandleIngressPRDRejectsUnknownProjectMetadata(t *testing.T) {
 	ms := store.NewMemStore()
 	s := newPRDValidationTestServer(ms)

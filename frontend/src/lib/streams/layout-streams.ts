@@ -7,10 +7,16 @@ export function normalizeLoop(item: any) {
   const loopID = record.loop_id || record.LoopID || item.loop_id || item.LoopID || 'unknown-loop';
   const status = (record.state || record.State || 'unknown').toLowerCase();
   const attempt = Number(record.attempt || record.Attempt || 0);
+  const currentCount = Number(record.current_count || record.CurrentCount || attempt || 0);
+  const targetCount = Number(record.target_count || record.TargetCount || currentCount || 1);
+  const displayTitle = record.display_title || record.DisplayTitle || record.title || record.Title || loopID;
   const reason = record.reason || record.Reason || '';
   const revision = Number(item.revision || item.Revision || record.observed_revision || 0);
   return {
     loopID,
+    displayTitle,
+    currentCount,
+    targetCount,
     project: record.project_id || record.project || record.project_name || 'default',
     status,
     attempt,

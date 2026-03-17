@@ -683,7 +683,22 @@ func (s *server) handleLoops(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, states)
+		payload := make([]api.LoopWithRevision, 0, len(states))
+		for _, loop := range states {
+			apiState := modelToApiState(loop.Record)
+			anomaly, found, getErr := s.store.GetAnomaly(r.Context(), loop.Record.LoopID)
+			if getErr != nil {
+				writeErr(w, http.StatusInternalServerError, getErr.Error())
+				return
+			}
+			if found {
+				enrichLoopStateForPresentation(&apiState, &anomaly)
+			} else {
+				enrichLoopStateForPresentation(&apiState, nil)
+			}
+			payload = append(payload, api.LoopWithRevision{Record: apiState, Revision: loop.Revision})
+		}
+		writeJSON(w, http.StatusOK, payload)
 	case http.MethodPost:
 		s.handleLoopCreate(w, r)
 	default:
@@ -1229,15 +1244,18 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			apiState := modelToApiState(state.Record)
 			if !anomalyFound {
+				enrichLoopStateForPresentation(&apiState, nil)
 				writeJSON(w, http.StatusOK, api.LoopResponse{
-					State: modelToApiState(state.Record),
+					State: apiState,
 				})
 				return
 			}
+			enrichLoopStateForPresentation(&apiState, &anomaly)
 			env := modelToApiEnvironment(anomaly.Environment)
 			writeJSON(w, http.StatusOK, api.LoopResponse{
-				State:       modelToApiState(state.Record),
+				State:       apiState,
 				Anomaly:     ptr(modelToApiAnomaly(anomaly)),
 				Environment: &env,
 			})
@@ -4996,7 +5014,16 @@ func (s *server) handleLoopStream(w http.ResponseWriter, r *http.Request) {
 	states, err := s.store.ListStates(r.Context())
 	if err == nil {
 		for _, loop := range states {
-			_ = send("update", loop)
+			apiState := modelToApiState(loop.Record)
+			anomaly, found, getErr := s.store.GetAnomaly(r.Context(), loop.Record.LoopID)
+			if getErr == nil {
+				if found {
+					enrichLoopStateForPresentation(&apiState, &anomaly)
+				} else {
+					enrichLoopStateForPresentation(&apiState, nil)
+				}
+			}
+			_ = send("update", api.LoopWithRevision{Record: apiState, Revision: loop.Revision})
 		}
 	}
 
@@ -5011,10 +5038,16 @@ func (s *server) handleLoopStream(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if ev.HasState {
-				_ = send("update", store.LoopWithRevision{
-					Record:   ev.State,
-					Revision: ev.Revision,
-				})
+				apiState := modelToApiState(ev.State)
+				anomaly, found, err := s.store.GetAnomaly(r.Context(), ev.State.LoopID)
+				if err == nil {
+					if found {
+						enrichLoopStateForPresentation(&apiState, &anomaly)
+					} else {
+						enrichLoopStateForPresentation(&apiState, nil)
+					}
+				}
+				_ = send("update", api.LoopWithRevision{Record: apiState, Revision: ev.Revision})
 			}
 		}
 	}
@@ -5237,6 +5270,61 @@ func modelToApiState(in model.State) api.State {
 		CorrelationID:    in.CorrelationID,
 		SchemaVersion:    in.SchemaVersion,
 	}
+}
+
+func enrichLoopStateForPresentation(state *api.State, anomaly *model.Anomaly) {
+	if state == nil {
+		return
+	}
+	maxAttempts := 0
+	if anomaly != nil {
+		maxAttempts = anomaly.Policy.MaxAttempts
+	}
+	state.CurrentCount, state.TargetCount = deriveLoopProgressCounts(state.Attempt, maxAttempts)
+	state.DisplayTitle = deriveLoopDisplayTitle(state.LoopID, anomaly)
+}
+
+func deriveLoopProgressCounts(attempt, maxAttempts int) (int, int) {
+	current := attempt
+	if current < 0 {
+		current = 0
+	}
+	target := maxAttempts
+	if target < 0 {
+		target = 0
+	}
+	if target == 0 {
+		if current == 0 {
+			target = 1
+		} else {
+			target = current
+		}
+	}
+	if current > target {
+		target = current
+	}
+	return current, target
+}
+
+func deriveLoopDisplayTitle(loopID string, anomaly *model.Anomaly) string {
+	if anomaly == nil {
+		return strings.TrimSpace(loopID)
+	}
+	if title := strings.TrimSpace(anomaly.Metadata["display_title"]); title != "" {
+		return title
+	}
+	storyID := strings.TrimSpace(anomaly.Metadata["prd_story_id"])
+	title := strings.TrimSpace(anomaly.Title)
+	if storyID != "" && title != "" {
+		return storyID + ": " + title
+	}
+	if title != "" {
+		return title
+	}
+	if sourceRef := strings.TrimSpace(anomaly.SourceRef); sourceRef != "" {
+		return sourceRef
+	}
+	return strings.TrimSpace(loopID)
 }
 
 func modelToApiAnomaly(in model.Anomaly) api.Anomaly {

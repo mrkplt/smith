@@ -34,12 +34,16 @@
   <Card class="bg-slate-900/40 border-gray-800 hover:border-cyan-500/50 transition-all cursor-pointer h-full backdrop-blur-sm p-4 {selected ? 'ring-1 ring-cyan-500 border-cyan-500' : ''}">
     <div class="flex flex-col h-full gap-3">
       <div class="flex justify-between items-start gap-2">
-        <div class="truncate text-sm font-mono font-bold text-gray-200 group-hover:text-cyan-400 transition-colors" title={loop.loopID}>
-          {loop.loopID}
+        <div class="truncate text-sm font-mono font-bold text-gray-200 group-hover:text-cyan-400 transition-colors" title={loop.displayTitle || loop.loopID}>
+          {loop.displayTitle || loop.loopID}
         </div>
         <Badge color="gray" rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">
           {loop.status}
         </Badge>
+      </div>
+
+      <div class="truncate text-[10px] font-mono text-gray-500" title={loop.loopID}>
+        {loop.loopID}
       </div>
 
       <div class="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -53,7 +57,7 @@
 
       <div class="mt-auto pt-3 border-t border-gray-800/50 flex justify-between items-center text-[10px] font-mono text-gray-500">
         <div class="flex gap-3">
-          <span>ATT <span class="text-gray-300 font-bold">{loop.attempt}</span></span>
+          <span>PROG <span class="text-gray-300 font-bold">{loop.currentCount || loop.attempt || 0}/{loop.targetCount || loop.attempt || 1}</span></span>
           <span>REV <span class="text-gray-300 font-bold">{loop.revision}</span></span>
         </div>
         <div class="opacity-0 group-hover:opacity-100 transition-opacity text-cyan-500 font-bold">

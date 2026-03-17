@@ -38,7 +38,8 @@
 				stateFilter === "all" ||
 				(stateFilter === "active" && (loop.status === "unresolved" || loop.status === "running")) ||
 				loop.status === stateFilter;
-			const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(searchQuery.toLowerCase());
+			const query = searchQuery.toLowerCase();
+			const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(query) || String(loop.displayTitle || '').toLowerCase().includes(query);
 			return matchesState && matchesSearch;
 		})
 	);
@@ -67,7 +68,17 @@
 
 <section class="tiles-shell px-4">
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" role="list">
-    {#if $appState.projects.length === 0}
+    {#if $appState.onboardingChecked && !$appState.onboardingReady}
+      <div class="col-span-full py-12">
+        <EmptyState
+          title="Setup Required"
+          description="This dashboard is gated until onboarding is complete. Configure a provider first, then add a project repository."
+          buttonText="Open Onboarding"
+          buttonHref="/onboarding"
+          icon="🧭"
+        />
+      </div>
+    {:else if $appState.projects.length === 0}
       <div class="col-span-full py-12">
         <EmptyState 
           title="Welcome to SMITH" 

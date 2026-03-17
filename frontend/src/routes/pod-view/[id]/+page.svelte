@@ -88,7 +88,10 @@
 			const state = response?.state || {};
 			const status = String(state.state || state.State || 'unknown').toLowerCase();
 			const reason = String(state.reason || state.Reason || '');
+			const displayTitle = String(state.display_title || state.DisplayTitle || id || '');
 			const attempt = Number(state.attempt || state.Attempt || 0);
+			const currentCount = Number(state.current_count || state.CurrentCount || attempt || 0);
+			const targetCount = Number(state.target_count || state.TargetCount || currentCount || 1);
 			const revision = Number(state.observed_revision || state.ObservedRevision || 0);
 			loopState = status;
 			loopReason = reason;
@@ -97,6 +100,9 @@
 				const idx = loops.findIndex((loop: any) => loop.loopID === id);
 				const normalized = {
 					loopID: id,
+					displayTitle,
+					currentCount,
+					targetCount,
 					project: loops[idx]?.project || 'default',
 					status,
 					attempt,
