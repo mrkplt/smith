@@ -111,6 +111,8 @@ Status keys:
 - `docs/adrs/0015-local-ci-parity-via-act.md` - `archival-design-record`
 - `docs/adrs/0016-prd-readiness-as-ingress-gate.md` - `archival-design-record`
 - `docs/adrs/0017-standardize-ci-runtimes-and-docs-build-path.md` - `archival-design-record`
+- `docs/adrs/0018-daemon-retention-cleanup-controller.md` - `archival-design-record`
+- `docs/adrs/0019-task-contract-gated-loop-execution.md` - `archival-design-record`
 
 ### Examples
 

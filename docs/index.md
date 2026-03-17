@@ -58,6 +58,8 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [ADR 0015 - Local CI Parity via act](adrs/0015-local-ci-parity-via-act.md)
 - [ADR 0016 - PRD Readiness as Ingress Gate](adrs/0016-prd-readiness-as-ingress-gate.md)
 - [ADR 0017 - Standardize CI Runtimes and Docs Build Path](adrs/0017-standardize-ci-runtimes-and-docs-build-path.md)
+- [ADR 0018 - Retention Cleanup via smith-daemon with ConfigMap Policy Reload](adrs/0018-daemon-retention-cleanup-controller.md)
+- [ADR 0019 - Task-Contract-Gated Loop Execution and Status Synchronization](adrs/0019-task-contract-gated-loop-execution.md)
 - [etcd Key Schema](etcd-key-schema.md)
 - [Reconciliation Loop](reconciliation-loop.md)
 - [Completion Commit Protocol](completion-commit-protocol.md)
