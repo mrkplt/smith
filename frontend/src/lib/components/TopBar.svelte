@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
+  import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
-  import { BarsOutline, GridOutline, FileLinesOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
+  import { BarsOutline, MessagesOutline } from 'flowbite-svelte-icons';
+  import { shellPrimaryNav } from '$lib/navigation';
 
 	import type { Snippet } from 'svelte';
 
@@ -13,14 +15,8 @@
 	}
 
 	let { title, controls }: Props = $props();
-
-	const navItems = [
-		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
-		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
-		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
-	];
-
   const currentPath = $derived(page.url.pathname);
+  const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
 
   function openOperatorChat() {
     if (typeof window !== 'undefined' && window.localStorage.getItem('smith.chat.preferFullScreen') === 'true') {
@@ -61,7 +57,8 @@
   </div>
 
   <NavUl class="hidden lg:flex lg:gap-1" ulClass="flex flex-row space-x-1 mt-0 bg-transparent border-0">
-    {#each navItems as item}
+    {#each shellPrimaryNav as item}
+      {#if String(item.id) !== 'feature-capability' || canAccessFeatureCapability}
       {@const active = currentPath.startsWith(item.href)}
       <NavLi 
         href={item.href} 
@@ -74,6 +71,7 @@
           {item.label}
         </div>
       </NavLi>
+      {/if}
     {:else}
       <!-- no items -->
     {/each}

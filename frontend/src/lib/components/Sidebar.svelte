@@ -1,16 +1,13 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
+	import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
   import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
-  import { GridOutline, FileLinesOutline, CloseOutline, MessagesOutline, AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
+  import { CloseOutline, MessagesOutline } from 'flowbite-svelte-icons';
   import { sineIn } from 'svelte/easing';
-
-	const navItems = [
-		{ id: 'pods', label: 'Pods', href: '/pods', icon: GridOutline },
-		{ id: 'documents', label: 'Documents', href: '/documents', icon: FileLinesOutline },
-		{ id: 'settings', label: 'Settings', href: '/settings', icon: AdjustmentsHorizontalOutline }
-	];
+  import { shellConfigurationNav, shellRuntimeNav } from '$lib/navigation';
+  const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
 
   let transitionParams = {
     x: -320,
@@ -45,7 +42,7 @@
         <span class="text-2xl font-bold tracking-tighter text-white uppercase font-sans">SMITH</span>
       </div>
       <button 
-        class="text-gray-500 hover:text-white transition-colors"
+        class="text-gray-500 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86BC25]/70"
         onclick={() => sidebarOpen.set(false)}
         aria-label="Close Sidebar"
       >
@@ -55,13 +52,15 @@
     
     <div class="px-0 flex-1">
       <SidebarGroup>
-        {#each navItems as item}
+        <div class="px-6 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Runtime</div>
+        {#each shellRuntimeNav as item}
+          {#if String(item.id) !== 'feature-capability' || canAccessFeatureCapability}
           {@const active = currentPath.startsWith(item.href)}
-          <SidebarItem 
-            href={item.href} 
+          <SidebarItem
+            href={item.href}
             {active}
             onclick={() => sidebarOpen.set(false)}
-            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent {active ? 'border-[#86BC25] text-white bg-white/5' : ''}"
+            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86BC25]/70 {active ? 'border-[#86BC25] text-white bg-white/5' : ''}"
           >
             {#snippet icon()}
               <div class="flex items-center gap-3">
@@ -70,11 +69,33 @@
               </div>
             {/snippet}
           </SidebarItem>
+          {/if}
         {/each}
 
-        <SidebarItem 
+        <div class="px-6 pt-5 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Configuration</div>
+        {#each shellConfigurationNav as item}
+          {#if String(item.id) !== 'feature-capability' || canAccessFeatureCapability}
+          {@const active = currentPath.startsWith(item.href)}
+          <SidebarItem
+            href={item.href}
+            {active}
+            onclick={() => sidebarOpen.set(false)}
+            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86BC25]/70 {active ? 'border-[#86BC25] text-white bg-white/5' : ''}"
+          >
+            {#snippet icon()}
+              <div class="flex items-center gap-3">
+                <item.icon size="sm" class="transition duration-75 group-hover:text-[#86BC25] {active ? 'text-[#86BC25]' : ''}" />
+                <span class="font-bold uppercase tracking-tight text-sm">{item.label}</span>
+              </div>
+            {/snippet}
+          </SidebarItem>
+          {/if}
+        {/each}
+
+        <div class="px-6 pt-5 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Preferences</div>
+        <SidebarItem
           onclick={openOperatorChat}
-          class="group text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent"
+          class="group text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70"
         >
           {#snippet icon()}
             <div class="flex items-center gap-3">
