@@ -931,6 +931,64 @@ func TestShouldUseInteractivePRDGate(t *testing.T) {
 	}
 }
 
+func TestShouldPrimeCodexLogin(t *testing.T) {
+	if !shouldPrimeCodexLogin(loopExecutionConfig{ProviderID: "codex"}) {
+		t.Fatal("expected codex provider to require login prime")
+	}
+	if !shouldPrimeCodexLogin(loopExecutionConfig{ProviderID: "claude", CodexCommand: "codex exec --yolo -"}) {
+		t.Fatal("expected codex command override to require login prime")
+	}
+	if shouldPrimeCodexLogin(loopExecutionConfig{ProviderID: "claude", CodexCommand: "claude -p"}) {
+		t.Fatal("did not expect non-codex provider/command to prime codex login")
+	}
+}
+
+func TestEnsureCodexLoginRunsWhenCredentialPresent(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	ms := store.NewMemStore()
+	runner := &sequenceRunner{results: []runResult{{output: []byte("ok")}}}
+
+	err := ensureCodexLogin(context.Background(), runner, t.TempDir(), loopExecutionConfig{ProviderID: "codex"}, "loop-auth", "corr-auth", ms)
+	if err != nil {
+		t.Fatalf("ensureCodexLogin: %v", err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected one login command call, got %#v", runner.calls)
+	}
+	if runner.calls[0].name != "sh" || len(runner.calls[0].args) < 2 || runner.calls[0].args[0] != "-lc" || !strings.Contains(runner.calls[0].args[1], "codex login --with-api-key") {
+		t.Fatalf("unexpected login command call: %#v", runner.calls[0])
+	}
+}
+
+func TestEnsureCodexLoginSkipsWithoutCredential(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS", "")
+	ms := store.NewMemStore()
+	runner := &sequenceRunner{}
+
+	err := ensureCodexLogin(context.Background(), runner, t.TempDir(), loopExecutionConfig{ProviderID: "codex"}, "loop-auth", "corr-auth", ms)
+	if err != nil {
+		t.Fatalf("ensureCodexLogin: %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no command calls when credential missing, got %#v", runner.calls)
+	}
+}
+
+func TestEnsureCodexLoginReturnsErrorOnFailure(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	ms := store.NewMemStore()
+	runner := &sequenceRunner{results: []runResult{{output: []byte("boom"), err: errors.New("exit status 1")}}}
+
+	err := ensureCodexLogin(context.Background(), runner, t.TempDir(), loopExecutionConfig{ProviderID: "codex"}, "loop-auth", "corr-auth", ms)
+	if err == nil {
+		t.Fatal("expected codex login failure")
+	}
+	if !strings.Contains(err.Error(), "codex login failed") {
+		t.Fatalf("unexpected login error: %v", err)
+	}
+}
+
 type runResult struct {
 	output []byte
 	err    error

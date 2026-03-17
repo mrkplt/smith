@@ -534,6 +534,9 @@ func runIssueWorkflow(
 			"validation_count": strconv.Itoa(len(validationCommands)),
 		})
 	}
+	if err := ensureCodexLogin(ctx, runner, workspace, cfg, loopID, correlationID, storeClient); err != nil {
+		return model.LoopStateFlatline, "provider-auth-setup-failed", err
+	}
 	prdPath := cfg.PRDPath
 	if anomaly.Metadata != nil {
 		if configured := strings.TrimSpace(anomaly.Metadata["workspace_prd_path"]); configured != "" {
@@ -839,6 +842,38 @@ func shouldUseInteractivePRDGate(cfg loopExecutionConfig, anomaly model.Anomaly)
 		return false
 	}
 	return true
+}
+
+func ensureCodexLogin(
+	ctx context.Context,
+	runner execRunner,
+	workspace string,
+	cfg loopExecutionConfig,
+	loopID, correlationID string,
+	storeClient store.StateStore,
+) error {
+	if !shouldPrimeCodexLogin(cfg) {
+		return nil
+	}
+	if strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) == "" && strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")) == "" {
+		appendWorkflowStep(ctx, storeClient, loopID, correlationID, "auth", "codex login skipped: runtime credential missing", nil)
+		return nil
+	}
+	output, err := runner.Run(ctx, workspace, "sh", "-lc", "if [ -z \"$OPENAI_API_KEY\" ]; then export OPENAI_API_KEY=\"$SMITH_RUNTIME_CREDENTIALS\"; fi; if [ -n \"$OPENAI_API_KEY\" ]; then printf '%s' \"$OPENAI_API_KEY\" | codex login --with-api-key; fi")
+	if err != nil {
+		return formatCommandError("codex login failed", output, err)
+	}
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "auth", "codex login prepared", nil)
+	return nil
+}
+
+func shouldPrimeCodexLogin(cfg loopExecutionConfig) bool {
+	provider := strings.ToLower(strings.TrimSpace(cfg.ProviderID))
+	if provider == "codex" {
+		return true
+	}
+	command := strings.ToLower(strings.TrimSpace(cfg.CodexCommand))
+	return strings.HasPrefix(command, "codex ") || command == "codex"
 }
 
 type prdProgress struct {
