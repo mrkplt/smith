@@ -76,3 +76,23 @@ func TestCodexAdapterLifecycle(t *testing.T) {
 		t.Fatalf("close session failed: %v", err)
 	}
 }
+
+func TestDefaultRegistryResolvesClaudeAndGemini(t *testing.T) {
+	registry := NewDefaultRegistry()
+
+	claudeSelection, err := registry.Resolve(ProviderClaude, "")
+	if err != nil {
+		t.Fatalf("resolve claude failed: %v", err)
+	}
+	if claudeSelection.Model != DefaultClaudeModel {
+		t.Fatalf("expected claude model %q, got %q", DefaultClaudeModel, claudeSelection.Model)
+	}
+
+	geminiSelection, err := registry.Resolve(ProviderGemini, "")
+	if err != nil {
+		t.Fatalf("resolve gemini failed: %v", err)
+	}
+	if geminiSelection.Model != DefaultGeminiModel {
+		t.Fatalf("expected gemini model %q, got %q", DefaultGeminiModel, geminiSelection.Model)
+	}
+}

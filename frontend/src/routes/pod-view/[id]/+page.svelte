@@ -6,7 +6,7 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import Journal from '$lib/components/Journal.svelte';
 	import { goto } from '$app/navigation';
-  import { Button, Input } from 'flowbite-svelte';
+  import { Badge, Button, Input } from 'flowbite-svelte';
   import { ArrowLeftOutline, TrashBinOutline, TerminalOutline } from 'flowbite-svelte-icons';
 
 	const id = $derived(page.params.id);
@@ -23,9 +23,41 @@
 	const terminalActor = 'operator';
 	const terminalName = 'console-pods';
 
-	const canPause = $derived(loopState === 'running' || loopState === 'unresolved');
-	const canResume = $derived(loopState === 'unresolved' || loopState === 'running');
-	const canCancel = $derived(loopState !== 'flatline' && loopState !== 'synced');
+	const isRunning = $derived(loopState === 'running');
+	const isUnresolved = $derived(loopState === 'unresolved');
+	const isTerminal = $derived(loopState === 'synced' || loopState === 'flatline' || loopState === 'cancelled');
+	const lifecycle = $derived.by(() => {
+		if (loopState === 'running') {
+			return { label: 'active', color: 'green' as const };
+		}
+		if (loopState === 'unresolved') {
+			return { label: 'paused', color: 'yellow' as const };
+		}
+		if (loopState === 'synced' || loopState === 'flatline' || loopState === 'cancelled') {
+			return { label: 'terminal', color: 'gray' as const };
+		}
+		return { label: 'unknown', color: 'gray' as const };
+	});
+	const stateColor = $derived.by(() => {
+		switch (loopState) {
+			case 'running':
+				return 'green' as const;
+			case 'unresolved':
+				return 'yellow' as const;
+			case 'synced':
+				return 'blue' as const;
+			case 'flatline':
+				return 'red' as const;
+			case 'cancelled':
+				return 'gray' as const;
+			default:
+				return 'gray' as const;
+		}
+	});
+	const canPause = $derived(isRunning);
+	const canResume = $derived(isUnresolved);
+	const canCancel = $derived(isRunning || isUnresolved);
+	const canTerminate = $derived(isRunning);
 
 	onMount(async () => {
 		await refreshLoop();
@@ -148,6 +180,10 @@
 	}
 
 	async function terminate() {
+		if (!canTerminate) {
+			pushToast('Terminate is only available for running pods', 'muted');
+			return;
+		}
 		if (!confirm("Force terminate this loop? (State will be set to flatline)")) return;
 		busy = true;
 		try {
@@ -167,6 +203,10 @@
 	}
 
 	async function cancel() {
+		if (!canCancel) {
+			pushToast('Cancel is only available for active pods', 'muted');
+			return;
+		}
 		if (!confirm("Cancel this loop?")) return;
 		busy = true;
 		try {
@@ -181,6 +221,10 @@
 	}
 
 	async function pause() {
+		if (!canPause) {
+			pushToast('Pause is only available for running pods', 'muted');
+			return;
+		}
 		busy = true;
 		try {
 			await pauseLoop(id, { actor: 'operator', reason: 'paused via console' });
@@ -194,6 +238,10 @@
 	}
 
 	async function resume() {
+		if (!canResume) {
+			pushToast('Resume is only available for unresolved pods', 'muted');
+			return;
+		}
 		busy = true;
 		try {
 			await resumeLoop(id, { actor: 'operator', reason: 'resumed via console' });
@@ -225,46 +273,58 @@
 			busy = false;
 		}
 	}
+
 </script>
 
 <TopBar title={`Pod: ${id}`} />
 
-<div class="px-4 -mt-6 mb-6">
-	<div class="bg-black border border-gray-800 rounded-none px-3 py-2 flex items-center justify-between gap-3">
-		<div class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest">
+<div class="px-4 mb-6 space-y-3">
+	<div class="bg-black border border-gray-800 rounded-none px-3 py-2 flex flex-wrap items-center justify-between gap-3">
+		<div class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-widest">
 			<span class="text-gray-500">State</span>
-			<span class="text-[#86BC25]">{loopState}</span>
+			<Badge color={stateColor} rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">{loopState}</Badge>
+			<span class="text-gray-500">Lifecycle</span>
+			<Badge color={lifecycle.color} rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">{lifecycle.label}</Badge>
 			<span class="text-gray-500">Terminal</span>
 			<span class={terminalAttached ? 'text-[#86BC25]' : 'text-amber-400'}>{terminalAttached ? 'attached' : 'detached'}</span>
 			{#if loopReason}
-				<span class="text-gray-500 normal-case tracking-normal font-mono text-[10px]">{loopReason}</span>
+				<span class="text-gray-500 normal-case tracking-normal font-mono text-[10px] break-all">{loopReason}</span>
 			{/if}
 		</div>
     <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={refreshLoop} disabled={busy}>
       Refresh
     </Button>
   </div>
-</div>
 
-<!-- Inline Actions Header -->
-<div class="flex justify-end gap-2 -mt-14 mb-8 relative z-50 px-4">
-  <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={() => goto('/pods')}>
-    <ArrowLeftOutline size="xs" class="mr-1.5" />
-    Back
-  </Button>
-  <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={cancel} disabled={busy || !canCancel}>
-    Cancel
-  </Button>
-  <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={pause} disabled={busy || !canPause}>
-    Pause
-  </Button>
-  <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={resume} disabled={busy || !canResume}>
-    Resume
-  </Button>
-  <Button color="red" class="rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 border-none" onclick={terminate} disabled={busy}>
-    <TrashBinOutline size="xs" class="mr-1.5" />
-    Terminate
-  </Button>
+	<div class="bg-black border border-gray-800 rounded-none px-3 py-2 flex flex-wrap items-center justify-between gap-3">
+		<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={() => goto('/pods')}>
+			<ArrowLeftOutline size="xs" class="mr-1.5" />
+			Back
+		</Button>
+		<div class="flex flex-wrap items-center justify-end gap-2">
+			{#if canPause}
+				<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={pause} disabled={busy}>
+					Pause
+				</Button>
+			{/if}
+			{#if canResume}
+				<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={resume} disabled={busy}>
+					Resume
+				</Button>
+			{/if}
+			{#if canCancel}
+				<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={cancel} disabled={busy}>
+					Cancel
+				</Button>
+			{/if}
+			{#if canTerminate}
+				<Button color="red" class="rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 border-none" onclick={terminate} disabled={busy}>
+					<TrashBinOutline size="xs" class="mr-1.5" />
+					Terminate
+				</Button>
+			{/if}
+		</div>
+	</div>
 </div>
 
 <div class="px-4">

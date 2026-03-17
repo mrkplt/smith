@@ -13,6 +13,13 @@ If `make doctor` fails, follow the remediation lines printed in output.
 
 ## 2. Start Local Cluster and Deploy Smith
 
+Set local runtime credentials in your shell (kept out of tracked values files):
+
+```bash
+export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
+export SMITH_LOCAL_RUNTIME_CREDENTIALS="<runtime-credential>"
+```
+
 ```bash
 make cluster-up
 make cluster-health

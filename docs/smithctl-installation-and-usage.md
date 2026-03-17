@@ -60,6 +60,48 @@ In the future, pre-built binaries for various platforms (Linux, macOS, Windows) 
 
 ### Commands
 
+Provider/project onboarding sequence:
+
+1. Configure provider profiles first
+2. Configure projects that bind to those provider profiles
+3. Start/create loops
+
+#### Managing Provider Profiles
+
+- **List provider profiles:**
+  ```bash
+  smithctl provider list
+  ```
+
+- **Add a provider profile:**
+  ```bash
+  smithctl provider add --id codex-default --type codex --default-model gpt-5-codex
+  ```
+
+- **Configure an existing provider profile:**
+  ```bash
+  smithctl provider configure codex-default --secret-ref openai-key
+  ```
+
+Supported provider types: `codex`, `claude`, `gemini`.
+
+#### Managing Projects
+
+- **List projects:**
+  ```bash
+  smithctl project list
+  ```
+
+- **Add a project:**
+  ```bash
+  smithctl project add --id smith --repo-url https://github.com/acme/smith --provider-profile-id codex-default
+  ```
+
+- **Configure an existing project:**
+  ```bash
+  smithctl project configure smith --github-user octocat
+  ```
+
 #### Managing Loops
 
 - **List loops:**

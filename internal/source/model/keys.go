@@ -11,6 +11,7 @@ const (
 	PrefixOverrides = "/smith/v1/overrides"
 	PrefixAudit     = "/smith/v1/audit"
 	PrefixDocuments = "/smith/v1/documents"
+	PrefixTasks     = "/smith/v1/tasks"
 )
 
 func AnomalyKey(loopID string) string {
@@ -23,6 +24,10 @@ func StateKey(loopID string) string {
 
 func DocumentKey(documentID string) string {
 	return fmt.Sprintf("%s/%s", PrefixDocuments, documentID)
+}
+
+func TaskContractKey(taskID string) string {
+	return fmt.Sprintf("%s/%s", PrefixTasks, taskID)
 }
 
 func JournalPrefix(loopID string) string {

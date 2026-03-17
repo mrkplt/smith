@@ -264,6 +264,71 @@ func TestHandleLoopByIDIncludesDisplayTitleAndProgress(t *testing.T) {
 	}
 }
 
+func TestHandleLoopCleanupByStateSelector(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	now := time.Now().UTC()
+	_, _ = ms.PutState(context.Background(), model.State{LoopID: "loop-flatline", State: model.LoopStateFlatline, CorrelationID: "corr-flatline", SchemaVersion: "v1", UpdatedAt: now}, 0)
+	_, _ = ms.PutState(context.Background(), model.State{LoopID: "loop-synced", State: model.LoopStateSynced, CorrelationID: "corr-synced", SchemaVersion: "v1", UpdatedAt: now}, 0)
+	_, _ = ms.PutState(context.Background(), model.State{LoopID: "loop-running", State: model.LoopStateRunning, CorrelationID: "corr-running", SchemaVersion: "v1", UpdatedAt: now}, 0)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/cleanup", strings.NewReader(`{"actor":"alice","states":["flatline","synced"]}`))
+	s.handleLoopCleanup(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload api.LoopCleanupResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&payload))
+
+	assert.Equal(t, "alice", payload.Actor)
+	assert.Equal(t, 2, payload.MatchedCount)
+	assert.Equal(t, 2, payload.DeletedCount)
+	assert.ElementsMatch(t, []string{"loop-flatline", "loop-synced"}, payload.Deleted)
+	assert.Empty(t, payload.SkippedActive)
+
+	_, foundFlatline, err := ms.GetState(context.Background(), "loop-flatline")
+	require.NoError(t, err)
+	assert.False(t, foundFlatline)
+	_, foundSynced, err := ms.GetState(context.Background(), "loop-synced")
+	require.NoError(t, err)
+	assert.False(t, foundSynced)
+	_, foundRunning, err := ms.GetState(context.Background(), "loop-running")
+	require.NoError(t, err)
+	assert.True(t, foundRunning)
+}
+
+func TestHandleLoopCleanupByLoopIDsReportsSkippedAndMissing(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	now := time.Now().UTC()
+	_, _ = ms.PutState(context.Background(), model.State{LoopID: "loop-flatline", State: model.LoopStateFlatline, CorrelationID: "corr-flatline", SchemaVersion: "v1", UpdatedAt: now}, 0)
+	_, _ = ms.PutState(context.Background(), model.State{LoopID: "loop-running", State: model.LoopStateRunning, CorrelationID: "corr-running", SchemaVersion: "v1", UpdatedAt: now}, 0)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops/cleanup", strings.NewReader(`{"loop_ids":["loop-flatline","loop-running","loop-missing"]}`))
+	s.handleLoopCleanup(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload api.LoopCleanupResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&payload))
+
+	assert.Equal(t, "operator", payload.Actor)
+	assert.Equal(t, 2, payload.MatchedCount)
+	assert.Equal(t, 1, payload.DeletedCount)
+	assert.Equal(t, []string{"loop-flatline"}, payload.Deleted)
+	assert.Equal(t, []string{"loop-running"}, payload.SkippedActive)
+	assert.Equal(t, []string{"loop-missing"}, payload.NotFound)
+
+	_, foundFlatline, err := ms.GetState(context.Background(), "loop-flatline")
+	require.NoError(t, err)
+	assert.False(t, foundFlatline)
+	_, foundRunning, err := ms.GetState(context.Background(), "loop-running")
+	require.NoError(t, err)
+	assert.True(t, foundRunning)
+}
+
 func TestHandleIngressPRDRejectsUnknownProjectMetadata(t *testing.T) {
 	ms := store.NewMemStore()
 	s := newPRDValidationTestServer(ms)

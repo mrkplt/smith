@@ -168,7 +168,7 @@ if check_command helm "Helm is available for render/install validation"; then
     fail "Chart renders with default values"
   fi
 
-  run_check "Chart renders with local overlay" helm template smith helm/smith -f helm/smith/values/local.yaml
+  run_check "Chart renders with local overlay" helm template smith helm/smith -f helm/smith/values/local.yaml --set-string secrets.managed.gitPat=test-git-pat --set-string secrets.managed.runtimeCredentials=test-runtime-creds
   run_check "Chart renders with stage overlay" helm template smith helm/smith -f helm/smith/values/stage.yaml
   run_check "Chart renders with prod overlay" helm template smith helm/smith -f helm/smith/values/prod.yaml
 fi
@@ -337,13 +337,31 @@ expect_rg "loop detach" "cmd/smithctl/main.go" "smithctl exposes loop detach com
 expect_rg "loop command" "cmd/smithctl/main.go" "smithctl exposes loop command command"
 
 section "td-5842f1 | operator console provider auth management"
-expect_rg "OpenAI Codex" "frontend/src/routes/providers/+page.svelte" "Console renders provider auth panel"
+expect_rg "Credential Status|provider-codex-revoke" "frontend/src/lib/components/ProviderEditorDrawer.svelte" "Console renders provider auth panel"
 expect_rg "/v1/auth/codex/connect/api-key" "frontend/src/lib/components/ProviderEditorDrawer.svelte" "Console calls codex auth connect API key endpoint"
 expect_rg "if !s.authorized\\(r\\)" "cmd/smith-api/main.go" "Auth endpoints enforce operator authorization"
 expect_rg "auth-" "cmd/smith-api/main.go" "Auth events are bridged into audit records"
 expect_rg "type AuthStatus struct" "internal/source/provider/auth.go" "Provider auth status model includes metadata surface"
 expect_rg "LastRefreshAt" "internal/source/provider/auth.go" "Provider status includes refresh metadata"
 expect_rg "TestAuthManagerConnectStatusRefreshDisconnect" "internal/source/provider/auth_test.go" "Provider auth lifecycle test covers status metadata"
+
+section "td-869f66 | Git credential configuration (PAT) in onboarding/settings"
+expect_rg "projects/credentials/github" "frontend/src/lib/components/ProjectEditorDrawer.svelte" "Settings exposes Git credential entry fields"
+expect_rg "projects/credentials/github/test" "frontend/src/lib/components/ProjectEditorDrawer.svelte" "Settings exposes repository connection test action"
+expect_rg "handleProjectGitHubCredentialTest" "cmd/smith-api/main.go" "API exposes project credential connection test endpoint"
+expect_rg "test-project-credential" "cmd/smith-api/main.go" "Credential connection tests emit audit records"
+expect_rg "update-project-credential|delete-project-credential" "cmd/smith-api/main.go" "Credential updates and revocations emit audit records"
+expect_rg "credential_masked" "cmd/smith-api/main.go" "Credential APIs return masked values"
+
+section "td-acc4ec | stabilize local chat provider and credential config"
+expect_rg "SMITH_LOCAL_GIT_PAT" "Makefile" "Local deploy requires explicit Git PAT input"
+expect_rg "SMITH_LOCAL_RUNTIME_CREDENTIALS" "Makefile" "Local deploy requires explicit runtime credential input"
+expect_rg "required \"set secrets.managed.gitPat before deploy\"" "helm/smith/templates/runtime-secret.yaml" "Helm template enforces explicit Git PAT value"
+expect_rg "required \"set secrets.managed.runtimeCredentials before deploy\"" "helm/smith/templates/runtime-secret.yaml" "Helm template enforces explicit runtime credential value"
+expect_rg "chat.goose.provider" "docs/local-integration-environment.md" "Docs cover chat provider Helm override"
+expect_rg "Settings -> Chat" "docs/local-integration-environment.md" "Docs reference console chat provider/model settings surface"
+expect_rg "Provider Profile" "frontend/src/routes/settings/+page.svelte" "Console exposes chat provider profile selector"
+expect_rg "Default Model" "frontend/src/routes/settings/+page.svelte" "Console exposes chat model selection surface"
 
 section "td-c7e14a | Dockerfile-based loop image build path"
 expect_rg "SMITH_DOCKERFILE_BUILD_ENABLED" "cmd/smith-core/main.go" "Core supports dockerfile build feature flag"
@@ -358,6 +376,30 @@ expect_rg "--env-image-ref" "cmd/smithctl/main.go" "smithctl exposes environment
 expect_rg "--env-docker-context" "cmd/smithctl/main.go" "smithctl exposes environment docker context flag"
 expect_rg "buildEnvironmentPayload" "cmd/smithctl/main.go" "smithctl validates and builds environment payload"
 expect_rg "environment source conflict" "cmd/smithctl/main.go" "smithctl rejects conflicting environment modes"
+
+section "td-2558d6 | smithctl provider/project setup commands"
+expect_rg "case \"provider\"" "cmd/smithctl/main.go" "smithctl exposes provider resource"
+expect_rg "case \"project\"" "cmd/smithctl/main.go" "smithctl exposes project resource"
+expect_rg "Commands: list, add, configure" "cmd/smithctl/main.go" "smithctl provider/project commands include list/add/configure"
+expect_rg "codex\|claude\|gemini" "cmd/smithctl/main.go" "smithctl provider commands support codex/claude/gemini"
+expect_rg "Configure provider first" "cmd/smithctl/main.go" "smithctl help documents provider-before-project ordering"
+expect_rg "\"status\":\s+\"ok\"|\"status\":\s+\"error\"" "cmd/smithctl/main.go" "smithctl command outputs include machine-readable status envelope"
+
+section "td-98b5f7 | provider-first onboarding flow in smithctl"
+expect_rg "ensureProviderFirstOnboarding" "cmd/smithctl/main.go" "smithctl enforces provider-first onboarding precheck"
+expect_rg "/v1/onboarding/readiness" "cmd/smithctl/main.go" "smithctl checks API onboarding readiness contract"
+expect_rg "provider_catalog" "cmd/smithctl/main.go" "smithctl gates project/loop workflows on provider catalog readiness"
+expect_rg "smithctl provider add --id codex-default --type codex" "cmd/smithctl/main.go" "smithctl prints actionable provider setup suggestion"
+expect_rg "TestProjectAddEnforcesProviderFirstOnboarding" "cmd/smithctl/main_test.go" "smithctl project provider-first enforcement test exists"
+expect_rg "TestLoopCreateEnforcesProviderFirstOnboarding" "cmd/smithctl/main_test.go" "smithctl loop provider-first enforcement test exists"
+
+section "td-7be244 | first-run onboarding flow for repository setup"
+expect_file "frontend/src/routes/onboarding/+page.svelte" "Console onboarding route exists"
+expect_rg "onboarding/readiness" "frontend/src/routes/+page.svelte" "First launch checks onboarding readiness"
+expect_rg "goto\('/onboarding'" "frontend/src/routes/+page.svelte" "First launch routes to onboarding when incomplete"
+expect_rg "onboardingReady" "frontend/src/routes/+layout.svelte" "Layout gates runtime surfaces until onboarding completion"
+expect_rg "disabled=\{!providerReady\}" "frontend/src/routes/onboarding/+page.svelte" "Onboarding disables project step until provider setup"
+expect_rg "Setup Required" "frontend/src/routes/pods/+page.svelte" "Main dashboard shows gated/read-only onboarding state"
 
 section "td-c155ab | e2e tests for loop environment modes"
 expect_file "internal/source/e2e/environment_modes_test.go" "Environment modes e2e test exists"

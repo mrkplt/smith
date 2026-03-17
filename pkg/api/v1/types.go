@@ -380,6 +380,21 @@ type LoopDeleteRequest struct {
 	Actor string `json:"actor"`
 }
 
+type LoopCleanupRequest struct {
+	Actor   string      `json:"actor,omitempty"`
+	LoopIDs []string    `json:"loop_ids,omitempty"`
+	States  []LoopState `json:"states,omitempty"`
+}
+
+type LoopCleanupResponse struct {
+	Actor         string   `json:"actor"`
+	MatchedCount  int      `json:"matched_count"`
+	DeletedCount  int      `json:"deleted_count"`
+	Deleted       []string `json:"deleted"`
+	SkippedActive []string `json:"skipped_active,omitempty"`
+	NotFound      []string `json:"not_found,omitempty"`
+}
+
 type LoopLifecycleRequest struct {
 	Actor  string `json:"actor,omitempty"`
 	Reason string `json:"reason,omitempty"`

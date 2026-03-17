@@ -37,6 +37,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
@@ -120,6 +121,8 @@ type terminalDetachRequest = api.TerminalDetachRequest
 type terminalCommandRequest = api.TerminalCommandRequest
 type loopRuntimeResponse = api.LoopRuntimeResponse
 type loopDeleteRequest = api.LoopDeleteRequest
+type loopCleanupRequest = api.LoopCleanupRequest
+type loopCleanupResponse = api.LoopCleanupResponse
 type documentRequest = api.DocumentRequest
 type documentBuildRequest = api.DocumentBuildRequest
 type taskContractCreateRequest = api.TaskContractCreateRequest
@@ -556,8 +559,10 @@ func main() {
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/readyz", s.handleReady)
 	mux.HandleFunc("/api/loops", s.handleLoops)
+	mux.HandleFunc("/api/loops/cleanup", s.handleLoopCleanup)
 	mux.HandleFunc("/api/loops/", s.handleLoopByID)
 	mux.HandleFunc("/v1/loops", s.handleLoops)
+	mux.HandleFunc("/v1/loops/cleanup", s.handleLoopCleanup)
 	mux.HandleFunc("/v1/loops/stream", s.handleLoopStream)
 	mux.HandleFunc("/v1/loops/", s.handleLoopByID)
 	mux.HandleFunc("/v1/environment/presets", s.handleEnvironmentPresets)
@@ -704,6 +709,180 @@ func (s *server) handleLoops(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (s *server) handleLoopCleanup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req loopCleanupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	stateFilter, err := parseLoopCleanupStateFilter(req.States)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	requestedIDs := normalizeUniqueLoopIDs(req.LoopIDs)
+	if len(requestedIDs) == 0 && len(stateFilter) == 0 {
+		writeErr(w, http.StatusBadRequest, "loop_ids or states selector is required")
+		return
+	}
+
+	allStates, err := s.store.ListStates(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	requestSet := make(map[string]struct{}, len(requestedIDs))
+	for _, id := range requestedIDs {
+		requestSet[id] = struct{}{}
+	}
+
+	candidates := make(map[string]model.StateRecord)
+	foundRequested := make(map[string]struct{}, len(requestedIDs))
+	for _, loop := range allStates {
+		record := loop.Record
+		_, requested := requestSet[record.LoopID]
+		_, stateMatched := stateFilter[record.State]
+		if requested || stateMatched {
+			candidates[record.LoopID] = record
+		}
+		if requested {
+			foundRequested[record.LoopID] = struct{}{}
+		}
+	}
+
+	notFound := make([]string, 0)
+	for _, id := range requestedIDs {
+		if _, ok := foundRequested[id]; !ok {
+			notFound = append(notFound, id)
+		}
+	}
+	sort.Strings(notFound)
+
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+
+	matched := make([]string, 0, len(candidates))
+	for id := range candidates {
+		matched = append(matched, id)
+	}
+	sort.Strings(matched)
+
+	deleted := make([]string, 0, len(matched))
+	skippedActive := make([]string, 0)
+	for _, id := range matched {
+		record := candidates[id]
+		if isActiveLoopState(record.State) {
+			skippedActive = append(skippedActive, id)
+			continue
+		}
+		if err := s.store.DeleteLoop(r.Context(), id); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		runtimeCleanup := "skipped"
+		if err := s.cleanupLoopRuntimeArtifacts(r.Context(), record); err != nil {
+			runtimeCleanup = "error"
+		}
+		_ = s.store.AppendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "delete-loop",
+			TargetLoopID:  id,
+			CorrelationID: record.CorrelationID,
+			Metadata: map[string]string{
+				"final_state": string(record.State),
+				"cleanup":     "true",
+				"runtime":     runtimeCleanup,
+			},
+		})
+		deleted = append(deleted, id)
+	}
+
+	writeJSON(w, http.StatusOK, loopCleanupResponse{
+		Actor:         actor,
+		MatchedCount:  len(matched),
+		DeletedCount:  len(deleted),
+		Deleted:       deleted,
+		SkippedActive: skippedActive,
+		NotFound:      notFound,
+	})
+}
+
+func normalizeUniqueLoopIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func parseLoopCleanupStateFilter(states []api.LoopState) (map[model.LoopState]struct{}, error) {
+	if len(states) == 0 {
+		return nil, nil
+	}
+	out := make(map[model.LoopState]struct{}, len(states))
+	for _, raw := range states {
+		value := model.LoopState(strings.ToLower(strings.TrimSpace(string(raw))))
+		switch value {
+		case model.LoopStateUnresolved, model.LoopStateRunning, model.LoopStateSynced, model.LoopStateFlatline, model.LoopStateCancelled:
+			out[value] = struct{}{}
+		default:
+			return nil, fmt.Errorf("invalid loop state selector %q", raw)
+		}
+	}
+	return out, nil
+}
+
+func (s *server) cleanupLoopRuntimeArtifacts(ctx context.Context, record model.StateRecord) error {
+	if s.kube == nil {
+		return nil
+	}
+	jobName := strings.TrimSpace(record.WorkerJobName)
+	if jobName == "" {
+		return nil
+	}
+	namespace := runtimeNamespaceForConfig(s.cfg)
+
+	propagation := metav1.DeletePropagationBackground
+	if err := s.kube.BatchV1().Jobs(namespace).Delete(ctx, jobName, metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil && !k8serrors.IsNotFound(err) {
+		return err
+	}
+	pods, err := s.kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + jobName})
+	if err != nil {
+		return err
+	}
+	for _, pod := range pods.Items {
+		if err := s.kube.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *server) handleLoopCreate(w http.ResponseWriter, r *http.Request) {

@@ -20,6 +20,20 @@ td usage -q
 
 Use `make help` to discover the local workflow entrypoints.
 
+## Cross-Surface Delivery Sequence
+
+For features that span multiple surfaces, implement and review work in this order:
+
+1. API contract and server behavior
+2. CLI parity on top of the API contract
+3. Web UI surface on top of API + CLI behavior
+
+When creating `td` work items for cross-surface features:
+
+- encode API -> CLI -> UI ordering with explicit issue dependencies;
+- keep downstream issues blocked until upstream contracts are in review/approved;
+- call out the sequence in handoffs so review sessions can validate ordering quickly.
+
 ## Required Tooling
 
 Required local tools include:

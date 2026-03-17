@@ -90,7 +90,7 @@ func (s *fileProviderProfileStore) PutProviderProfile(ctx context.Context, profi
 
 func (s *fileProviderProfileStore) DeleteProviderProfile(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
-	if id == DefaultProviderProfileID {
+	if isProtectedProviderProfileID(id) {
 		return ErrProtectedProviderProfile
 	}
 	s.mu.Lock()
@@ -203,7 +203,7 @@ func (s *ConfigMapProviderProfileStore) PutProviderProfile(ctx context.Context, 
 
 func (s *ConfigMapProviderProfileStore) DeleteProviderProfile(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
-	if id == DefaultProviderProfileID {
+	if isProtectedProviderProfileID(id) {
 		return ErrProtectedProviderProfile
 	}
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
@@ -235,10 +235,15 @@ func NormalizeProviderProfile(profile ProviderProfile) (ProviderProfile, error) 
 	if profile.Name == "" {
 		profile.Name = profile.ID
 	}
-	profile.ProviderType = strings.ToLower(strings.TrimSpace(profile.ProviderType))
-	if profile.ProviderType == "" {
-		profile.ProviderType = ProviderCodex
+	rawProviderType := strings.ToLower(strings.TrimSpace(profile.ProviderType))
+	if rawProviderType == "" {
+		rawProviderType = ProviderCodex
 	}
+	normalizedProviderType, ok := canonicalProviderType(rawProviderType)
+	if !ok {
+		return ProviderProfile{}, errors.New("unsupported provider_type; supported values: codex, claude, gemini")
+	}
+	profile.ProviderType = normalizedProviderType
 	profile.Endpoint = strings.TrimSpace(profile.Endpoint)
 	profile.SecretRef = strings.TrimSpace(profile.SecretRef)
 	profile.DefaultModel = strings.TrimSpace(profile.DefaultModel)
@@ -259,14 +264,28 @@ func NormalizeProviderProfile(profile ProviderProfile) (ProviderProfile, error) 
 }
 
 func defaultProviderProfiles() []ProviderProfile {
-	profile, _ := NormalizeProviderProfile(ProviderProfile{
+	codexProfile, _ := NormalizeProviderProfile(ProviderProfile{
 		ID:           DefaultProviderProfileID,
-		Name:         "OpenAI Codex Default",
+		Name:         "Codex Default",
 		ProviderType: ProviderCodex,
 		DefaultModel: DefaultCodexModel,
 		Capabilities: []string{"chat", "tools", "loops"},
 	})
-	return []ProviderProfile{profile}
+	claudeProfile, _ := NormalizeProviderProfile(ProviderProfile{
+		ID:           "claude-default",
+		Name:         "Claude Default",
+		ProviderType: ProviderClaude,
+		DefaultModel: DefaultClaudeModel,
+		Capabilities: []string{"chat", "tools", "loops"},
+	})
+	geminiProfile, _ := NormalizeProviderProfile(ProviderProfile{
+		ID:           "gemini-default",
+		Name:         "Gemini Default",
+		ProviderType: ProviderGemini,
+		DefaultModel: DefaultGeminiModel,
+		Capabilities: []string{"chat", "tools", "loops"},
+	})
+	return []ProviderProfile{codexProfile, claudeProfile, geminiProfile}
 }
 
 func defaultProfilesByID() map[string]ProviderProfile {
@@ -295,12 +314,12 @@ func mergeWithDefaultProfiles(in []ProviderProfile) []ProviderProfile {
 
 func defaultModelForProviderType(providerType string) string {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "openai":
-		return "gpt-5.4"
 	case ProviderCodex:
 		return DefaultCodexModel
-	case "anthropic":
-		return "claude-sonnet-4-5"
+	case ProviderClaude:
+		return DefaultClaudeModel
+	case ProviderGemini:
+		return DefaultGeminiModel
 	default:
 		return DefaultCodexModel
 	}
@@ -308,11 +327,34 @@ func defaultModelForProviderType(providerType string) string {
 
 func defaultCapabilities(providerType string) []string {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case "openai", ProviderCodex:
+	case ProviderCodex, ProviderClaude, ProviderGemini:
 		return []string{"chat", "tools", "loops"}
 	default:
 		return []string{"chat"}
 	}
+}
+
+func canonicalProviderType(raw string) (string, bool) {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	switch raw {
+	case ProviderCodex, "openai":
+		return ProviderCodex, true
+	case ProviderClaude, "anthropic":
+		return ProviderClaude, true
+	case ProviderGemini, "google":
+		return ProviderGemini, true
+	default:
+		return "", false
+	}
+}
+
+func isProtectedProviderProfileID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	_, ok := defaultProfilesByID()[id]
+	return ok
 }
 
 func normalizeCapabilities(in []string) []string {

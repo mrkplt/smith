@@ -107,6 +107,7 @@
 
     void loadProviderProfiles().then(loadChatSettingsFromBrowser);
     void loadSecrets();
+    void refreshOnboardingState();
   });
 
   async function loadProviderProfiles() {
@@ -137,6 +138,29 @@
     } catch (err: any) {
       pushToast(err?.message || 'Failed to load secrets', 'err');
     }
+  }
+
+  async function refreshOnboardingState() {
+    try {
+      const readiness = await fetchJSON('/v1/onboarding/readiness');
+      appState.update((state) => ({
+        ...state,
+        onboardingReady: !!readiness?.ready,
+        onboardingChecked: true,
+        onboardingState: readiness || null
+      }));
+    } catch {
+      // Ignore readiness refresh failures in settings surfaces.
+    }
+  }
+
+  function handleProviderSaved() {
+    void loadProviderProfiles();
+    void refreshOnboardingState();
+  }
+
+  function handleProjectSaved() {
+    void refreshOnboardingState();
   }
 
   async function selectSection(section: SettingsSection) {
@@ -327,11 +351,11 @@
 <ProviderEditorDrawer
   bind:open={providerEditorOpen}
   onClose={() => providerEditorOpen = false}
-  onSaved={loadProviderProfiles}
+  onSaved={handleProviderSaved}
   provider={selectedProvider}
   secretOptions={secrets}
 />
-<ProjectEditorDrawer bind:open={projectEditorOpen} onClose={() => projectEditorOpen = false} {projectToEdit} />
+<ProjectEditorDrawer bind:open={projectEditorOpen} onClose={() => projectEditorOpen = false} onSaved={handleProjectSaved} {projectToEdit} />
 
 <section class="px-4 pb-6">
   <div class="max-w-7xl border border-gray-800 bg-black/60 md:grid md:grid-cols-[260px_1fr]">
@@ -478,6 +502,20 @@
             New Profile
           </Button>
         </div>
+
+        {#if providerProfiles.length > 0}
+          <Card class="mt-6 bg-black border-gray-800 rounded-none p-0">
+            <div class="p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500">Next Step</div>
+                <div class="mt-1 text-sm text-gray-300">Provider setup is complete. Continue to project setup to unlock loop execution.</div>
+              </div>
+              <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => void selectSection('projects')}>
+                Add Project
+              </Button>
+            </div>
+          </Card>
+        {/if}
 
         <div class="pt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {#if providerProfiles.length === 0}

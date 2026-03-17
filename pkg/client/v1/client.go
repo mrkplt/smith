@@ -73,6 +73,30 @@ func (c *Client) GetLoop(ctx context.Context, loopID string) (*api.LoopResponse,
 	return &res, err
 }
 
+func (c *Client) PauseLoop(ctx context.Context, loopID string, req api.LoopLifecycleRequest) (map[string]any, error) {
+	var res map[string]any
+	err := c.do(ctx, http.MethodPost, "/api/loops/"+loopID+"/pause", req, &res)
+	return res, err
+}
+
+func (c *Client) ResumeLoop(ctx context.Context, loopID string, req api.LoopLifecycleRequest) (map[string]any, error) {
+	var res map[string]any
+	err := c.do(ctx, http.MethodPost, "/api/loops/"+loopID+"/resume", req, &res)
+	return res, err
+}
+
+func (c *Client) CancelLoop(ctx context.Context, loopID string, req api.LoopLifecycleRequest) (map[string]any, error) {
+	var res map[string]any
+	err := c.do(ctx, http.MethodPost, "/api/loops/"+loopID+"/cancel", req, &res)
+	return res, err
+}
+
+func (c *Client) CreateLoopIntervention(ctx context.Context, loopID string, req api.LoopInterventionRequest) (*api.LoopInterventionResponse, error) {
+	var res api.LoopInterventionResponse
+	err := c.do(ctx, http.MethodPost, "/api/loops/"+loopID+"/interventions", req, &res)
+	return &res, err
+}
+
 // ListLoops returns all loops
 func (c *Client) ListLoops(ctx context.Context) ([]api.LoopWithRevision, error) {
 	var res []api.LoopWithRevision
@@ -185,6 +209,30 @@ func (c *Client) SubmitPRD(ctx context.Context, req api.PRDIngressRequest) (*api
 func (c *Client) IngestGitHubIssues(ctx context.Context, req api.GitHubIngressRequest) (*api.IngressSummary, error) {
 	var res api.IngressSummary
 	err := c.do(ctx, http.MethodPost, "/v1/ingress/github/issues", req, &res)
+	return &res, err
+}
+
+func (c *Client) CreateTaskContract(ctx context.Context, req api.TaskContractCreateRequest) (*api.TaskContract, error) {
+	var res api.TaskContract
+	err := c.do(ctx, http.MethodPost, "/api/tasks", req, &res)
+	return &res, err
+}
+
+func (c *Client) GetTaskContract(ctx context.Context, taskID string) (*api.TaskContract, error) {
+	var res api.TaskContract
+	err := c.do(ctx, http.MethodGet, "/api/tasks/"+taskID, nil, &res)
+	return &res, err
+}
+
+func (c *Client) PatchTaskContract(ctx context.Context, taskID string, req api.TaskContractPatchRequest) (*api.TaskContract, error) {
+	var res api.TaskContract
+	err := c.do(ctx, http.MethodPatch, "/api/tasks/"+taskID, req, &res)
+	return &res, err
+}
+
+func (c *Client) ApproveTaskContract(ctx context.Context, taskID string, req api.TaskContractApproveRequest) (*api.TaskContract, error) {
+	var res api.TaskContract
+	err := c.do(ctx, http.MethodPost, "/api/tasks/"+taskID+"/approve", req, &res)
 	return &res, err
 }
 

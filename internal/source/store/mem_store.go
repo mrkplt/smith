@@ -11,6 +11,7 @@ type MemStore struct {
 	states    map[string]LoopWithRevision
 	anomalies map[string]model.Anomaly
 	docs      map[string]model.Document
+	tasks     map[string]model.TaskContract
 	journal   map[string][]model.JournalEntry
 	handoffs  map[string][]model.Handoff
 	overrides map[string][]model.OperatorOverride
@@ -29,6 +30,7 @@ func NewMemStore() *MemStore {
 		states:          make(map[string]LoopWithRevision),
 		anomalies:       make(map[string]model.Anomaly),
 		docs:            make(map[string]model.Document),
+		tasks:           make(map[string]model.TaskContract),
 		journal:         make(map[string][]model.JournalEntry),
 		handoffs:        make(map[string][]model.Handoff),
 		overrides:       make(map[string][]model.OperatorOverride),

@@ -147,6 +147,28 @@ chat:
   resources: {}
   env: []
 
+daemon:
+  replicaCount: 1
+  enabled: true
+  image:
+    repository: ghcr.io/smith/daemon
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+  cleanup:
+    interval: 10m
+    timeout: 30s
+    dryRun: false
+    maxDeletes: 200
+    retention:
+      flatline: 48h
+      cancelled: 48h
+      synced: 0s
+  resources: {}
+  env: []
+
 rbac:
   create: true
 

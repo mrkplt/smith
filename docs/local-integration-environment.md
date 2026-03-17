@@ -42,6 +42,8 @@ Default configurable vars:
 - `SMITH_NAMESPACE` (default `smith-system`)
 - `SMITH_RELEASE` (default `smith`)
 - `SMITH_VALUES` (default `helm/smith/values/local.yaml`)
+- `SMITH_LOCAL_GIT_PAT` (required when `secrets.create=true` for local overlay)
+- `SMITH_LOCAL_RUNTIME_CREDENTIALS` (required when `secrets.create=true` for local overlay)
 - `SMITH_VCLUSTER_VERSION` (default `0.32.1`, used by `scripts/integration/prereqs.sh`)
 - `SMITH_TEST_ARTIFACTS_DIR` (default `/tmp/smith-test-artifacts`)
 - `SMITH_FIXTURE_DIR` (default `/tmp/smith-test-repo`)
@@ -72,6 +74,13 @@ docker system prune -af
 
 ## Bring Up Environment
 
+Before `make deploy-local`, set local credential values in your shell (instead of committing them in values files):
+
+```bash
+export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
+export SMITH_LOCAL_RUNTIME_CREDENTIALS="<runtime-credential>"
+```
+
 ```bash
 make cluster-up
 make cluster-health
@@ -89,6 +98,17 @@ make cluster-up-vcluster
 ```
 
 `make deploy-local` builds `smith-*:local` images locally. When using `k3d`, those images are imported into the `smith-int` cluster. When using the current cluster provider, image import is skipped and the active cluster must already be able to resolve local images.
+
+Optional chat provider/model overrides for Helm deployment:
+
+```bash
+helm upgrade --install smith ./helm/smith \
+  -f helm/smith/values/local.yaml \
+  --set chat.goose.provider=codex \
+  --set chat.goose.model=gpt-5-mini
+```
+
+Console-side chat defaults can also be configured at `Settings -> Chat` (provider profile + model) without editing Helm values.
 
 Optional: enable Kubernetes Secret encryption at rest in local `k3d`:
 

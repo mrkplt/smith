@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { escapeHtml } from '$lib/utils';
 	import { goto } from '$app/navigation';
-  import { Card, Badge } from 'flowbite-svelte';
+  import { Card } from 'flowbite-svelte';
 
 	interface Props {
 		loop: any;
@@ -11,14 +10,29 @@
 
 	let { loop, selected, onSelect }: Props = $props();
   
-  const statusColor = $derived.by(() => {
-    switch(loop.status) {
-      case 'synced': return 'green';
+  const statusPillClass = $derived.by(() => {
+    switch (loop.status) {
       case 'running':
-      case 'unresolved': return 'yellow';
+        return 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50';
+      case 'unresolved':
+        return 'bg-amber-500/20 text-amber-100 border border-amber-400/50';
+      case 'synced':
+        return 'bg-cyan-500/20 text-cyan-100 border border-cyan-400/50';
       case 'flatline':
-      case 'cancelled': return 'red';
-      default: return 'dark';
+        return 'bg-rose-500/20 text-rose-100 border border-rose-400/50';
+      case 'cancelled':
+        return 'bg-slate-500/20 text-slate-200 border border-slate-400/40';
+      default:
+        return 'bg-gray-500/20 text-gray-200 border border-gray-400/40';
+    }
+  });
+
+  const statusLabel = $derived.by(() => {
+    switch (loop.status) {
+      case 'flatline':
+        return 'flatlined';
+      default:
+        return String(loop.status || 'unknown');
     }
   });
 </script>
@@ -37,9 +51,9 @@
         <div class="truncate text-sm font-mono font-bold text-gray-200 group-hover:text-cyan-400 transition-colors" title={loop.displayTitle || loop.loopID}>
           {loop.displayTitle || loop.loopID}
         </div>
-        <Badge color="gray" rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">
-          {loop.status}
-        </Badge>
+        <span class={`rounded-full text-[10px] px-2.5 py-0.5 font-semibold capitalize tracking-wide ${statusPillClass}`}>
+          {statusLabel}
+        </span>
       </div>
 
       <div class="truncate text-[10px] font-mono text-gray-500" title={loop.loopID}>

@@ -12,10 +12,11 @@
 	interface Props {
 		open: boolean;
 		onClose: () => void;
+		onSaved?: () => void;
 		projectToEdit?: any;
 	}
 
-	let { open = $bindable(), onClose, projectToEdit = null }: Props = $props();
+	let { open = $bindable(), onClose, onSaved = () => {}, projectToEdit = null }: Props = $props();
 
 	let isEditing = $derived(!!projectToEdit);
 	
@@ -29,6 +30,8 @@
 	let providerProfiles = $state<any[]>([]);
 	let runtimeImage = $state('');
 	let skillsImage = $state('');
+	let credentialTestBusy = $state(false);
+	let credentialTestResult = $state<{ valid: boolean; message: string } | null>(null);
 	let busy = $state(false);
 
   // Use bind:hidden for drawer control
@@ -95,6 +98,7 @@
 			skills_pull_policy: 'IfNotPresent'
 		};
 		try {
+			credentialTestResult = null;
 			if (isEditing) {
 				await requestJSON(`/v1/projects/${projectId}`, "PUT", projectPayload);
 			} else {
@@ -108,11 +112,45 @@
 			pushToast(`Project ${isEditing ? 'updated' : 'created'} successfully`, "ok");
 			const projects = await fetchJSON("/v1/projects");
 			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
+			onSaved();
 			onClose();
 		} catch (err: any) {
 			pushToast(err.message || "Failed to save project", "err");
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function testProjectCredential() {
+		const projectId = isEditing ? id : slugifySegment(name);
+		if (projectId.trim() === '') {
+			pushToast('Save project details first to test credentials', 'err');
+			return;
+		}
+		credentialTestBusy = true;
+		credentialTestResult = null;
+		try {
+			const response = await postJSON('/v1/projects/credentials/github/test', {
+				actor: 'operator',
+				project_id: projectId
+			});
+			credentialTestResult = {
+				valid: !!response?.valid,
+				message: String(response?.message || (response?.valid ? 'Repository access verified' : 'Repository access check failed'))
+			};
+			if (response?.valid) {
+				pushToast('Credential test passed', 'ok');
+			} else {
+				pushToast(credentialTestResult.message, 'err');
+			}
+		} catch (err: any) {
+			credentialTestResult = {
+				valid: false,
+				message: err?.message || 'Failed to test project credential'
+			};
+			pushToast(credentialTestResult.message, 'err');
+		} finally {
+			credentialTestBusy = false;
 		}
 	}
 
@@ -124,6 +162,7 @@
 			pushToast("Project deleted", "ok");
 			const projects = await fetchJSON("/v1/projects");
 			appState.update(s => ({ ...s, projects: Array.isArray(projects) ? projects : [] }));
+			onSaved();
 			onClose();
 		} catch (err: any) {
 			pushToast(err.message || "Failed to delete project", "err");
@@ -200,6 +239,31 @@
           onGitHubUserChange={(value) => githubUser = value}
           onGitHubCredentialChange={(value) => githubCredential = value}
         />
+
+				<div class="space-y-2">
+					<Button
+						color="alternative"
+						size="xs"
+						data-testid="project-credential-test"
+						class="rounded-none border-gray-700 bg-slate-900 text-gray-300"
+						onclick={testProjectCredential}
+						disabled={busy || credentialTestBusy || !isEditing}
+					>
+						Test Repository Access
+					</Button>
+					<p class="text-[10px] uppercase tracking-widest text-gray-600">
+						{#if isEditing}
+							Uses the stored project PAT to verify repository access.
+						{:else}
+							Save project first to enable credential test.
+						{/if}
+					</p>
+					{#if credentialTestResult}
+						<p class={`text-[11px] ${credentialTestResult.valid ? 'text-[#86BC25]' : 'text-red-400'}`}>
+							{credentialTestResult.message}
+						</p>
+					{/if}
+				</div>
 
         <div class="my-8 border-t border-gray-900"></div>
 

@@ -18,10 +18,18 @@ Provider profiles are reusable model/auth/runtime definitions referenced by proj
 ### Endpoints
 
 - `GET /v1/providers`
+- `GET /v1/providers/catalog`
 - `POST /v1/providers`
 - `GET /v1/providers/{id}`
 - `PUT /v1/providers/{id}`
 - `DELETE /v1/providers/{id}`
+
+Provider catalog response fields:
+
+- `id`
+- `display_name`
+- `default_model`
+- `required_config_fields` (string array)
 
 ### Contract
 
@@ -29,7 +37,7 @@ Provider profile payload fields:
 
 - `id` (required)
 - `name`
-- `provider_type` (`codex`, `openai`, `anthropic`, `google`, ...)
+- `provider_type` (`codex`, `claude`, `gemini`)
 - `endpoint`
 - `default_model`
 - `capabilities` (string array)
@@ -42,6 +50,7 @@ Provider profile payload fields:
 - Missing `id` is rejected.
 - If `name` is omitted, it defaults to `id`.
 - If `provider_type` is omitted, it defaults to `codex`.
+- Unsupported provider types are rejected; legacy aliases normalize as: `openai -> codex`, `anthropic -> claude`, `google -> gemini`.
 - If `default_model`/`capabilities` are omitted, provider-specific defaults are applied.
 - `DELETE /v1/providers/{id}` returns conflict when any project references the profile.
 - `codex-default` is protected and cannot be deleted.
@@ -78,6 +87,24 @@ Common fields:
 - `provider_profile_id` defaults to `codex-default` when omitted.
 - Project create/update rejects unknown `provider_profile_id`.
 - `runtime_pull_policy` and `skills_pull_policy` default to `IfNotPresent`.
+
+## Project Git Credentials
+
+Project-level Git credentials are managed separately from project metadata.
+
+### Endpoints
+
+- `GET /v1/projects/credentials/github?project_id=<id>`
+- `POST /v1/projects/credentials/github`
+- `DELETE /v1/projects/credentials/github?project_id=<id>`
+- `POST /v1/projects/credentials/github/test`
+
+### Connection test behavior
+
+- `POST /v1/projects/credentials/github/test` validates repository access for the stored project PAT.
+- Validation currently targets `github.com` repositories.
+- Responses are actionable (`valid=false` with a message for missing credential, invalid/expired token, forbidden access, missing repo, or API connectivity failures).
+- Credential test calls emit audit action `test-project-credential`.
 
 ## Settings Secrets
 
@@ -116,6 +143,11 @@ Read response fields:
 - `PUT /v1/secrets/{id}` with empty `value` keeps the existing stored value.
 - `DELETE /v1/secrets/{id}` returns conflict when referenced by any provider profile.
 
+### Audit events
+
+- Secret mutations emit audit actions: `create-secret`, `update-secret`, `delete-secret`.
+- Project Git credential mutations emit audit actions: `update-project-credential`, `delete-project-credential`.
+
 ## Console Settings UI
 
 The web console centralizes configuration at `/settings` with section navigation:
@@ -137,6 +169,12 @@ Chat UX notes:
 - Drawer chat remains default.
 - Full-screen assistant route is `/assistant`.
 - Chat defaults include provider profile selection, optional model override, optional API key override, and thinking level (`quick`, `balanced`, `deep`).
+
+Provider credential UX notes:
+
+- Provider profile editor includes a credential status panel for Codex with masked key/account metadata.
+- Operators can rotate credentials by providing a new API key and saving the provider profile.
+- Operators can revoke Codex credentials directly from the provider editor.
 
 ## Backing stores
 

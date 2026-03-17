@@ -8,7 +8,7 @@
 	import PodsStatsStrip from '$lib/components/PodsStatsStrip.svelte';
   import { GridOutline } from 'flowbite-svelte-icons';
 
-	let stateFilter = $state('all');
+	let stateFilter = $state('healthy');
 	let searchQuery = $state('');
 
 	function normalizeLoop(item: any) {
@@ -36,6 +36,7 @@
 		$appState.loops.filter((loop: any) => {
 			const matchesState =
 				stateFilter === "all" ||
+				(stateFilter === "healthy" && (loop.status === "running" || loop.status === "synced")) ||
 				(stateFilter === "active" && (loop.status === "unresolved" || loop.status === "running")) ||
 				loop.status === stateFilter;
 			const query = searchQuery.toLowerCase();

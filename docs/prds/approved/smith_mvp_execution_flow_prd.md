@@ -8,9 +8,7 @@ target_branch: mvp-0
 owner: lars
 ---
 
-# Product Requirements Document (PRD)
-
-# Smith MVP Execution Flow: Document -> Loop -> PR -> Steering
+# Smith MVP Execution Flow PRD: Document -> Loop -> PR -> Steering
 
 ## Overview
 
@@ -105,6 +103,19 @@ Possible states:
 - completed
 - blocked
 
+`completed_pending_review` is a loop state (not a TaskContract state).
+
+### Loop Status
+
+Possible loop states for MVP:
+
+- queued
+- running
+- paused
+- cancelled
+- failed
+- completed_pending_review
+
 ---
 
 # System Components Required for MVP
@@ -125,6 +136,43 @@ Possible states:
 - batch task ingestion
 - rich chat UI
 - skill marketplace
+
+## MVP Implementation Checklist
+
+### Backend API
+
+- [ ] implement `POST /api/tasks` with schema validation and `draft` state initialization
+- [ ] implement `GET /api/tasks/{id}` and `PATCH /api/tasks/{id}` with audit-safe field updates
+- [ ] implement `POST /api/tasks/{id}/approve` to transition `validated -> approved`
+- [ ] implement loop lifecycle APIs (`create`, `pause`, `resume`, `cancel`) with state guards
+
+### Core Loop and Runtime
+
+- [ ] persist loop records and lock acquisition before runtime job launch
+- [ ] launch Kubernetes replica jobs with task and provider binding
+- [ ] implement ordered runtime steps (clone -> plan -> edit -> validate -> commit -> push -> PR)
+- [ ] map success and failure outcomes to terminal loop/task states
+
+### Frontend and Operator Controls
+
+- [ ] provide task ingestion UI for markdown upload/paste
+- [ ] provide normalized task review/edit and explicit approve action
+- [ ] provide live loop state view with journal timeline
+- [ ] provide steering controls (pause/resume/cancel/intervention)
+
+### Integrations and Platform
+
+- [ ] configure provider adapter profile resolution at runtime
+- [ ] configure GitHub branch push and PR creation integration
+- [ ] ensure event journal persists all state transitions and interventions
+- [ ] ensure required local CI dependencies (`act`, Docker) are available in operator workflows
+
+### Validation and E2E
+
+- [ ] execute task-defined validation commands in runtime with structured results
+- [ ] verify happy-path E2E run from document ingestion to PR creation
+- [ ] verify failed and cancelled runs produce terminal states with reason codes
+- [ ] verify intervention events are replayable from journal history
 
 ---
 
@@ -206,6 +254,25 @@ Smith Core will:
 2. Acquire a loop lock
 3. Launch a Kubernetes replica job
 
+### Idempotency and Retry Expectations (MVP)
+
+To prevent duplicate execution and ambiguous outcomes, the MVP enforces minimal idempotency and retry rules:
+
+- `POST /api/loops` supports an optional idempotency key; duplicate submissions with the same key return the existing loop
+- `pause`, `resume`, and `cancel` are idempotent state transitions (repeating the same action is a no-op)
+- `POST /api/loops/{id}/interventions` accepts a client-generated event id to prevent duplicate journal entries
+
+Retry policy for runtime operations:
+
+- transient provider/network errors may be retried with bounded exponential backoff
+- git push and PR creation may be retried for transient transport failures
+- validation command failures are not auto-retried (treated as deterministic task failure)
+
+Out of scope for MVP:
+
+- cross-run deduplication across different idempotency keys
+- advanced retry orchestration with per-step policy customization
+
 ---
 
 # Loop Execution Responsibilities
@@ -235,7 +302,25 @@ Loop state becomes:
 
 `completed_pending_review`
 
+TaskContract state becomes:
+
+`completed`
+
 Automatic merge is not part of the MVP.
+
+## Failure and Cancellation Policy
+
+The loop must end in a terminal non-success state when any required step cannot be completed.
+
+Terminal outcomes:
+
+- `failed`: implementation, validation, push, or PR creation fails
+- `cancelled`: operator cancels the loop
+
+When terminal outcomes occur:
+
+- TaskContract state becomes `blocked`
+- failure reason is recorded in the event journal
 
 ---
 
@@ -327,6 +412,7 @@ This provides full traceability.
 POST   /api/tasks
 GET    /api/tasks/{id}
 PATCH  /api/tasks/{id}
+POST   /api/tasks/{id}/approve
 ```
 
 ## Loops
@@ -346,6 +432,100 @@ GET /api/loops/{id}/journal
 POST /api/loops/{id}/interventions
 ```
 
+## Draft OpenAPI Skeleton
+
+```yaml
+openapi: 3.1.0
+info:
+  title: Smith MVP API
+  version: 0.1.0
+servers:
+  - url: https://smith.example.com
+paths:
+  /api/tasks:
+    post:
+      operationId: createTask
+      summary: Ingest and create a draft task contract
+      requestBody:
+        required: true
+      responses:
+        "201":
+          description: TaskContract created
+  /api/tasks/{id}:
+    get:
+      operationId: getTask
+      responses:
+        "200":
+          description: TaskContract
+    patch:
+      operationId: updateTask
+      responses:
+        "200":
+          description: TaskContract updated
+  /api/tasks/{id}/approve:
+    post:
+      operationId: approveTask
+      responses:
+        "200":
+          description: TaskContract approved
+  /api/loops:
+    post:
+      operationId: createLoop
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Loop created or returned from idempotent request
+  /api/loops/{id}:
+    get:
+      operationId: getLoop
+      responses:
+        "200":
+          description: Loop status
+  /api/loops/{id}/pause:
+    post:
+      operationId: pauseLoop
+      responses:
+        "200":
+          description: Loop paused (idempotent)
+  /api/loops/{id}/resume:
+    post:
+      operationId: resumeLoop
+      responses:
+        "200":
+          description: Loop resumed (idempotent)
+  /api/loops/{id}/cancel:
+    post:
+      operationId: cancelLoop
+      responses:
+        "200":
+          description: Loop cancelled (idempotent)
+  /api/loops/{id}/journal:
+    get:
+      operationId: getLoopJournal
+      responses:
+        "200":
+          description: Journal entries
+  /api/loops/{id}/interventions:
+    post:
+      operationId: createIntervention
+      responses:
+        "201":
+          description: Intervention appended
+components:
+  schemas:
+    TaskContract:
+      type: object
+    Loop:
+      type: object
+    JournalEntry:
+      type: object
+```
+
 ---
 
 # Success Metrics
@@ -357,6 +537,12 @@ The MVP is successful if Smith can:
 - run a loop autonomously
 - create a Pull Request
 - accept operator steering
+
+Minimum acceptance targets:
+
+- E2E happy path succeeds for at least one real repository using configured validation commands
+- for failed or cancelled runs, terminal state and reason are visible in the loop journal
+- operator pause/resume/cancel and intervention instructions are persisted and replayable from journal entries
 
 ---
 

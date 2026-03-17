@@ -4,9 +4,11 @@ import {
   attachLoopTerminal,
   approveTaskContract,
   cancelLoop,
+  cleanupLoops,
   createLoopFromTask,
   createLoopIntervention,
   createTaskContract,
+  deleteLoop,
   deleteJSON,
   fetchJSON,
   fetchWithTimeout,
@@ -176,6 +178,8 @@ describe('api helpers', () => {
       await sendLoopCommand('loop-1', { actor: 'alice', command: 'ls -la' });
       await detachLoopTerminal('loop-1', { actor: 'alice' });
       await createLoopFromTask('task-1', 'idem-1');
+      await cleanupLoops({ actor: 'alice', states: ['flatline'] });
+      await deleteLoop('loop-1', { actor: 'alice' });
 
       expect(fetch).toHaveBeenNthCalledWith(1, '/api/tasks', expect.objectContaining({ method: 'POST' }));
       expect(fetch).toHaveBeenNthCalledWith(2, '/api/tasks/task-1', expect.objectContaining({ method: 'GET' }));
@@ -189,6 +193,8 @@ describe('api helpers', () => {
       expect(fetch).toHaveBeenNthCalledWith(10, '/api/v1/loops/loop-1/control/command', expect.objectContaining({ method: 'POST' }));
       expect(fetch).toHaveBeenNthCalledWith(11, '/api/v1/loops/loop-1/control/detach', expect.objectContaining({ method: 'POST' }));
       expect(fetch).toHaveBeenNthCalledWith(12, '/api/v1/loops', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(13, '/api/v1/loops/cleanup', expect.objectContaining({ method: 'POST' }));
+      expect(fetch).toHaveBeenNthCalledWith(14, '/api/loops/loop-1', expect.objectContaining({ method: 'DELETE' }));
     });
   });
 });

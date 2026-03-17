@@ -51,6 +51,7 @@ type JobRequest struct {
 	LoopID                    string
 	CorrelationID             string
 	ProviderID                string
+	Model                     string
 	InvocationMethod          string
 	SourceType                string
 	SourceRef                 string

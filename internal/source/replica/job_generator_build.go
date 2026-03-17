@@ -103,6 +103,7 @@ func buildReplicaEnv(req JobRequest) []EnvVar {
 		{Name: "SMITH_CORRELATION_ID", Value: req.CorrelationID},
 		{Name: "SMITH_ETCD_ENDPOINTS", Value: strings.Join(sanitizeEtcdEndpoints(req.EtcdEndpoints), ",")},
 		{Name: "SMITH_LOOP_PROVIDER", Value: strings.ToLower(strings.TrimSpace(req.ProviderID))},
+		{Name: "SMITH_LOOP_MODEL", Value: strings.TrimSpace(req.Model)},
 		{Name: "SMITH_LOOP_INVOCATION_METHOD", Value: strings.TrimSpace(req.InvocationMethod)},
 		{Name: "SMITH_LOOP_SOURCE_TYPE", Value: strings.TrimSpace(req.SourceType)},
 		{Name: "SMITH_LOOP_SOURCE_REF", Value: strings.TrimSpace(req.SourceRef)},

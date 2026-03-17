@@ -177,3 +177,121 @@ func TestClient_OpenChatStream(t *testing.T) {
 		t.Fatalf("expected stream payload, got %s", string(body))
 	}
 }
+
+func TestClient_TaskContractMethods(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/tasks":
+			_ = json.NewEncoder(w).Encode(api.TaskContract{ID: "task-1", Status: api.TaskContractStatusDraft})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/tasks/task-1":
+			_ = json.NewEncoder(w).Encode(api.TaskContract{ID: "task-1", Status: api.TaskContractStatusValidated})
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/tasks/task-1":
+			_ = json.NewEncoder(w).Encode(api.TaskContract{ID: "task-1", Objective: "updated", Status: api.TaskContractStatusValidated})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/tasks/task-1/approve":
+			_ = json.NewEncoder(w).Encode(api.TaskContract{ID: "task-1", Status: api.TaskContractStatusApproved})
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL, "")
+	created, err := c.CreateTaskContract(context.Background(), api.TaskContractCreateRequest{ProjectID: "smith", ProviderProfileID: "default", Objective: "obj", Validation: []string{"go test ./..."}})
+	if err != nil {
+		t.Fatalf("CreateTaskContract failed: %v", err)
+	}
+	if created.ID != "task-1" {
+		t.Fatalf("expected created task id task-1, got %q", created.ID)
+	}
+
+	fetched, err := c.GetTaskContract(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("GetTaskContract failed: %v", err)
+	}
+	if fetched.Status != api.TaskContractStatusValidated {
+		t.Fatalf("expected status validated, got %q", fetched.Status)
+	}
+
+	patched, err := c.PatchTaskContract(context.Background(), "task-1", api.TaskContractPatchRequest{Objective: strPtr("updated")})
+	if err != nil {
+		t.Fatalf("PatchTaskContract failed: %v", err)
+	}
+	if patched.Objective != "updated" {
+		t.Fatalf("expected updated objective, got %q", patched.Objective)
+	}
+
+	approved, err := c.ApproveTaskContract(context.Background(), "task-1", api.TaskContractApproveRequest{})
+	if err != nil {
+		t.Fatalf("ApproveTaskContract failed: %v", err)
+	}
+	if approved.Status != api.TaskContractStatusApproved {
+		t.Fatalf("expected approved status, got %q", approved.Status)
+	}
+}
+
+func TestClient_LoopLifecycleMethods(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/loops/loop-1/pause":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", r.Method)
+			}
+			_, _ = w.Write([]byte(`{"state":"unresolved","idempotent":false}`))
+		case "/api/loops/loop-1/resume":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", r.Method)
+			}
+			_, _ = w.Write([]byte(`{"state":"running","idempotent":false}`))
+		case "/api/loops/loop-1/cancel":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", r.Method)
+			}
+			_, _ = w.Write([]byte(`{"state":"cancelled","idempotent":false}`))
+		case "/api/loops/loop-1/interventions":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST, got %s", r.Method)
+			}
+			_, _ = w.Write([]byte(`{"loop_id":"loop-1","event_id":"evt-1","sequence":22,"idempotent":false,"instruction":"avoid auth changes"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer ts.Close()
+
+	c := NewClient(ts.URL, "")
+	pauseRes, err := c.PauseLoop(context.Background(), "loop-1", api.LoopLifecycleRequest{Actor: "alice"})
+	if err != nil {
+		t.Fatalf("PauseLoop failed: %v", err)
+	}
+	if pauseRes["state"] != "unresolved" {
+		t.Fatalf("expected unresolved state, got %#v", pauseRes["state"])
+	}
+
+	resumeRes, err := c.ResumeLoop(context.Background(), "loop-1", api.LoopLifecycleRequest{Actor: "alice"})
+	if err != nil {
+		t.Fatalf("ResumeLoop failed: %v", err)
+	}
+	if resumeRes["state"] != "running" {
+		t.Fatalf("expected running state, got %#v", resumeRes["state"])
+	}
+
+	cancelRes, err := c.CancelLoop(context.Background(), "loop-1", api.LoopLifecycleRequest{Actor: "alice"})
+	if err != nil {
+		t.Fatalf("CancelLoop failed: %v", err)
+	}
+	if cancelRes["state"] != "cancelled" {
+		t.Fatalf("expected cancelled state, got %#v", cancelRes["state"])
+	}
+
+	interventionRes, err := c.CreateLoopIntervention(context.Background(), "loop-1", api.LoopInterventionRequest{Actor: "alice", Instruction: "avoid auth changes", EventID: "evt-1"})
+	if err != nil {
+		t.Fatalf("CreateLoopIntervention failed: %v", err)
+	}
+	if interventionRes.EventID != "evt-1" {
+		t.Fatalf("expected intervention event id evt-1, got %q", interventionRes.EventID)
+	}
+}
+
+func strPtr(v string) *string {
+	return &v
+}

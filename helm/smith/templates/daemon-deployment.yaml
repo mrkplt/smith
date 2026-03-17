@@ -1,0 +1,78 @@
+{{- if .Values.daemon.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smith.fullname" . }}-daemon
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: daemon
+spec:
+  replicas: {{ .Values.daemon.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "smith.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: daemon
+  template:
+    metadata:
+      annotations:
+        rollout-id: {{ .Values.global.rolloutId | default (randAlphaNum 5) | quote }}
+      labels:
+        {{- include "smith.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: daemon
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smith.serviceAccountName" (dict "component" "daemon" "root" .) }}
+      containers:
+        - name: daemon
+          image: "{{ .Values.daemon.image.repository }}:{{ .Values.daemon.image.tag }}"
+          imagePullPolicy: {{ .Values.daemon.image.pullPolicy }}
+          env:
+            - name: SMITH_DAEMON_PORT
+              value: "8082"
+            - name: SMITH_ETCD_ENDPOINTS
+              value: {{ join "," .Values.etcd.endpoints | quote }}
+            - name: SMITH_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: SMITH_RUNTIME_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: SMITH_DAEMON_CLEANUP_INTERVAL
+              value: {{ .Values.daemon.cleanup.interval | quote }}
+            - name: SMITH_DAEMON_CLEANUP_TIMEOUT
+              value: {{ .Values.daemon.cleanup.timeout | quote }}
+            - name: SMITH_DAEMON_CLEANUP_DRY_RUN
+              value: {{ .Values.daemon.cleanup.dryRun | quote }}
+            - name: SMITH_DAEMON_CLEANUP_MAX_DELETES
+              value: {{ .Values.daemon.cleanup.maxDeletes | quote }}
+            - name: SMITH_DAEMON_POLICY_PATH
+              value: /etc/smith-daemon/policy.yaml
+            {{- with .Values.daemon.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: daemon-policy
+              mountPath: /etc/smith-daemon
+              readOnly: true
+          ports:
+            - containerPort: 8082
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.daemon.resources | nindent 12 }}
+      volumes:
+        - name: daemon-policy
+          configMap:
+            name: {{ include "smith.fullname" . }}-daemon-policy
+            items:
+              - key: policy.yaml
+                path: policy.yaml
+{{- end }}

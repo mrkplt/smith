@@ -14,7 +14,13 @@ func TestFileProviderProfileStoreDefaultsAndCRUD(t *testing.T) {
 	profiles, err := store.ListProviderProfiles(context.Background())
 	require.NoError(t, err)
 	require.NotEmpty(t, profiles)
-	assert.Equal(t, DefaultProviderProfileID, profiles[0].ID)
+	ids := make([]string, 0, len(profiles))
+	for _, profile := range profiles {
+		ids = append(ids, profile.ID)
+	}
+	assert.Contains(t, ids, DefaultProviderProfileID)
+	assert.Contains(t, ids, "claude-default")
+	assert.Contains(t, ids, "gemini-default")
 
 	profile := ProviderProfile{
 		ID:           "openai-work",
@@ -27,7 +33,7 @@ func TestFileProviderProfileStoreDefaultsAndCRUD(t *testing.T) {
 	fetched, found, err := store.GetProviderProfile(context.Background(), "openai-work")
 	require.NoError(t, err)
 	require.True(t, found)
-	assert.Equal(t, "openai", fetched.ProviderType)
+	assert.Equal(t, ProviderCodex, fetched.ProviderType)
 	assert.Equal(t, "gpt-5.4", fetched.DefaultModel)
 
 	err = store.DeleteProviderProfile(context.Background(), "openai-work")
@@ -53,7 +59,17 @@ func TestNormalizeProviderProfileAppliesDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "openai-default", normalized.ID)
 	assert.Equal(t, "openai-default", normalized.Name)
-	assert.Equal(t, "gpt-5.4", normalized.DefaultModel)
+	assert.Equal(t, ProviderCodex, normalized.ProviderType)
+	assert.Equal(t, DefaultCodexModel, normalized.DefaultModel)
 	assert.Equal(t, []string{"chat", "tools"}, normalized.Capabilities)
 	assert.NotEmpty(t, normalized.UpdatedAt)
+}
+
+func TestNormalizeProviderProfileRejectsUnsupportedProviderType(t *testing.T) {
+	_, err := NormalizeProviderProfile(ProviderProfile{
+		ID:           "custom-ai",
+		ProviderType: "custom",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported provider_type")
 }

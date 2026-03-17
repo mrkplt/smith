@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { postJSON, requestJSON, deleteJSON } from '$lib/api';
+	import { getJSON, postJSON, requestJSON, deleteJSON } from '$lib/api';
 	import { pushToast } from '$lib/stores';
 	import { Drawer, Button, Input, Label, Helper } from 'flowbite-svelte';
 	import { CheckOutline, CloseOutline, AdjustmentsHorizontalOutline, TrashBinOutline } from 'flowbite-svelte-icons';
@@ -24,7 +24,14 @@
 	let secretRef = $state('');
 	let apiKey = $state('');
 	let accountId = $state('');
+	let codexCredential = $state<any>({ connected: false });
+	let codexCredentialBusy = $state(false);
 	let busy = $state(false);
+	let providerCatalog = $state<any[]>([
+		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
+		{ id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
+		{ id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
+	]);
 
 	let isHidden = $state(true);
 	$effect(() => {
@@ -44,11 +51,62 @@
 
 	const isEditing = $derived(!!provider?.id);
 	const isProtected = $derived(String(id).trim() === 'codex-default');
+	const selectedCatalogEntry = $derived(providerCatalog.find((entry) => entry.id === providerType) || null);
+	const requiredFieldsSummary = $derived(
+		selectedCatalogEntry && Array.isArray(selectedCatalogEntry.required_config_fields)
+			? selectedCatalogEntry.required_config_fields.join(', ')
+			: ''
+	);
+	const selectedProviderLabel = $derived(String(selectedCatalogEntry?.display_name || providerType || 'provider'));
+	const requiresSecretRef = $derived(
+		!!(selectedCatalogEntry && Array.isArray(selectedCatalogEntry.required_config_fields) && selectedCatalogEntry.required_config_fields.includes('secret_ref'))
+	);
+
+	async function loadProviderCatalog() {
+		try {
+			const response = await getJSON('/v1/providers/catalog');
+			if (Array.isArray(response) && response.length > 0) {
+				providerCatalog = response;
+			}
+		} catch {
+			// Keep built-in fallback catalog for local/offline usage.
+		}
+	}
+
+	async function loadCodexCredential() {
+		if (providerType !== 'codex') {
+			codexCredential = { connected: false };
+			return;
+		}
+		codexCredentialBusy = true;
+		try {
+			const response = await getJSON('/v1/auth/codex/credential');
+			codexCredential = response || { connected: false };
+		} catch {
+			codexCredential = { connected: false };
+		} finally {
+			codexCredentialBusy = false;
+		}
+	}
+
+	async function disconnectCodexCredential() {
+		codexCredentialBusy = true;
+		try {
+			await postJSON('/v1/auth/codex/disconnect', { actor: 'operator' });
+			await loadCodexCredential();
+			pushToast('Codex credential revoked', 'ok');
+		} catch (err: any) {
+			pushToast(err?.message || 'Failed to revoke Codex credential', 'err');
+		} finally {
+			codexCredentialBusy = false;
+		}
+	}
 
 	$effect(() => {
 		if (!open) {
 			return;
 		}
+		void loadProviderCatalog();
 		if (provider) {
 			id = provider.id || '';
 			name = provider.name || '';
@@ -70,11 +128,39 @@
 		}
 		apiKey = '';
 		accountId = '';
+		void loadCodexCredential();
+	});
+
+	$effect(() => {
+		if (!open) {
+			return;
+		}
+		if (providerType.trim() === '') {
+			return;
+		}
+		void loadCodexCredential();
+	});
+
+	$effect(() => {
+		if (!open || provider) {
+			return;
+		}
+		if (!providerCatalog.some((entry) => entry.id === providerType) && providerCatalog.length > 0) {
+			providerType = String(providerCatalog[0].id || 'codex');
+		}
 	});
 
 	async function saveProvider() {
 		if (id.trim() === '') {
 			pushToast('Provider profile id is required', 'err');
+			return;
+		}
+		if (requiresSecretRef && secretRef.trim() === '') {
+			pushToast(`Secret reference is required for ${selectedProviderLabel} providers`, 'err');
+			return;
+		}
+		if (providerType.trim().toLowerCase() === 'codex' && apiKey.trim() !== '' && !apiKey.trim().startsWith('sk-')) {
+			pushToast('Codex API key must start with sk-', 'err');
 			return;
 		}
 		busy = true;
@@ -197,11 +283,13 @@
 						oninput={(event) => providerType = (event.currentTarget as HTMLSelectElement).value}
 						disabled={busy}
 					>
-						<option value="codex">codex</option>
-						<option value="openai">openai</option>
-						<option value="anthropic">anthropic</option>
-						<option value="google">google</option>
+						{#each providerCatalog as entry}
+							<option value={entry.id}>{entry.display_name || entry.id}</option>
+						{/each}
 					</select>
+					{#if requiredFieldsSummary !== ''}
+						<Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">Required: {requiredFieldsSummary}</Helper>
+					{/if}
 				</div>
 
 				<div>
@@ -261,6 +349,36 @@
 
 				{#if providerType === 'codex'}
 					<div class="space-y-4 pt-4 border-t border-gray-900">
+						<div class="border border-gray-800 bg-slate-900/30 p-3 space-y-2">
+							<div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500">Credential Status</div>
+							<div class="text-xs text-gray-200">{codexCredential.connected ? 'Connected' : 'Not connected'}</div>
+							{#if codexCredential.connected}
+								<div class="space-y-1 text-[11px] text-gray-400">
+									{#if codexCredential.api_key_masked}
+										<div>Key: <span class="font-mono">{codexCredential.api_key_masked}</span></div>
+									{/if}
+									{#if codexCredential.account_id}
+										<div>Account: <span class="font-mono">{codexCredential.account_id}</span></div>
+									{/if}
+									{#if codexCredential.last_refresh_at}
+										<div>Last Refresh: <span class="font-mono">{codexCredential.last_refresh_at}</span></div>
+									{/if}
+								</div>
+							{/if}
+							<div class="pt-1">
+								<Button
+									size="xs"
+									color="alternative"
+									class="rounded-none border-gray-700 bg-slate-900 text-gray-300"
+									data-testid="provider-codex-revoke"
+									onclick={disconnectCodexCredential}
+									disabled={codexCredentialBusy || !codexCredential.connected}
+								>
+									Revoke Credential
+								</Button>
+							</div>
+						</div>
+
 						<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Codex API Key (Optional)</Label>
 						<Input
 							type="password"
@@ -278,6 +396,7 @@
 							placeholder="account id (optional)"
 							class="bg-black border-gray-800 text-white rounded-none"
 						/>
+						<Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">Leave blank to keep current credential. Set a new key to rotate.</Helper>
 					</div>
 				{/if}
 			</div>

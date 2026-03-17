@@ -16,6 +16,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 vi.mock('$lib/api', () => ({
+	getJSON: vi.fn(),
 	postJSON: vi.fn(),
 	requestJSON: vi.fn(),
 	deleteJSON: vi.fn()
@@ -30,8 +31,23 @@ import * as stores from '$lib/stores';
 import ProviderEditorDrawer from './ProviderEditorDrawer.svelte';
 
 describe('ProviderEditorDrawer', () => {
+	const catalog = [
+		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
+		{ id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
+		{ id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
+	];
+
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(api.getJSON).mockImplementation(async (path: string) => {
+			if (path === '/v1/providers/catalog') {
+				return catalog;
+			}
+			if (path === '/v1/auth/codex/credential') {
+				return { connected: false };
+			}
+			return {};
+		});
 		vi.mocked(api.postJSON).mockResolvedValue({});
 		vi.mocked(api.requestJSON).mockResolvedValue({});
 	});
@@ -51,6 +67,22 @@ describe('ProviderEditorDrawer', () => {
 		const options = Array.from(container.querySelectorAll('#provider-secret-options option')).map((node) => node.getAttribute('value'));
 		expect(options).toContain('openai-key');
 		expect(options).toContain('anthropic-key');
+
+		cleanup();
+	});
+
+	it('restricts provider type choices to supported catalog entries', async () => {
+		const { getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		const select = getByTestId('provider-type') as HTMLSelectElement;
+		await waitFor(() => expect(select.options.length).toBe(3));
+		expect(Array.from(select.options).map((option) => option.value)).toEqual(['codex', 'claude', 'gemini']);
 
 		cleanup();
 	});
@@ -86,6 +118,94 @@ describe('ProviderEditorDrawer', () => {
 		expect(stores.pushToast).toHaveBeenCalledWith('Provider profile created successfully', 'ok');
 		expect(onSaved).toHaveBeenCalled();
 		expect(onClose).toHaveBeenCalled();
+
+		cleanup();
+	});
+
+	it('requires secret reference for providers that declare secret_ref', async () => {
+		const { container } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: {
+				id: 'claude-team',
+				name: 'Claude Team',
+				provider_type: 'claude'
+			},
+			secretOptions: []
+		});
+
+		const form = container.querySelector('form');
+		expect(form).toBeTruthy();
+		await fireEvent.submit(form!);
+
+		await waitFor(() => {
+			expect(stores.pushToast).toHaveBeenCalledWith('Secret reference is required for Claude providers', 'err');
+		});
+		expect(api.requestJSON).not.toHaveBeenCalled();
+		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/providers', expect.anything());
+
+		cleanup();
+	});
+
+	it('rejects invalid codex api key format before save', async () => {
+		const { container, getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		await fireEvent.input(getByTestId('provider-profile-id'), { target: { value: 'codex-team' } });
+		const apiKeyField = container.querySelector('input[placeholder="sk-..."]') as HTMLInputElement;
+		expect(apiKeyField).toBeTruthy();
+		await fireEvent.input(apiKeyField, { target: { value: 'invalid-key' } });
+
+		const form = container.querySelector('form');
+		expect(form).toBeTruthy();
+		await fireEvent.submit(form!);
+
+		await waitFor(() => {
+			expect(stores.pushToast).toHaveBeenCalledWith('Codex API key must start with sk-', 'err');
+		});
+		expect(api.requestJSON).not.toHaveBeenCalled();
+		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/auth/codex/connect/api-key', expect.anything());
+
+		cleanup();
+	});
+
+	it('revokes codex credential from drawer action', async () => {
+		vi.mocked(api.getJSON).mockImplementation(async (path: string) => {
+			if (path === '/v1/providers/catalog') {
+				return catalog;
+			}
+			if (path === '/v1/auth/codex/credential') {
+				return {
+					connected: true,
+					account_id: 'default',
+					api_key_masked: 'sk-***1234',
+					last_refresh_at: '2026-03-16T00:00:00Z'
+				};
+			}
+			return {};
+		});
+
+		const { getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		const revokeButton = await waitFor(() => getByTestId('provider-codex-revoke'));
+		await fireEvent.click(revokeButton);
+
+		await waitFor(() => {
+			expect(api.postJSON).toHaveBeenCalledWith('/v1/auth/codex/disconnect', { actor: 'operator' });
+		});
+		expect(stores.pushToast).toHaveBeenCalledWith('Codex credential revoked', 'ok');
 
 		cleanup();
 	});

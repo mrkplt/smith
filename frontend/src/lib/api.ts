@@ -131,6 +131,21 @@ export interface LoopInterventionResponse {
   instruction: string;
 }
 
+export interface LoopCleanupRequest {
+  actor?: string;
+  loop_ids?: string[];
+  states?: string[];
+}
+
+export interface LoopCleanupResponse {
+  actor: string;
+  matched_count: number;
+  deleted_count: number;
+  deleted: string[];
+  skipped_active?: string[];
+  not_found?: string[];
+}
+
 export interface LoopTerminalAttachRequest {
   actor?: string;
   terminal?: string;
@@ -185,6 +200,16 @@ export async function resumeLoop(loopID: string, payload: LoopLifecycleRequest =
 /** Requests cancellation of an active loop. */
 export async function cancelLoop(loopID: string, payload: LoopLifecycleRequest = {}): Promise<any> {
   return requestJSON(`/loops/${loopID}/cancel`, 'POST', payload);
+}
+
+/** Deletes a non-active loop. */
+export async function deleteLoop(loopID: string, payload: { actor?: string } = {}): Promise<any> {
+  return requestJSON(`/loops/${loopID}`, 'DELETE', payload);
+}
+
+/** Deletes non-active loops in bulk by ids or state selectors. */
+export async function cleanupLoops(payload: LoopCleanupRequest): Promise<LoopCleanupResponse> {
+  return requestJSON('/v1/loops/cleanup', 'POST', payload);
 }
 
 /** Sends an intervention instruction to a loop event stream. */
