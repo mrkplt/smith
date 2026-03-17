@@ -50,7 +50,7 @@ RUN case "${TARGETARCH}" in \
     tar -xjf /tmp/goose.tar.bz2 -C /tmp && \
     install -m 0755 /tmp/goose /out/goose
 
-FROM node:22-bookworm-slim
+FROM node:22-trixie-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git bash ca-certificates curl && \
     rm -rf /var/lib/apt/lists/*
