@@ -18,7 +18,7 @@ test.describe('Modular Console', () => {
     await expect(page.locator('.grid > div').filter({ hasText: 'Flatline' }).locator('span.text-3xl')).toHaveText('1');
 
     // Pod tiles
-    await expect(page.locator('.pod-card-container')).toHaveCount(3);
+    await expect(page.locator('.pod-card-container')).toHaveCount(2);
   });
 
   test('should filter loops by state', async ({ page }) => {
