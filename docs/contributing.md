@@ -124,6 +124,14 @@ mise exec -- npm --prefix frontend run test:unit
 mise exec -- npm --prefix frontend run test:coverage
 ```
 
+Focused validation for recent runtime surfaces:
+
+```bash
+mise exec -- go test ./cmd/smith-api -run ExecutionFlow
+mise exec -- go test ./cmd/smith-daemon
+mise exec -- npm --prefix frontend run test:unit -- src/lib/feature-capability/access.test.ts src/lib/feature-capability/execution.test.ts src/lib/feature-capability/validation.test.ts src/lib/navigation.test.ts
+```
+
 Go analyzer command:
 
 ```bash

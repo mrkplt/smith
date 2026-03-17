@@ -106,6 +106,25 @@ Project-level Git credentials are managed separately from project metadata.
 - Responses are actionable (`valid=false` with a message for missing credential, invalid/expired token, forbidden access, missing repo, or API connectivity failures).
 - Credential test calls emit audit action `test-project-credential`.
 
+## Onboarding Readiness APIs
+
+Onboarding state is shared by Console and `smithctl` provider-first gating.
+
+### Endpoints
+
+- `GET /v1/onboarding/readiness`
+- `POST /v1/onboarding/repository`
+- `POST /v1/onboarding/credentials/validate`
+
+### Readiness contract
+
+- `requirements` (ordered requirement list)
+- `missing` (missing requirement IDs)
+- `next_step` (first missing requirement)
+- `credential` (masked credential status metadata)
+
+The readiness payload is intentionally deterministic so UI and CLI can present the same guidance order.
+
 ## Settings Secrets
 
 Settings secrets are reusable references for provider profiles and integrations.
@@ -159,10 +178,31 @@ The web console centralizes configuration at `/settings` with section navigation
 - `Integrations`
 - `Secrets`
 
+Runtime surfaces in primary navigation:
+
+- `/pods`
+- `/documents`
+- `/tasks`
+- `/feature-capability` (gated by feature capability access check)
+
+Feature capability access config (Console runtime config):
+
+- `featureCapabilityAccess` (boolean-like hard override)
+- `operatorPermissions` / `permissions` (must include `feature_capability:access` when permission lists are provided)
+
 Compatibility redirects:
 
 - `/providers` redirects to `/settings?section=providers`
 - `/projects` redirects to `/settings?section=projects`
+
+Pods lifecycle UX notes:
+
+- Pods list defaults to `Healthy (Run + Done)` filtering (`running` and `synced`).
+- Pod detail actions are state-gated:
+  - `running`: pause, cancel, terminate
+  - `unresolved`: resume, cancel
+  - terminal (`synced`, `flatline`, `cancelled`): inspect only
+- Bulk clear/delete is not exposed in Console; use retention policy (`smith-daemon`) or `POST /v1/loops/cleanup`.
 
 Chat UX notes:
 

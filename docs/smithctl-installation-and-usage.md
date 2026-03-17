@@ -24,6 +24,8 @@ This will place the `smithctl` binary in the `bin/` directory.
 
 In the future, pre-built binaries for various platforms (Linux, macOS, Windows) will be available for download from the [GitHub Releases](https://github.com/smith-org/smith/releases) page.
 
+Current repository for release artifacts: [https://github.com/callmeradical/smith/releases](https://github.com/callmeradical/smith/releases).
+
 ## Configuration
 
 `smithctl` uses a configuration file located at `~/.smith/config.json` by default. You can also use environment variables or command-line flags to configure it.
@@ -65,6 +67,8 @@ Provider/project onboarding sequence:
 1. Configure provider profiles first
 2. Configure projects that bind to those provider profiles
 3. Start/create loops
+
+`smithctl` enforces this ordering for `project add` and `loop create` by checking onboarding readiness. If provider prerequisites are missing, responses include ordered missing requirements and a suggested next command.
 
 #### Managing Provider Profiles
 
@@ -134,6 +138,8 @@ Supported provider types: `codex`, `claude`, `gemini`.
   ```bash
   smithctl loop cancel <loop-id> --reason "User requested"
   ```
+
+Task contract management currently ships through API/Console (`/v1/tasks`, `/tasks` route). `smithctl` does not yet expose a dedicated `task` resource command group.
 
 #### Interactive Control
 

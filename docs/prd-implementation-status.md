@@ -38,3 +38,23 @@ Source: `docs/prds/approved/smith_github_auth_prd.md`
 - [ ] Authorized repository discovery and project onboarding from installation repos.
 - [ ] Installation-token-on-demand workflow integrated for GitHub operations.
 - [ ] PAT fallback clearly marked as transitional/deprecated path.
+
+## Smith MVP Execution Flow PRD
+
+Source: `docs/prds/approved/smith_mvp_execution_flow_prd.md`
+
+### Completed
+
+- [x] Replica git workspace bootstrap and completion hardening for PR creation flows.
+- [x] PRD-ingress execution path hardening (non-interactive PRD gate for autonomous PRD loops).
+- [x] Runtime compatibility updates for replica execution base image and auth priming.
+- [x] Loop display metadata surfaced in API (`display_title`, `current_count`, `target_count`) and consumed by Console pods view.
+- [x] Terminal attach/detach and command controls integrated on pod detail.
+- [x] Loop ID normalization deduplicates repeated adjacent segments.
+- [x] Retention cleanup daemon (`smith-daemon`) introduced with ConfigMap-driven policy.
+- [x] Task contract lifecycle APIs and `/tasks` runtime surface integrated with loop creation/status sync.
+- [x] Onboarding readiness route (`/onboarding`) and root-runtime gating behavior integrated in Console shell.
+
+### Remaining
+
+- [ ] Expand runtime artifact retention/cleanup observability (metrics dashboards and alert thresholds).
