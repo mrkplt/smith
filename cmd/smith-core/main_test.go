@@ -358,6 +358,35 @@ func TestLoopProviderFor(t *testing.T) {
 	}
 }
 
+func TestGitAuthFor(t *testing.T) {
+	t.Run("returns PAT auth when configured", func(t *testing.T) {
+		auth := gitAuthFor(config{gitPATSecretName: "smith-runtime", gitPATSecretKey: "git_pat"})
+		if auth == nil {
+			t.Fatal("expected git auth config")
+		}
+		if auth.Provider != replica.GitAuthProviderPAT {
+			t.Fatalf("expected PAT provider, got %q", auth.Provider)
+		}
+		if auth.PATSecretName != "smith-runtime" || auth.PATSecretKey != "git_pat" {
+			t.Fatalf("unexpected PAT secret config: %+v", auth)
+		}
+	})
+
+	t.Run("returns nil when secret name missing", func(t *testing.T) {
+		auth := gitAuthFor(config{gitPATSecretName: "", gitPATSecretKey: "git_pat"})
+		if auth != nil {
+			t.Fatalf("expected nil auth, got %+v", auth)
+		}
+	})
+
+	t.Run("returns nil when secret key missing", func(t *testing.T) {
+		auth := gitAuthFor(config{gitPATSecretName: "smith-runtime", gitPATSecretKey: ""})
+		if auth != nil {
+			t.Fatalf("expected nil auth, got %+v", auth)
+		}
+	})
+}
+
 func TestTaskStatusForLoopState(t *testing.T) {
 	tests := []struct {
 		state model.LoopState
@@ -426,6 +455,8 @@ func TestSyncTaskContractStatus(t *testing.T) {
 
 func TestLoadConfigGitPolicyDefaults(t *testing.T) {
 	t.Setenv("SMITH_GIT_POLICY_CONFIG_ENABLED", "")
+	t.Setenv("SMITH_GIT_PAT_SECRET_NAME", "")
+	t.Setenv("SMITH_GIT_PAT_SECRET_KEY", "")
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatalf("loadConfig error: %v", err)
@@ -439,6 +470,27 @@ func TestLoadConfigGitPolicyDefaults(t *testing.T) {
 	}
 	if cfg.gitPolicy.ConflictPolicy != def.ConflictPolicy {
 		t.Fatalf("expected default conflict policy %q got %q", def.ConflictPolicy, cfg.gitPolicy.ConflictPolicy)
+	}
+	if cfg.gitPATSecretName != "" {
+		t.Fatalf("expected empty git PAT secret name, got %q", cfg.gitPATSecretName)
+	}
+	if cfg.gitPATSecretKey != "git_pat" {
+		t.Fatalf("expected default git PAT secret key git_pat, got %q", cfg.gitPATSecretKey)
+	}
+}
+
+func TestLoadConfigGitPATSecretOverrides(t *testing.T) {
+	t.Setenv("SMITH_GIT_PAT_SECRET_NAME", "smith-runtime")
+	t.Setenv("SMITH_GIT_PAT_SECRET_KEY", "github_pat")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.gitPATSecretName != "smith-runtime" {
+		t.Fatalf("expected git PAT secret name override, got %q", cfg.gitPATSecretName)
+	}
+	if cfg.gitPATSecretKey != "github_pat" {
+		t.Fatalf("expected git PAT secret key override, got %q", cfg.gitPATSecretKey)
 	}
 }
 

@@ -54,6 +54,8 @@ type config struct {
 	workspaceSeedImage  string
 	workspaceSeedPolicy string
 	runtimeCredentials  string
+	gitPATSecretName    string
+	gitPATSecretKey     string
 	dockerfileRepo      string
 	dockerfileBuild     bool
 	gitPolicy           gitpolicy.Policy
@@ -439,6 +441,7 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		ActiveDeadlineSeconds:     int64(o.cfg.defaultPolicy.Timeout.Seconds()),
 		TTLSecondsAfterFinished:   o.jobTTL,
 	}
+	request.GitAuth = gitAuthFor(o.cfg)
 	prdPayload, hasWorkspacePRD, err := workspacePRDPayload(anomaly.Metadata)
 	if err != nil {
 		return err
@@ -879,6 +882,19 @@ func loopProviderFor(anomaly model.Anomaly) string {
 	return model.DefaultProviderID
 }
 
+func gitAuthFor(cfg config) *replica.GitAuthConfig {
+	secretName := strings.TrimSpace(cfg.gitPATSecretName)
+	secretKey := strings.TrimSpace(cfg.gitPATSecretKey)
+	if secretName == "" || secretKey == "" {
+		return nil
+	}
+	return &replica.GitAuthConfig{
+		Provider:      replica.GitAuthProviderPAT,
+		PATSecretName: secretName,
+		PATSecretKey:  secretKey,
+	}
+}
+
 func handoffConfigMapName(loopID string) string {
 	base := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-").Replace(strings.ToLower(loopID))
 	base = strings.Trim(base, "-")
@@ -1153,6 +1169,8 @@ func loadConfig() (config, error) {
 		workspaceSeedImage:  strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
 		workspaceSeedPolicy: envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
 		runtimeCredentials:  strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
+		gitPATSecretName:    strings.TrimSpace(os.Getenv("SMITH_GIT_PAT_SECRET_NAME")),
+		gitPATSecretKey:     envString("SMITH_GIT_PAT_SECRET_KEY", "git_pat"),
 		dockerfileRepo:      strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),
 		dockerfileBuild:     envBool("SMITH_DOCKERFILE_BUILD_ENABLED", false),
 		gitPolicy:           gitpolicy.DefaultPolicy(),
