@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"smith/internal/source/model"
 	"smith/internal/source/provider"
 	"smith/internal/source/store"
+	api "smith/pkg/api/v1"
 	pb "smith/proto/v1"
 
 	"github.com/stretchr/testify/assert"
@@ -84,6 +86,117 @@ func TestHandleIngressPRDAcceptsCanonicalPRD(t *testing.T) {
 	}
 	if anomaly.Metadata["prd_story_id"] != "US-001" {
 		t.Fatalf("expected prd_story_id metadata, got %#v", anomaly.Metadata)
+	}
+}
+
+func TestHandleIngressPRDPropagatesBindingMetadata(t *testing.T) {
+	ms := store.NewMemStore()
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{
+		"smith": {
+			ID:                "smith",
+			Name:              "Smith",
+			RepoURL:           "https://github.com/callmeradical/smith",
+			ProviderProfileID: "codex-default",
+		},
+	}}
+	s := newPRDValidationTestServer(ms)
+	s.projectStore = projectStore
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(`{
+		"format":"json",
+		"source_ref":"docs/prd.json",
+		"metadata":{
+			"project_id":"smith"
+		},
+		"prd":{
+			"version":1,
+			"project":"Validation",
+			"overview":"Canonical PRD validation",
+			"qualityGates":["go test ./..."],
+			"stories":[
+				{
+					"id":"US-001",
+					"title":"Define validation contract",
+					"status":"open",
+					"description":"As a maintainer, I want shared validation.",
+					"acceptanceCriteria":["Validation report is shared."]
+				}
+			]
+		}
+	}`))
+	s.handleIngressPRD(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 1 {
+		t.Fatalf("expected one created loop, got %d", len(states))
+	}
+	anomaly, found, err := ms.GetAnomaly(context.Background(), states[0].Record.LoopID)
+	if err != nil {
+		t.Fatalf("get anomaly: %v", err)
+	}
+	if !found {
+		t.Fatal("expected anomaly for created loop")
+	}
+	if anomaly.Metadata["project_id"] != "smith" {
+		t.Fatalf("expected project_id metadata, got %#v", anomaly.Metadata)
+	}
+	if anomaly.Metadata["provider_profile_id"] != "codex-default" {
+		t.Fatalf("expected provider_profile_id metadata, got %#v", anomaly.Metadata)
+	}
+	if anomaly.Metadata["github_repository"] != "https://github.com/callmeradical/smith" {
+		t.Fatalf("expected github_repository metadata, got %#v", anomaly.Metadata)
+	}
+}
+
+func TestHandleIngressPRDRejectsUnknownProjectMetadata(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	s.projectStore = &memoryProjectStore{items: map[string]provider.Project{}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(`{
+		"format":"json",
+		"source_ref":"docs/prd.json",
+		"metadata":{"project_id":"missing"},
+		"prd":{
+			"version":1,
+			"project":"Validation",
+			"overview":"Canonical PRD validation",
+			"qualityGates":["go test ./..."],
+			"stories":[
+				{
+					"id":"US-001",
+					"title":"Define validation contract",
+					"status":"open",
+					"description":"As a maintainer, I want shared validation.",
+					"acceptanceCriteria":["Validation report is shared."]
+				}
+			]
+		}
+	}`))
+	s.handleIngressPRD(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 summary response, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Results []struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(body.Results) != 1 || body.Results[0].Status != "error" || !strings.Contains(body.Results[0].Message, "project not found") {
+		t.Fatalf("expected project-not-found ingress error result, got %+v", body.Results)
 	}
 }
 
@@ -177,6 +290,164 @@ func TestHandleLoopCreateRejectsInvalidWorkspacePRD(t *testing.T) {
 	}
 }
 
+func TestHandleLoopCreateUsesIdempotencyKeyHeader(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	body := `{
+		"title":"Header key loop",
+		"description":"Header idempotency",
+		"source_type":"manual",
+		"source_ref":"manual:test"
+	}`
+
+	firstRec := httptest.NewRecorder()
+	firstReq := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(body))
+	firstReq.Header.Set("Idempotency-Key", "idem-header-1")
+	s.handleLoopCreate(firstRec, firstReq)
+	require.Equal(t, http.StatusCreated, firstRec.Code)
+
+	var first api.LoopCreateResult
+	require.NoError(t, json.NewDecoder(firstRec.Body).Decode(&first))
+	require.True(t, first.Created)
+
+	secondRec := httptest.NewRecorder()
+	secondReq := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(body))
+	secondReq.Header.Set("Idempotency-Key", "idem-header-1")
+	s.handleLoopCreate(secondRec, secondReq)
+	require.Equal(t, http.StatusOK, secondRec.Code)
+
+	var second api.LoopCreateResult
+	require.NoError(t, json.NewDecoder(secondRec.Body).Decode(&second))
+	assert.False(t, second.Created)
+	assert.Equal(t, first.LoopID, second.LoopID)
+}
+
+func TestHandleLoopCreateFromApprovedTaskContract(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	require.NoError(t, ms.PutTaskContract(context.Background(), model.TaskContract{
+		Kind:              "smith.task",
+		ID:                "task-approved",
+		ProjectID:         "smith",
+		ProviderProfileID: "openai-work",
+		Objective:         "Restore green CI",
+		Validation:        []string{"go test ./..."},
+		Status:            model.TaskContractStatusApproved,
+		CorrelationID:     "task-corr-approved",
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"task_contract_id":"task-approved"
+	}`))
+	s.handleLoopCreate(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var result api.LoopCreateResult
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&result))
+	require.True(t, result.Created)
+	require.NotEmpty(t, result.LoopID)
+
+	anomaly, found, err := ms.GetAnomaly(context.Background(), result.LoopID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "task_contract", anomaly.SourceType)
+	assert.Equal(t, "task-approved", anomaly.Metadata["task_contract_id"])
+	assert.Equal(t, `["go test ./..."]`, anomaly.Metadata["task_validation_commands_json"])
+
+	task, found, err := ms.GetTaskContract(context.Background(), "task-approved")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, model.TaskContractStatusRunning, task.Status)
+}
+
+func TestHandleLoopCreateRejectsUnapprovedTaskContract(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	require.NoError(t, ms.PutTaskContract(context.Background(), model.TaskContract{
+		Kind:              "smith.task",
+		ID:                "task-draft",
+		ProjectID:         "smith",
+		ProviderProfileID: "openai-work",
+		Objective:         "Restore green CI",
+		Validation:        []string{"go test ./..."},
+		Status:            model.TaskContractStatusDraft,
+		CorrelationID:     "task-corr-draft",
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"task_contract_id":"task-draft"
+	}`))
+	s.handleLoopCreate(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "approved")
+}
+
+func TestHandleLoopCreateResolvesProviderFromProfileMetadata(t *testing.T) {
+	ms := store.NewMemStore()
+	providerStore := provider.NewFileProviderProfileStore()
+	require.NoError(t, providerStore.PutProviderProfile(context.Background(), provider.ProviderProfile{
+		ID:           "codex-mini-profile",
+		Name:         "Codex Mini",
+		ProviderType: provider.ProviderCodex,
+		DefaultModel: provider.CodexMiniModel,
+	}))
+
+	s := &server{
+		store:       ms,
+		providers:   providerStore,
+		presets:     newPresetCatalog("standard"),
+		skillPolicy: model.SkillPolicy{},
+		term:        newTerminalSessionStore(),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"title":"Resolve provider from profile",
+		"description":"Loop with provider profile",
+		"source_type":"manual",
+		"source_ref":"manual:test",
+		"metadata":{"provider_profile_id":"codex-mini-profile"}
+	}`))
+	s.handleLoopCreate(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var result api.LoopCreateResult
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&result))
+
+	anomaly, found, err := ms.GetAnomaly(context.Background(), result.LoopID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, provider.ProviderCodex, anomaly.ProviderID)
+	assert.Equal(t, provider.CodexMiniModel, anomaly.Model)
+}
+
+func TestHandleLoopCreateRejectsUnknownProviderProfileMetadata(t *testing.T) {
+	ms := store.NewMemStore()
+	s := &server{
+		store:       ms,
+		providers:   provider.NewFileProviderProfileStore(),
+		presets:     newPresetCatalog("standard"),
+		skillPolicy: model.SkillPolicy{},
+		term:        newTerminalSessionStore(),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
+		"title":"Unknown profile",
+		"description":"Loop with unknown provider profile",
+		"source_type":"manual",
+		"source_ref":"manual:test",
+		"metadata":{"provider_profile_id":"missing-profile"}
+	}`))
+	s.handleLoopCreate(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "provider profile")
+}
+
 func TestHandleDocumentBuildRejectsInvalidPRD(t *testing.T) {
 	ms := store.NewMemStore()
 	s := newPRDValidationTestServer(ms)
@@ -205,6 +476,166 @@ func TestHandleDocumentBuildRejectsInvalidPRD(t *testing.T) {
 		t.Fatalf("expected no created loops, got %d", len(states))
 	}
 }
+
+func TestHandleLoopLifecyclePauseResumeCancelWithStateGuards(t *testing.T) {
+	ms := store.NewMemStore()
+	_, err := ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-lifecycle",
+		State:         model.LoopStateUnresolved,
+		Reason:        "seed",
+		CorrelationID: "corr-loop-lifecycle",
+	}, 0)
+	require.NoError(t, err)
+
+	s := &server{store: ms}
+
+	pauseRec := httptest.NewRecorder()
+	pauseReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-lifecycle/pause", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(pauseRec, pauseReq)
+	require.Equal(t, http.StatusOK, pauseRec.Code)
+	var pauseResp map[string]any
+	require.NoError(t, json.NewDecoder(pauseRec.Body).Decode(&pauseResp))
+	assert.Equal(t, "unresolved", pauseResp["state"])
+	assert.Equal(t, true, pauseResp["idempotent"])
+
+	resumeRec := httptest.NewRecorder()
+	resumeReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-lifecycle/resume", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(resumeRec, resumeReq)
+	require.Equal(t, http.StatusOK, resumeRec.Code)
+	var resumeResp map[string]any
+	require.NoError(t, json.NewDecoder(resumeRec.Body).Decode(&resumeResp))
+	assert.Equal(t, "running", resumeResp["state"])
+	assert.Equal(t, false, resumeResp["idempotent"])
+
+	resumeAgainRec := httptest.NewRecorder()
+	resumeAgainReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-lifecycle/resume", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(resumeAgainRec, resumeAgainReq)
+	require.Equal(t, http.StatusOK, resumeAgainRec.Code)
+	var resumeAgainResp map[string]any
+	require.NoError(t, json.NewDecoder(resumeAgainRec.Body).Decode(&resumeAgainResp))
+	assert.Equal(t, true, resumeAgainResp["idempotent"])
+
+	cancelRec := httptest.NewRecorder()
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-lifecycle/cancel", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(cancelRec, cancelReq)
+	require.Equal(t, http.StatusOK, cancelRec.Code)
+
+	cancelAgainRec := httptest.NewRecorder()
+	cancelAgainReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-lifecycle/cancel", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(cancelAgainRec, cancelAgainReq)
+	require.Equal(t, http.StatusOK, cancelAgainRec.Code)
+	var cancelAgainResp map[string]any
+	require.NoError(t, json.NewDecoder(cancelAgainRec.Body).Decode(&cancelAgainResp))
+	assert.Equal(t, true, cancelAgainResp["idempotent"])
+
+	invalidResumeRec := httptest.NewRecorder()
+	invalidResumeReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-lifecycle/resume", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(invalidResumeRec, invalidResumeReq)
+	require.Equal(t, http.StatusConflict, invalidResumeRec.Code)
+	assert.Contains(t, invalidResumeRec.Body.String(), "invalid transition")
+}
+
+func TestHandleLoopLifecycleSyncsTaskContractStatus(t *testing.T) {
+	ms := store.NewMemStore()
+	require.NoError(t, ms.PutTaskContract(context.Background(), model.TaskContract{
+		Kind:              "smith.task",
+		ID:                "task-lifecycle",
+		ProjectID:         "smith",
+		ProviderProfileID: "openai-work",
+		Objective:         "Lifecycle task",
+		Validation:        []string{"go test ./..."},
+		Status:            model.TaskContractStatusApproved,
+		CorrelationID:     "task-corr-lifecycle",
+	}))
+	require.NoError(t, ms.PutAnomaly(context.Background(), model.Anomaly{
+		ID: "loop-task-lifecycle",
+		Metadata: map[string]string{
+			"task_contract_id": "task-lifecycle",
+		},
+		CorrelationID: "corr-loop-task-lifecycle",
+	}))
+	_, err := ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-task-lifecycle",
+		State:         model.LoopStateUnresolved,
+		Reason:        "seed",
+		CorrelationID: "corr-loop-task-lifecycle",
+	}, 0)
+	require.NoError(t, err)
+
+	s := &server{store: ms}
+
+	resumeRec := httptest.NewRecorder()
+	resumeReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-task-lifecycle/resume", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(resumeRec, resumeReq)
+	require.Equal(t, http.StatusOK, resumeRec.Code)
+
+	task, found, err := ms.GetTaskContract(context.Background(), "task-lifecycle")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, model.TaskContractStatusRunning, task.Status)
+
+	cancelRec := httptest.NewRecorder()
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-task-lifecycle/cancel", strings.NewReader(`{"actor":"alice"}`))
+	s.handleLoopByID(cancelRec, cancelReq)
+	require.Equal(t, http.StatusOK, cancelRec.Code)
+
+	task, found, err = ms.GetTaskContract(context.Background(), "task-lifecycle")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, model.TaskContractStatusBlocked, task.Status)
+}
+
+func TestHandleLoopInterventionIdempotencyByEventID(t *testing.T) {
+	ms := store.NewMemStore()
+	_, err := ms.PutState(context.Background(), model.StateRecord{
+		LoopID:        "loop-intervention",
+		State:         model.LoopStateRunning,
+		Reason:        "seed",
+		CorrelationID: "corr-loop-intervention",
+	}, 0)
+	require.NoError(t, err)
+
+	s := &server{store: ms}
+	firstRec := httptest.NewRecorder()
+	firstReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-intervention/interventions", strings.NewReader(`{
+		"actor":"alice",
+		"instruction":"avoid modifying authentication logic",
+		"event_id":"evt-123"
+	}`))
+	s.handleLoopByID(firstRec, firstReq)
+	require.Equal(t, http.StatusCreated, firstRec.Code)
+
+	var firstBody api.LoopInterventionResponse
+	require.NoError(t, json.NewDecoder(firstRec.Body).Decode(&firstBody))
+	assert.Equal(t, "evt-123", firstBody.EventID)
+	assert.False(t, firstBody.Idempotent)
+	assert.Greater(t, firstBody.Sequence, int64(0))
+
+	secondRec := httptest.NewRecorder()
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/loops/loop-intervention/interventions", strings.NewReader(`{
+		"actor":"alice",
+		"instruction":"avoid modifying authentication logic",
+		"event_id":"evt-123"
+	}`))
+	s.handleLoopByID(secondRec, secondReq)
+	require.Equal(t, http.StatusOK, secondRec.Code)
+
+	var secondBody api.LoopInterventionResponse
+	require.NoError(t, json.NewDecoder(secondRec.Body).Decode(&secondBody))
+	assert.Equal(t, int64(firstBody.Sequence), secondBody.Sequence)
+	assert.True(t, secondBody.Idempotent)
+
+	entries, err := ms.ListJournal(context.Background(), "loop-intervention", 0)
+	require.NoError(t, err)
+	count := 0
+	for _, entry := range entries {
+		if entry.Metadata["intervention_event_id"] == "evt-123" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count)
+}
+
 func TestPresetCatalogSupportsCRUDAndPolicy(t *testing.T) {
 	catalog := newPresetCatalog("team-default")
 	if !catalog.Has("team-default") {
@@ -292,6 +723,35 @@ func TestSplitLoopRouteSupportsSlashLoopIDs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleJournalStreamReplaysOrderedEntriesWithSinceSeq(t *testing.T) {
+	ms := store.NewMemStore()
+	s := &server{store: ms}
+	loopID := "loop-stream-replay"
+	for _, message := range []string{"entry-one", "entry-two", "entry-three"} {
+		err := ms.AppendJournal(context.Background(), model.JournalEntry{
+			LoopID:  loopID,
+			Message: message,
+		})
+		require.NoError(t, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/loops/"+loopID+"/journal/stream?since_seq=1", nil).WithContext(ctx)
+	s.handleLoopByID(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, "event: ready")
+	assert.Contains(t, body, "event: entry")
+	assert.NotContains(t, body, "entry-one")
+	assert.Contains(t, body, "entry-two")
+	assert.Contains(t, body, "entry-three")
+	assert.Greater(t, strings.Index(body, "entry-three"), strings.Index(body, "entry-two"))
 }
 
 func TestResolveLoopRuntimeRunningPod(t *testing.T) {
@@ -1260,6 +1720,132 @@ func assertTerminalMetadata(t *testing.T, metadata map[string]string, actor, ter
 	}
 }
 
+func TestHandleTasksCreateAndGet(t *testing.T) {
+	ms := store.NewMemStore()
+	s := &server{store: ms}
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(`{
+		"project_id":"smith",
+		"provider_profile_id":"openai-work",
+		"source_document":"docs/task.md",
+		"objective":"Restore green CI",
+		"validation":["go test ./..."],
+		"actor":"alice"
+	}`))
+	s.handleTasks(createRec, createReq)
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created api.TaskContract
+	require.NoError(t, json.NewDecoder(createRec.Body).Decode(&created))
+	require.NotEmpty(t, created.ID)
+	assert.Equal(t, "smith.task", created.Kind)
+	assert.Equal(t, api.TaskContractStatusDraft, created.Status)
+
+	getRec := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/tasks/"+created.ID, nil)
+	s.handleTaskByID(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var fetched api.TaskContract
+	require.NoError(t, json.NewDecoder(getRec.Body).Decode(&fetched))
+	assert.Equal(t, created.ID, fetched.ID)
+	assert.Equal(t, "Restore green CI", fetched.Objective)
+}
+
+func TestHandleTaskPatchUpdatesMutableFieldsAndAudit(t *testing.T) {
+	ms := store.NewMemStore()
+	seed := model.TaskContract{
+		Kind:               "smith.task",
+		ID:                 "task-validated",
+		ProjectID:          "smith",
+		ProviderProfileID:  "openai-work",
+		Objective:          "Initial objective",
+		Validation:         []string{"go test ./..."},
+		Status:             model.TaskContractStatusValidated,
+		CorrelationID:      "task-corr-validated",
+		AcceptanceCriteria: []string{"tests pass"},
+	}
+	require.NoError(t, ms.PutTaskContract(context.Background(), seed))
+
+	s := &server{store: ms}
+	patchRec := httptest.NewRecorder()
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/tasks/task-validated", strings.NewReader(`{
+		"objective":"Updated objective",
+		"status":"draft",
+		"validation":["go test ./...", "npm --prefix frontend run check"],
+		"actor":"alice"
+	}`))
+	s.handleTaskByID(patchRec, patchReq)
+	require.Equal(t, http.StatusOK, patchRec.Code)
+
+	var updated api.TaskContract
+	require.NoError(t, json.NewDecoder(patchRec.Body).Decode(&updated))
+	assert.Equal(t, "Updated objective", updated.Objective)
+	assert.Equal(t, api.TaskContractStatusDraft, updated.Status)
+	require.Len(t, updated.Validation, 2)
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+	assert.Equal(t, "patch-task", audits[0].Action)
+	assert.Contains(t, audits[0].Metadata["changed_fields"], "objective")
+	assert.Contains(t, audits[0].Metadata["changed_fields"], "status")
+}
+
+func TestHandleTaskApproveRequiresValidatedStatus(t *testing.T) {
+	ms := store.NewMemStore()
+	require.NoError(t, ms.PutTaskContract(context.Background(), model.TaskContract{
+		Kind:              "smith.task",
+		ID:                "task-draft",
+		ProjectID:         "smith",
+		ProviderProfileID: "openai-work",
+		Objective:         "Draft task",
+		Validation:        []string{"go test ./..."},
+		Status:            model.TaskContractStatusDraft,
+		CorrelationID:     "task-corr-draft",
+	}))
+
+	s := &server{store: ms}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/task-draft/approve", strings.NewReader(`{"actor":"alice"}`))
+	s.handleTaskByID(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "validated")
+}
+
+func TestHandleTaskApproveTransitionsAndAudit(t *testing.T) {
+	ms := store.NewMemStore()
+	require.NoError(t, ms.PutTaskContract(context.Background(), model.TaskContract{
+		Kind:              "smith.task",
+		ID:                "task-ready",
+		ProjectID:         "smith",
+		ProviderProfileID: "openai-work",
+		Objective:         "Ready for approval",
+		Validation:        []string{"go test ./..."},
+		Status:            model.TaskContractStatusValidated,
+		CorrelationID:     "task-corr-ready",
+	}))
+
+	s := &server{store: ms}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/task-ready/approve", strings.NewReader(`{"actor":"alice"}`))
+	s.handleTaskByID(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var approved api.TaskContract
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&approved))
+	assert.Equal(t, api.TaskContractStatusApproved, approved.Status)
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+	assert.Equal(t, "approve-task", audits[0].Action)
+	assert.Equal(t, "validated", audits[0].Metadata["status_from"])
+	assert.Equal(t, "approved", audits[0].Metadata["status_to"])
+}
+
 func TestHandleProvidersReturnsDefaultProfile(t *testing.T) {
 	s := &server{
 		providers:    provider.NewFileProviderProfileStore(),
@@ -1274,7 +1860,29 @@ func TestHandleProvidersReturnsDefaultProfile(t *testing.T) {
 	var out []provider.ProviderProfile
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
 	require.NotEmpty(t, out)
-	assert.Equal(t, provider.DefaultProviderProfileID, out[0].ID)
+	ids := make([]string, 0, len(out))
+	for _, profile := range out {
+		ids = append(ids, profile.ID)
+	}
+	assert.Contains(t, ids, provider.DefaultProviderProfileID)
+	assert.Contains(t, ids, "claude-default")
+	assert.Contains(t, ids, "gemini-default")
+}
+
+func TestHandleProviderCatalogReturnsSupportedProviderSet(t *testing.T) {
+	s := &server{}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers/catalog", nil)
+	s.handleProviderCatalog(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out []provider.CatalogEntry
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	require.Len(t, out, 3)
+	ids := []string{out[0].ID, out[1].ID, out[2].ID}
+	assert.Equal(t, []string{provider.ProviderCodex, provider.ProviderClaude, provider.ProviderGemini}, ids)
+	assert.NotEmpty(t, out[0].RequiredConfigFields)
 }
 
 func TestHandleProjectsAssignsDefaultProviderProfile(t *testing.T) {
@@ -1324,9 +1932,187 @@ func TestHandleProjectsRejectsUnknownProviderProfile(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "provider profile")
 }
 
+func TestOnboardingReadinessTransitionsFromIncompleteToComplete(t *testing.T) {
+	credStore := provider.NewFileTokenStore(filepath.Join(t.TempDir(), "tokens.json"))
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{}}
+	s := &server{
+		providers:    provider.NewFileProviderProfileStore(),
+		projectStore: projectStore,
+		projectCred:  credStore,
+	}
+
+	initialRec := httptest.NewRecorder()
+	initialReq := httptest.NewRequest(http.MethodGet, "/v1/onboarding/readiness?project_id=proj-onboard", nil)
+	s.handleOnboardingReadiness(initialRec, initialReq)
+	require.Equal(t, http.StatusOK, initialRec.Code)
+	var initial api.OnboardingReadinessResponse
+	require.NoError(t, json.NewDecoder(initialRec.Body).Decode(&initial))
+	assert.False(t, initial.Ready)
+	assert.Contains(t, initial.Missing, "project")
+
+	repoRec := httptest.NewRecorder()
+	repoReq := httptest.NewRequest(http.MethodPost, "/v1/onboarding/repository", strings.NewReader(`{
+		"project_id":"proj-onboard",
+		"repo_url":"https://github.com/acme/repo",
+		"provider_profile_id":"codex-default"
+	}`))
+	s.handleOnboardingRepository(repoRec, repoReq)
+	require.Equal(t, http.StatusOK, repoRec.Code)
+
+	midRec := httptest.NewRecorder()
+	midReq := httptest.NewRequest(http.MethodGet, "/v1/onboarding/readiness?project_id=proj-onboard", nil)
+	s.handleOnboardingReadiness(midRec, midReq)
+	require.Equal(t, http.StatusOK, midRec.Code)
+	var mid api.OnboardingReadinessResponse
+	require.NoError(t, json.NewDecoder(midRec.Body).Decode(&mid))
+	assert.False(t, mid.Ready)
+	assert.Contains(t, mid.Missing, "github_credential")
+
+	credRec := httptest.NewRecorder()
+	credReq := httptest.NewRequest(http.MethodPost, "/v1/projects/credentials/github", strings.NewReader(`{
+		"project_id":"proj-onboard",
+		"github_user":"alice",
+		"credential":"ghp_test_1234567890"
+	}`))
+	s.handleProjectGitHubCredential(credRec, credReq)
+	require.Equal(t, http.StatusOK, credRec.Code)
+
+	finalRec := httptest.NewRecorder()
+	finalReq := httptest.NewRequest(http.MethodGet, "/v1/onboarding/readiness?project_id=proj-onboard", nil)
+	s.handleOnboardingReadiness(finalRec, finalReq)
+	require.Equal(t, http.StatusOK, finalRec.Code)
+	var final api.OnboardingReadinessResponse
+	require.NoError(t, json.NewDecoder(finalRec.Body).Decode(&final))
+	assert.True(t, final.Ready)
+	assert.Empty(t, final.Missing)
+	assert.True(t, final.Credential.Valid)
+	assert.True(t, final.Credential.CredentialSet)
+	assert.NotContains(t, final.Credential.CredentialMasked, "ghp_test_1234567890")
+}
+
+func TestOnboardingCredentialValidateReturnsMaskedStatus(t *testing.T) {
+	credStore := provider.NewFileTokenStore(filepath.Join(t.TempDir(), "tokens.json"))
+	s := &server{projectCred: credStore}
+
+	missingRec := httptest.NewRecorder()
+	missingReq := httptest.NewRequest(http.MethodPost, "/v1/onboarding/credentials/validate", strings.NewReader(`{"project_id":"proj-cred"}`))
+	s.handleOnboardingCredentialValidate(missingRec, missingReq)
+	require.Equal(t, http.StatusOK, missingRec.Code)
+	var missing api.OnboardingCredentialStatus
+	require.NoError(t, json.NewDecoder(missingRec.Body).Decode(&missing))
+	assert.False(t, missing.Valid)
+	assert.False(t, missing.CredentialSet)
+
+	require.NoError(t, credStore.PutProjectCredential(context.Background(), "proj-cred", provider.ProjectCredential{
+		GitHubUser: "bob",
+		PAT:        "ghp_secret_token_12345",
+		UpdatedAt:  time.Now().UTC(),
+	}))
+
+	validRec := httptest.NewRecorder()
+	validReq := httptest.NewRequest(http.MethodPost, "/v1/onboarding/credentials/validate", strings.NewReader(`{"project_id":"proj-cred"}`))
+	s.handleOnboardingCredentialValidate(validRec, validReq)
+	require.Equal(t, http.StatusOK, validRec.Code)
+	var valid api.OnboardingCredentialStatus
+	require.NoError(t, json.NewDecoder(validRec.Body).Decode(&valid))
+	assert.True(t, valid.Valid)
+	assert.True(t, valid.CredentialSet)
+	assert.NotContains(t, valid.CredentialMasked, "ghp_secret_token_12345")
+}
+
+func TestHandleProviderByIDSupportsAPIAliasAndAuditsConfigChanges(t *testing.T) {
+	ms := store.NewMemStore()
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{}}
+	s := &server{
+		store:        ms,
+		providers:    provider.NewFileProviderProfileStore(),
+		projectStore: projectStore,
+		secrets:      provider.NewFileSecretStore(),
+	}
+
+	putRec := httptest.NewRecorder()
+	putReq := httptest.NewRequest(http.MethodPut, "/api/providers/openai-work", strings.NewReader(`{
+		"id":"openai-work",
+		"provider_type":"openai",
+		"default_model":"gpt-5.4"
+	}`))
+	s.handleProviderByID(putRec, putReq)
+	require.Equal(t, http.StatusOK, putRec.Code)
+
+	getRec := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/providers/openai-work", nil)
+	s.handleProviderByID(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+	assert.Contains(t, getRec.Body.String(), "openai-work")
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/providers/openai-work", nil)
+	s.handleProviderByID(deleteRec, deleteReq)
+	require.Equal(t, http.StatusNoContent, deleteRec.Code)
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+
+	actions := map[string]bool{}
+	for _, audit := range audits {
+		actions[audit.Action] = true
+	}
+	assert.True(t, actions["update-provider-profile"])
+	assert.True(t, actions["delete-provider-profile"])
+}
+
+func TestHandleProjectsSupportsAPIAliasAndAuditsConfigChanges(t *testing.T) {
+	ms := store.NewMemStore()
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{}}
+	s := &server{
+		store:        ms,
+		providers:    provider.NewFileProviderProfileStore(),
+		projectStore: projectStore,
+	}
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/api/projects", strings.NewReader(`{
+		"id":"proj-api",
+		"name":"Project API",
+		"repo_url":"https://github.com/acme/project-api"
+	}`))
+	s.handleProjects(createRec, createReq)
+	require.Equal(t, http.StatusOK, createRec.Code)
+
+	updateRec := httptest.NewRecorder()
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/projects/proj-api", strings.NewReader(`{
+		"id":"proj-api",
+		"name":"Project API Updated",
+		"repo_url":"https://github.com/acme/project-api",
+		"provider_profile_id":"codex-default"
+	}`))
+	s.handleProjectByID(updateRec, updateReq)
+	require.Equal(t, http.StatusOK, updateRec.Code)
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/projects/proj-api", nil)
+	s.handleProjectByID(deleteRec, deleteReq)
+	require.Equal(t, http.StatusNoContent, deleteRec.Code)
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+
+	actions := map[string]bool{}
+	for _, audit := range audits {
+		actions[audit.Action] = true
+	}
+	assert.True(t, actions["create-project"])
+	assert.True(t, actions["update-project"])
+	assert.True(t, actions["delete-project"])
+}
+
 func TestHandleSecretsCRUDAndMasking(t *testing.T) {
+	ms := store.NewMemStore()
 	secretStore := provider.NewFileSecretStore()
 	s := &server{
+		store:     ms,
 		providers: provider.NewFileProviderProfileStore(),
 		secrets:   secretStore,
 	}
@@ -1355,6 +2141,18 @@ func TestHandleSecretsCRUDAndMasking(t *testing.T) {
 	require.True(t, found)
 	assert.Equal(t, "sk-test-123456", stored.Value)
 
+	updateRec := httptest.NewRecorder()
+	updateReq := httptest.NewRequest(http.MethodPut, "/v1/secrets/openai-key", strings.NewReader(`{
+		"id":"openai-key",
+		"name":"OpenAI Key",
+		"description":"Primary key rotated",
+		"value":"sk-test-rotated-abcdef"
+	}`))
+	s.handleSecretByID(updateRec, updateReq)
+	require.Equal(t, http.StatusOK, updateRec.Code)
+	assert.Contains(t, updateRec.Body.String(), "value_masked")
+	assert.NotContains(t, updateRec.Body.String(), "sk-test-rotated-abcdef")
+
 	deleteRec := httptest.NewRecorder()
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/secrets/openai-key", nil)
 	s.handleSecretByID(deleteRec, deleteReq)
@@ -1363,6 +2161,120 @@ func TestHandleSecretsCRUDAndMasking(t *testing.T) {
 	_, found, err = secretStore.GetSecret(context.Background(), "openai-key")
 	require.NoError(t, err)
 	assert.False(t, found)
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+	actions := map[string]bool{}
+	for _, audit := range audits {
+		actions[audit.Action] = true
+	}
+	assert.True(t, actions["create-secret"])
+	assert.True(t, actions["update-secret"])
+	assert.True(t, actions["delete-secret"])
+}
+
+func TestHandleProjectCredentialsAuditMutations(t *testing.T) {
+	ms := store.NewMemStore()
+	credStore := provider.NewFileTokenStore(filepath.Join(t.TempDir(), "tokens.json"))
+	s := &server{
+		store:       ms,
+		projectCred: credStore,
+	}
+
+	createRec := httptest.NewRecorder()
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/projects/credentials/github", strings.NewReader(`{
+		"project_id":"proj-cred-audit",
+		"github_user":"alice",
+		"credential":"ghp_test_1234567890"
+	}`))
+	s.handleProjectGitHubCredential(createRec, createReq)
+	require.Equal(t, http.StatusOK, createRec.Code)
+
+	deleteRec := httptest.NewRecorder()
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/projects/credentials/github?project_id=proj-cred-audit", nil)
+	s.handleProjectGitHubCredential(deleteRec, deleteReq)
+	require.Equal(t, http.StatusOK, deleteRec.Code)
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+	actions := map[string]bool{}
+	for _, audit := range audits {
+		actions[audit.Action] = true
+	}
+	assert.True(t, actions["update-project-credential"])
+	assert.True(t, actions["delete-project-credential"])
+}
+
+func TestHandleProjectGitHubCredentialTestReturnsActionableErrorsAndAudits(t *testing.T) {
+	ms := store.NewMemStore()
+	credStore := provider.NewFileTokenStore(filepath.Join(t.TempDir(), "tokens.json"))
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{
+		"proj-test": {
+			ID:      "proj-test",
+			RepoURL: "https://github.com/acme/repo",
+		},
+	}}
+	require.NoError(t, credStore.PutProjectCredential(context.Background(), "proj-test", provider.ProjectCredential{
+		GitHubUser: "alice",
+		PAT:        "ghp_test_1234567890",
+		UpdatedAt:  time.Now().UTC(),
+	}))
+
+	s := &server{
+		store:        ms,
+		projectCred:  credStore,
+		projectStore: projectStore,
+		repoAccess: func(ctx context.Context, repoURL string, githubUser string, credential string) (bool, string, error) {
+			return false, "credential rejected by GitHub (401 unauthorized)", nil
+		},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/projects/credentials/github/test", strings.NewReader(`{"project_id":"proj-test"}`))
+	s.handleProjectGitHubCredentialTest(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var out api.ProjectCredentialTestResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	assert.False(t, out.Valid)
+	assert.Equal(t, "proj-test", out.ProjectID)
+	assert.Contains(t, out.Message, "401")
+
+	audits, err := ms.ListAudit(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, audits)
+	assert.Equal(t, "test-project-credential", audits[0].Action)
+	assert.Equal(t, "proj-test", audits[0].Metadata["project_id"])
+	assert.Equal(t, "false", audits[0].Metadata["valid"])
+}
+
+func TestHandleProjectGitHubCredentialTestReturnsMissingCredentialMessage(t *testing.T) {
+	ms := store.NewMemStore()
+	credStore := provider.NewFileTokenStore(filepath.Join(t.TempDir(), "tokens.json"))
+	projectStore := &memoryProjectStore{items: map[string]provider.Project{
+		"proj-missing": {
+			ID:      "proj-missing",
+			RepoURL: "https://github.com/acme/repo",
+		},
+	}}
+
+	s := &server{
+		store:        ms,
+		projectCred:  credStore,
+		projectStore: projectStore,
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/projects/credentials/github/test", strings.NewReader(`{"project_id":"proj-missing"}`))
+	s.handleProjectGitHubCredentialTest(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var out api.ProjectCredentialTestResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	assert.False(t, out.Valid)
+	assert.Equal(t, "credential missing", out.Message)
 }
 
 func TestHandleProvidersRejectsUnknownSecretRef(t *testing.T) {
@@ -1381,6 +2293,23 @@ func TestHandleProvidersRejectsUnknownSecretRef(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "secret")
+}
+
+func TestHandleProvidersRejectsUnsupportedProviderType(t *testing.T) {
+	s := &server{
+		providers: provider.NewFileProviderProfileStore(),
+		secrets:   provider.NewFileSecretStore(),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(`{
+		"id":"custom-provider",
+		"provider_type":"custom"
+	}`))
+	s.handleProviders(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "unsupported provider_type")
 }
 
 func TestHandleSecretDeleteRejectsReferencedSecret(t *testing.T) {
@@ -1572,6 +2501,35 @@ func TestDeriveLoopIDDifferentInputs(t *testing.T) {
 	id4 := deriveLoopID("proj1", "", "type1", "ref2")
 	if id3 == id4 {
 		t.Fatalf("deriveLoopID collision for different source refs: %q", id3)
+	}
+}
+
+func TestDeriveLoopIDDoesNotEndWithHyphen(t *testing.T) {
+	inputs := []struct {
+		projectID      string
+		idempotencyKey string
+		sourceType     string
+		sourceRef      string
+	}{
+		{
+			projectID:      "smith",
+			idempotencyKey: "prd:smoke:autonomous-prd-json-meta#US-001",
+			sourceType:     "prd_story",
+			sourceRef:      "smoke:autonomous-prd-json-meta#US-001",
+		},
+		{
+			projectID:      "smith",
+			idempotencyKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-tail",
+			sourceType:     "manual",
+			sourceRef:      "manual/ref",
+		},
+	}
+
+	for _, input := range inputs {
+		loopID := deriveLoopID(input.projectID, input.idempotencyKey, input.sourceType, input.sourceRef)
+		if strings.HasSuffix(loopID, "-") {
+			t.Fatalf("loop id must not end with hyphen: %q", loopID)
+		}
 	}
 }
 

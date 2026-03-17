@@ -89,6 +89,7 @@ type server struct {
 	store        store.StateStore
 	auth         *provider.AuthManager
 	projectCred  provider.ProjectCredentialStore
+	repoAccess   func(ctx context.Context, repoURL string, githubUser string, credential string) (bool, string, error)
 	providers    provider.ProviderProfileStore
 	secrets      provider.SecretStore
 	projectStore provider.ProjectStore
@@ -107,6 +108,13 @@ type authCompleteRequest = api.AuthCompleteRequest
 type authAPIKeyRequest = api.AuthAPIKeyRequest
 type projectCredentialUpsertRequest = api.ProjectCredentialUpsertRequest
 type projectCredentialDeleteRequest = api.ProjectCredentialDeleteRequest
+type projectCredentialTestRequest = api.ProjectCredentialTestRequest
+type projectCredentialTestResponse = api.ProjectCredentialTestResponse
+type onboardingRepositoryRequest = api.OnboardingRepositoryRequest
+type onboardingCredentialValidateRequest = api.OnboardingCredentialValidateRequest
+type onboardingCredentialStatus = api.OnboardingCredentialStatus
+type onboardingRequirement = api.OnboardingRequirement
+type onboardingReadinessResponse = api.OnboardingReadinessResponse
 type terminalAttachRequest = api.TerminalAttachRequest
 type terminalDetachRequest = api.TerminalDetachRequest
 type terminalCommandRequest = api.TerminalCommandRequest
@@ -114,6 +122,12 @@ type loopRuntimeResponse = api.LoopRuntimeResponse
 type loopDeleteRequest = api.LoopDeleteRequest
 type documentRequest = api.DocumentRequest
 type documentBuildRequest = api.DocumentBuildRequest
+type taskContractCreateRequest = api.TaskContractCreateRequest
+type taskContractPatchRequest = api.TaskContractPatchRequest
+type taskContractApproveRequest = api.TaskContractApproveRequest
+type loopLifecycleRequest = api.LoopLifecycleRequest
+type loopInterventionRequest = api.LoopInterventionRequest
+type loopInterventionResponse = api.LoopInterventionResponse
 type loopCreateRequest = api.LoopCreateRequest
 type loopBatchRequest = api.LoopBatchRequest
 type loopCreateResult = api.LoopCreateResult
@@ -541,6 +555,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/readyz", s.handleReady)
+	mux.HandleFunc("/api/loops", s.handleLoops)
+	mux.HandleFunc("/api/loops/", s.handleLoopByID)
 	mux.HandleFunc("/v1/loops", s.handleLoops)
 	mux.HandleFunc("/v1/loops/stream", s.handleLoopStream)
 	mux.HandleFunc("/v1/loops/", s.handleLoopByID)
@@ -553,6 +569,10 @@ func main() {
 	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/audit/stream", s.handleAuditStream)
 	mux.HandleFunc("/v1/reporting/cost", s.handleCost)
+	mux.HandleFunc("/api/tasks", s.handleTasks)
+	mux.HandleFunc("/api/tasks/", s.handleTaskByID)
+	mux.HandleFunc("/v1/tasks", s.handleTasks)
+	mux.HandleFunc("/v1/tasks/", s.handleTaskByID)
 	mux.HandleFunc("/v1/documents", s.handleDocuments)
 	mux.HandleFunc("/v1/documents/stream", s.handleDocumentStream)
 	mux.HandleFunc("/v1/documents/", s.handleDocumentByID)
@@ -562,11 +582,26 @@ func main() {
 	mux.HandleFunc("/v1/auth/codex/status", s.handleCodexAuthStatus)
 	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
 	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
+	mux.HandleFunc("/api/projects/credentials/github", s.handleProjectGitHubCredential)
+	mux.HandleFunc("/api/projects/credentials/github/test", s.handleProjectGitHubCredentialTest)
 	mux.HandleFunc("/v1/projects/credentials/github", s.handleProjectGitHubCredential)
+	mux.HandleFunc("/v1/projects/credentials/github/test", s.handleProjectGitHubCredentialTest)
+	mux.HandleFunc("/api/providers/catalog", s.handleProviderCatalog)
+	mux.HandleFunc("/api/providers", s.handleProviders)
+	mux.HandleFunc("/api/providers/", s.handleProviderByID)
+	mux.HandleFunc("/v1/providers/catalog", s.handleProviderCatalog)
 	mux.HandleFunc("/v1/providers", s.handleProviders)
 	mux.HandleFunc("/v1/providers/", s.handleProviderByID)
 	mux.HandleFunc("/v1/secrets", s.handleSecrets)
 	mux.HandleFunc("/v1/secrets/", s.handleSecretByID)
+	mux.HandleFunc("/api/onboarding/readiness", s.handleOnboardingReadiness)
+	mux.HandleFunc("/api/onboarding/repository", s.handleOnboardingRepository)
+	mux.HandleFunc("/api/onboarding/credentials/validate", s.handleOnboardingCredentialValidate)
+	mux.HandleFunc("/v1/onboarding/readiness", s.handleOnboardingReadiness)
+	mux.HandleFunc("/v1/onboarding/repository", s.handleOnboardingRepository)
+	mux.HandleFunc("/v1/onboarding/credentials/validate", s.handleOnboardingCredentialValidate)
+	mux.HandleFunc("/api/projects", s.handleProjects)
+	mux.HandleFunc("/api/projects/", s.handleProjectByID)
 	mux.HandleFunc("/v1/projects", s.handleProjects)
 	mux.HandleFunc("/v1/projects/", s.handleProjectByID)
 
@@ -678,6 +713,9 @@ func (s *server) handleLoopCreate(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(raw, &single); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json payload")
 		return
+	}
+	if strings.TrimSpace(single.IdempotencyKey) == "" {
+		single.IdempotencyKey = strings.TrimSpace(r.Header.Get("Idempotency-Key"))
 	}
 	result := s.createOneLoop(r.Context(), single)
 	code := http.StatusCreated
@@ -886,14 +924,65 @@ func validateWorkspacePRDMetadata(metadata map[string]string) (model.PRDValidati
 }
 
 func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopCreateResult {
+	req.TaskContractID = strings.TrimSpace(req.TaskContractID)
 	req.Title = strings.TrimSpace(req.Title)
 	req.Description = strings.TrimSpace(req.Description)
 	req.SourceType = strings.TrimSpace(req.SourceType)
 	req.SourceRef = strings.TrimSpace(req.SourceRef)
 	req.CorrelationID = strings.TrimSpace(req.CorrelationID)
+	req.Metadata = copyStringMap(req.Metadata)
 	if req.CorrelationID == "" {
 		req.CorrelationID = fmt.Sprintf("corr-%d", time.Now().UTC().UnixNano())
 	}
+
+	var (
+		boundTask    model.TaskContract
+		hasBoundTask bool
+	)
+	if req.TaskContractID != "" {
+		task, found, err := s.store.GetTaskContract(ctx, req.TaskContractID)
+		if err != nil {
+			return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusInternalServerError}
+		}
+		if !found {
+			return loopCreateResult{Status: "error", Message: "task contract not found", HTTPCode: http.StatusNotFound}
+		}
+		if task.Status != model.TaskContractStatusApproved {
+			return loopCreateResult{Status: "error", Message: "task contract must be approved before loop creation", HTTPCode: http.StatusConflict}
+		}
+		hasBoundTask = true
+		boundTask = task
+		if req.Title == "" {
+			req.Title = task.Objective
+		}
+		if req.Description == "" {
+			req.Description = task.Objective
+		}
+		if req.SourceType == "" {
+			req.SourceType = "task_contract"
+		}
+		if req.SourceRef == "" {
+			req.SourceRef = strings.TrimSpace(task.SourceDocument)
+			if req.SourceRef == "" {
+				req.SourceRef = "task:" + task.ID
+			}
+		}
+		req.Metadata["task_contract_id"] = task.ID
+		if strings.TrimSpace(task.ProjectID) != "" {
+			if _, exists := req.Metadata["project_id"]; !exists {
+				req.Metadata["project_id"] = task.ProjectID
+			}
+		}
+		if strings.TrimSpace(task.ProviderProfileID) != "" {
+			req.Metadata["provider_profile_id"] = task.ProviderProfileID
+		}
+		if len(task.Validation) > 0 {
+			if raw, err := json.Marshal(task.Validation); err == nil {
+				req.Metadata["task_validation_commands_json"] = string(raw)
+			}
+		}
+	}
+
 	if req.Title == "" || req.SourceType == "" || req.SourceRef == "" {
 		return loopCreateResult{Status: "error", Message: "title, source_type, and source_ref are required", HTTPCode: http.StatusBadRequest}
 	}
@@ -903,6 +992,43 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 			Message:          "workspace prd failed readiness validation",
 			ValidationReport: &report,
 			HTTPCode:         http.StatusUnprocessableEntity,
+		}
+	}
+	if s.projectStore != nil {
+		projectID := strings.TrimSpace(req.Metadata["project_id"])
+		if projectID != "" {
+			project, found, err := s.projectStore.GetProject(ctx, projectID)
+			if err != nil {
+				return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusInternalServerError}
+			}
+			if !found {
+				return loopCreateResult{Status: "error", Message: "project not found", HTTPCode: http.StatusBadRequest}
+			}
+			if strings.TrimSpace(req.Metadata["project_name"]) == "" && strings.TrimSpace(project.Name) != "" {
+				req.Metadata["project_name"] = strings.TrimSpace(project.Name)
+			}
+			if strings.TrimSpace(req.Metadata["github_repository"]) == "" && strings.TrimSpace(project.RepoURL) != "" {
+				req.Metadata["github_repository"] = strings.TrimSpace(project.RepoURL)
+			}
+			if strings.TrimSpace(req.Metadata["provider_profile_id"]) == "" && strings.TrimSpace(project.ProviderProfileID) != "" {
+				req.Metadata["provider_profile_id"] = strings.TrimSpace(project.ProviderProfileID)
+			}
+		}
+	}
+
+	if providerProfileID := strings.TrimSpace(req.Metadata["provider_profile_id"]); providerProfileID != "" && s.providers != nil {
+		profile, found, err := s.providers.GetProviderProfile(ctx, providerProfileID)
+		if err != nil {
+			return loopCreateResult{Status: "error", Message: err.Error(), HTTPCode: http.StatusInternalServerError}
+		}
+		if !found {
+			return loopCreateResult{Status: "error", Message: "provider profile not found", HTTPCode: http.StatusBadRequest}
+		}
+		if strings.TrimSpace(req.ProviderID) == "" {
+			req.ProviderID = strings.TrimSpace(profile.ProviderType)
+		}
+		if strings.TrimSpace(req.Model) == "" {
+			req.Model = strings.TrimSpace(profile.DefaultModel)
 		}
 	}
 
@@ -995,6 +1121,24 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 			"skill_writable_override_audit_cnt": strconv.Itoa(skillAudit.WritableOverrideCount),
 		},
 	})
+	if hasBoundTask {
+		boundTask.Status = model.TaskContractStatusRunning
+		if err := s.store.PutTaskContract(ctx, boundTask); err != nil {
+			_ = s.store.AppendJournal(ctx, model.JournalEntry{
+				LoopID:        loopID,
+				Phase:         "ingress",
+				Level:         "warn",
+				ActorType:     "api",
+				ActorID:       "smith-api",
+				Message:       "failed to update task contract status to running",
+				CorrelationID: req.CorrelationID,
+				Metadata: map[string]string{
+					"task_contract_id": boundTask.ID,
+					"error":            err.Error(),
+				},
+			})
+		}
+	}
 
 	return loopCreateResult{
 		LoopID:      loopID,
@@ -1162,6 +1306,22 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, journal)
 		return
 	}
+	if route == "pause" {
+		s.handleLoopLifecycleTransition(w, r, loopID, model.LoopStateUnresolved, "pause-loop", "paused-via-api")
+		return
+	}
+	if route == "resume" {
+		s.handleLoopLifecycleTransition(w, r, loopID, model.LoopStateRunning, "resume-loop", "resumed-via-api")
+		return
+	}
+	if route == "cancel" {
+		s.handleLoopLifecycleTransition(w, r, loopID, model.LoopStateCancelled, "cancel-loop", "cancelled-via-api")
+		return
+	}
+	if route == "interventions" {
+		s.handleLoopIntervention(w, r, loopID)
+		return
+	}
 	if route == "control/attach" {
 		s.handleLoopAttach(w, r, loopID)
 		return
@@ -1228,11 +1388,18 @@ func (s *server) handleLoopByID(w http.ResponseWriter, r *http.Request) {
 
 func splitLoopRoute(path string) (loopID string, route string) {
 	remainder := strings.TrimPrefix(path, "/v1/loops/")
+	if remainder == path {
+		remainder = strings.TrimPrefix(path, "/api/loops/")
+	}
 	remainder = strings.TrimPrefix(remainder, "/")
 	if remainder == "" {
 		return "", ""
 	}
 	for _, suffix := range []string{
+		"/pause",
+		"/resume",
+		"/cancel",
+		"/interventions",
 		"/journal/stream",
 		"/control/attach",
 		"/control/detach",
@@ -1827,6 +1994,251 @@ func isActiveLoopState(state model.LoopState) bool {
 	}
 }
 
+func (s *server) handleLoopLifecycleTransition(w http.ResponseWriter, r *http.Request, loopID string, target model.LoopState, action, defaultReason string) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req loopLifecycleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = defaultReason
+	}
+
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+
+	current := state.Record.State
+	if current == target {
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        action,
+			TargetLoopID:  loopID,
+			Reason:        reason,
+			CorrelationID: state.Record.CorrelationID,
+			Metadata: map[string]string{
+				"current_state": string(current),
+				"target_state":  string(target),
+				"idempotent":    "true",
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"loop_id":    loopID,
+			"state":      string(current),
+			"revision":   state.Revision,
+			"idempotent": true,
+			"changed":    false,
+		})
+		return
+	}
+
+	if !model.IsValidTransition(current, target) {
+		writeErr(w, http.StatusConflict, fmt.Sprintf("invalid transition %s -> %s", current, target))
+		return
+	}
+
+	next := state.Record
+	next.State = target
+	next.Reason = reason
+	next.LockHolder = "operator-" + action
+	rev, err := s.store.PutState(r.Context(), next, state.Revision)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrRevisionMismatch) {
+			status = http.StatusConflict
+		}
+		writeErr(w, status, err.Error())
+		return
+	}
+
+	_ = s.store.AppendOverride(r.Context(), model.OperatorOverride{
+		LoopID:        loopID,
+		Actor:         actor,
+		Action:        action,
+		TargetState:   target,
+		Reason:        reason,
+		CorrelationID: next.CorrelationID,
+	})
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
+		Actor:         actor,
+		Action:        action,
+		TargetLoopID:  loopID,
+		Reason:        reason,
+		CorrelationID: next.CorrelationID,
+		Metadata: map[string]string{
+			"current_state": string(current),
+			"target_state":  string(target),
+			"idempotent":    "false",
+			"revision":      strconv.FormatInt(rev, 10),
+		},
+	})
+	_ = s.appendJournal(r.Context(), model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "operator",
+		Level:         "warn",
+		ActorType:     "operator",
+		ActorID:       actor,
+		Message:       action,
+		CorrelationID: next.CorrelationID,
+		Metadata: map[string]string{
+			"current_state": string(current),
+			"target_state":  string(target),
+			"reason":        reason,
+		},
+	})
+	s.syncTaskContractStatusForLoop(r.Context(), loopID, target, reason, actor, next.CorrelationID)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"loop_id":    loopID,
+		"state":      string(target),
+		"revision":   rev,
+		"idempotent": false,
+		"changed":    true,
+	})
+}
+
+func (s *server) handleLoopIntervention(w http.ResponseWriter, r *http.Request, loopID string) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	state, found, err := s.store.GetState(r.Context(), loopID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "loop not found")
+		return
+	}
+
+	var req loopInterventionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	instruction := strings.TrimSpace(req.Instruction)
+	if instruction == "" {
+		writeErr(w, http.StatusBadRequest, "instruction is required")
+		return
+	}
+	interventionType := strings.TrimSpace(req.Type)
+	if interventionType == "" {
+		interventionType = "operator_intervention"
+	}
+	eventID := strings.TrimSpace(req.EventID)
+	if eventID == "" {
+		eventID = fmt.Sprintf("evt-%d", time.Now().UTC().UnixNano())
+	}
+
+	if existing, exists, err := s.findInterventionByEventID(r.Context(), loopID, eventID); err == nil && exists {
+		writeJSON(w, http.StatusOK, loopInterventionResponse{
+			LoopID:      loopID,
+			EventID:     eventID,
+			Sequence:    existing.Sequence,
+			Idempotent:  true,
+			Instruction: instruction,
+		})
+		return
+	}
+
+	entry := model.JournalEntry{
+		LoopID:        loopID,
+		Phase:         "operator",
+		Level:         "info",
+		ActorType:     "operator",
+		ActorID:       actor,
+		Message:       "operator intervention recorded",
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"intervention_event_id": eventID,
+			"intervention_type":     interventionType,
+			"instruction":           instruction,
+		},
+	}
+	if err := s.store.AppendJournal(r.Context(), entry); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	stored, foundStored, err := s.findInterventionByEventID(r.Context(), loopID, eventID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !foundStored {
+		writeErr(w, http.StatusInternalServerError, "failed to resolve intervention sequence")
+		return
+	}
+
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
+		Actor:         actor,
+		Action:        "operator-intervention",
+		TargetLoopID:  loopID,
+		Reason:        instruction,
+		CorrelationID: state.Record.CorrelationID,
+		Metadata: map[string]string{
+			"intervention_event_id": eventID,
+			"intervention_type":     interventionType,
+			"sequence":              strconv.FormatInt(stored.Sequence, 10),
+		},
+	})
+
+	writeJSON(w, http.StatusCreated, loopInterventionResponse{
+		LoopID:      loopID,
+		EventID:     eventID,
+		Sequence:    stored.Sequence,
+		Idempotent:  false,
+		Instruction: instruction,
+	})
+}
+
+func (s *server) findInterventionByEventID(ctx context.Context, loopID, eventID string) (model.JournalEntry, bool, error) {
+	entries, err := s.store.ListJournal(ctx, loopID, 0)
+	if err != nil {
+		return model.JournalEntry{}, false, err
+	}
+	eventID = strings.TrimSpace(eventID)
+	if eventID == "" {
+		return model.JournalEntry{}, false, nil
+	}
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		if strings.TrimSpace(entry.Metadata["intervention_event_id"]) == eventID {
+			return entry, true, nil
+		}
+	}
+	return model.JournalEntry{}, false, nil
+}
+
 func (s *server) handleLoopTrace(w http.ResponseWriter, r *http.Request, loopID string) {
 	limit := int64(parseIntDefault(r.URL.Query().Get("limit"), 500))
 	state, found, err := s.store.GetState(r.Context(), loopID)
@@ -2062,12 +2474,7 @@ func (s *server) handleOverride(w http.ResponseWriter, r *http.Request) {
 			"reason":       req.Reason,
 		},
 	})
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"loop_id":  req.LoopID,
-		"state":    req.TargetState,
-		"revision": rev,
-	})
+	s.syncTaskContractStatusForLoop(r.Context(), req.LoopID, model.LoopState(req.TargetState), req.Reason, req.Actor, next.CorrelationID)
 }
 
 func (s *server) handleCost(w http.ResponseWriter, r *http.Request) {
@@ -2354,6 +2761,15 @@ func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Re
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "update-project-credential",
+			Metadata: map[string]string{
+				"project_id":     projectID,
+				"github_user":    cred.GitHubUser,
+				"credential_set": "true",
+			},
+		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"project_id":        projectID,
 			"credential_set":    true,
@@ -2376,6 +2792,14 @@ func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Re
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "delete-project-credential",
+			Metadata: map[string]string{
+				"project_id":     projectID,
+				"credential_set": "false",
+			},
+		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"project_id":     projectID,
 			"credential_set": false,
@@ -2383,6 +2807,474 @@ func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Re
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (s *server) handleProjectGitHubCredentialTest(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if s.projectCred == nil {
+		writeErr(w, http.StatusInternalServerError, "project credential store unavailable")
+		return
+	}
+	if s.projectStore == nil {
+		writeErr(w, http.StatusInternalServerError, "project store unavailable")
+		return
+	}
+
+	var req projectCredentialTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	if projectID == "" {
+		writeErr(w, http.StatusBadRequest, "project_id is required")
+		return
+	}
+	project, found, err := s.projectStore.GetProject(r.Context(), projectID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "project not found")
+		return
+	}
+	cred, found, err := s.projectCred.GetProjectCredential(r.Context(), projectID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found || strings.TrimSpace(cred.PAT) == "" {
+		message := "credential missing"
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "test-project-credential",
+			Metadata: map[string]string{
+				"project_id": projectID,
+				"valid":      "false",
+				"message":    message,
+			},
+		})
+		writeJSON(w, http.StatusOK, projectCredentialTestResponse{
+			ProjectID: projectID,
+			RepoURL:   strings.TrimSpace(project.RepoURL),
+			Valid:     false,
+			Message:   message,
+		})
+		return
+	}
+
+	validator := s.repoAccess
+	if validator == nil {
+		validator = validateGitHubRepositoryAccess
+	}
+	valid, message, err := validator(r.Context(), strings.TrimSpace(project.RepoURL), strings.TrimSpace(cred.GitHubUser), strings.TrimSpace(cred.PAT))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if strings.TrimSpace(message) == "" {
+		if valid {
+			message = "repository access verified"
+		} else {
+			message = "repository access check failed"
+		}
+	}
+
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
+		Actor:  actor,
+		Action: "test-project-credential",
+		Metadata: map[string]string{
+			"project_id": projectID,
+			"valid":      strconv.FormatBool(valid),
+			"message":    message,
+		},
+	})
+
+	writeJSON(w, http.StatusOK, projectCredentialTestResponse{
+		ProjectID: projectID,
+		RepoURL:   strings.TrimSpace(project.RepoURL),
+		Valid:     valid,
+		Message:   message,
+	})
+}
+
+func validateGitHubRepositoryAccess(ctx context.Context, repoURL string, githubUser string, credential string) (bool, string, error) {
+	repoURL = strings.TrimSpace(repoURL)
+	githubUser = strings.TrimSpace(githubUser)
+	credential = strings.TrimSpace(credential)
+	if repoURL == "" {
+		return false, "repo_url is required", nil
+	}
+	if githubUser == "" {
+		return false, "github_user is required", nil
+	}
+	if credential == "" {
+		return false, "credential is required", nil
+	}
+
+	repoPath, err := parseGitHubRepositoryPath(repoURL)
+	if err != nil {
+		return false, err.Error(), nil
+	}
+
+	requestCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, "https://api.github.com/repos/"+repoPath, nil)
+	if err != nil {
+		return false, "failed to build repository check request", nil
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("Authorization", "Bearer "+credential)
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	request.Header.Set("User-Agent", "smith-api")
+
+	response, err := (&http.Client{Timeout: 8 * time.Second}).Do(request)
+	if err != nil {
+		return false, fmt.Sprintf("failed to reach GitHub API: %v", err), nil
+	}
+	defer response.Body.Close()
+
+	switch response.StatusCode {
+	case http.StatusOK:
+		return true, "repository access verified", nil
+	case http.StatusUnauthorized:
+		return false, "credential rejected by GitHub (401 unauthorized)", nil
+	case http.StatusForbidden:
+		return false, "credential lacks required repository access (403 forbidden)", nil
+	case http.StatusNotFound:
+		return false, "repository not found or credential has no access (404)", nil
+	default:
+		return false, fmt.Sprintf("github repository check failed (status %d)", response.StatusCode), nil
+	}
+}
+
+func parseGitHubRepositoryPath(repoURL string) (string, error) {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return "", errors.New("repo_url is required")
+	}
+	if strings.HasPrefix(repoURL, "git@github.com:") {
+		repoPath := strings.TrimPrefix(repoURL, "git@github.com:")
+		repoPath = strings.Trim(strings.TrimSuffix(repoPath, ".git"), "/")
+		parts := strings.Split(repoPath, "/")
+		if len(parts) < 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+			return "", errors.New("repo_url must include owner and repository name")
+		}
+		return parts[0] + "/" + parts[1], nil
+	}
+
+	parsed, err := url.Parse(repoURL)
+	if err != nil {
+		return "", errors.New("repo_url is invalid")
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host != "github.com" {
+		return "", errors.New("only github.com repositories are supported for PAT validation")
+	}
+	repoPath := strings.Trim(strings.TrimSuffix(parsed.Path, ".git"), "/")
+	parts := strings.Split(repoPath, "/")
+	if len(parts) < 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return "", errors.New("repo_url must include owner and repository name")
+	}
+	return parts[0] + "/" + parts[1], nil
+}
+
+func (s *server) handleOnboardingReadiness(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	profiles, err := s.providers.ListProviderProfiles(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	projects, err := s.projectStore.ListProjects(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+	var selected *provider.Project
+	if projectID != "" {
+		if project, found, getErr := s.projectStore.GetProject(r.Context(), projectID); getErr != nil {
+			writeErr(w, http.StatusInternalServerError, getErr.Error())
+			return
+		} else if found {
+			normalized := normalizeProjectContract(project)
+			selected = &normalized
+		}
+	} else if len(projects) > 0 {
+		normalized := normalizeProjectContract(projects[0])
+		selected = &normalized
+		projectID = normalized.ID
+	}
+
+	requirements := make([]onboardingRequirement, 0, 5)
+	if len(profiles) == 0 {
+		requirements = append(requirements, onboardingRequirement{ID: "provider_catalog", Label: "Provider profiles available", Status: "missing", Details: "no provider profiles configured"})
+	} else {
+		requirements = append(requirements, onboardingRequirement{ID: "provider_catalog", Label: "Provider profiles available", Status: "complete"})
+	}
+
+	if selected == nil {
+		requirements = append(requirements,
+			onboardingRequirement{ID: "project", Label: "Project configured", Status: "missing", Details: "create a project with repository settings"},
+			onboardingRequirement{ID: "repository", Label: "Repository configured", Status: "missing"},
+			onboardingRequirement{ID: "provider_binding", Label: "Project provider binding", Status: "missing"},
+			onboardingRequirement{ID: "github_credential", Label: "Git credential configured", Status: "missing"},
+		)
+		writeJSON(w, http.StatusOK, onboardingReadinessResponse{
+			Ready:      false,
+			ProjectID:  projectID,
+			Missing:    missingRequirementIDs(requirements),
+			NextStep:   nextMissingRequirement(requirements),
+			Requires:   requirements,
+			Credential: onboardingCredentialStatus{ProjectID: projectID, CredentialSet: false, Valid: false, Message: "project is not configured"},
+		})
+		return
+	}
+
+	if strings.TrimSpace(selected.ID) == "" {
+		requirements = append(requirements, onboardingRequirement{ID: "project", Label: "Project configured", Status: "missing"})
+	} else {
+		requirements = append(requirements, onboardingRequirement{ID: "project", Label: "Project configured", Status: "complete"})
+	}
+	if strings.TrimSpace(selected.RepoURL) == "" {
+		requirements = append(requirements, onboardingRequirement{ID: "repository", Label: "Repository configured", Status: "missing", Details: "repo_url is required"})
+	} else {
+		requirements = append(requirements, onboardingRequirement{ID: "repository", Label: "Repository configured", Status: "complete"})
+	}
+
+	providerProfileID := strings.TrimSpace(selected.ProviderProfileID)
+	if providerProfileID == "" {
+		providerProfileID = provider.DefaultProviderProfileID
+	}
+	if _, found, getErr := s.providers.GetProviderProfile(r.Context(), providerProfileID); getErr != nil {
+		writeErr(w, http.StatusInternalServerError, getErr.Error())
+		return
+	} else if !found {
+		requirements = append(requirements, onboardingRequirement{ID: "provider_binding", Label: "Project provider binding", Status: "missing", Details: "provider profile not found"})
+	} else {
+		requirements = append(requirements, onboardingRequirement{ID: "provider_binding", Label: "Project provider binding", Status: "complete"})
+	}
+
+	credential, err := s.resolveOnboardingCredentialStatus(r.Context(), selected.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if credential.Valid {
+		requirements = append(requirements, onboardingRequirement{ID: "github_credential", Label: "Git credential configured", Status: "complete"})
+	} else {
+		requirements = append(requirements, onboardingRequirement{ID: "github_credential", Label: "Git credential configured", Status: "missing", Details: credential.Message})
+	}
+
+	missing := missingRequirementIDs(requirements)
+	writeJSON(w, http.StatusOK, onboardingReadinessResponse{
+		Ready:      len(missing) == 0,
+		ProjectID:  selected.ID,
+		Missing:    missing,
+		NextStep:   nextMissingRequirement(requirements),
+		Requires:   requirements,
+		Credential: credential,
+	})
+}
+
+func (s *server) handleOnboardingRepository(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req onboardingRepositoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	repoURL := strings.TrimSpace(req.RepoURL)
+	if projectID == "" || repoURL == "" {
+		writeErr(w, http.StatusBadRequest, "project_id and repo_url are required")
+		return
+	}
+	project := provider.Project{
+		ID:                projectID,
+		Name:              strings.TrimSpace(req.Name),
+		RepoURL:           repoURL,
+		ProviderProfileID: strings.TrimSpace(req.ProviderProfileID),
+		GitHubUser:        strings.TrimSpace(req.GitHubUser),
+	}
+	if existing, found, err := s.projectStore.GetProject(r.Context(), projectID); err == nil && found {
+		existing = normalizeProjectContract(existing)
+		if strings.TrimSpace(project.Name) == "" {
+			project.Name = existing.Name
+		}
+		if strings.TrimSpace(project.ProviderProfileID) == "" {
+			project.ProviderProfileID = existing.ProviderProfileID
+		}
+		if strings.TrimSpace(project.GitHubUser) == "" {
+			project.GitHubUser = existing.GitHubUser
+		}
+		if strings.TrimSpace(existing.RuntimeImage) != "" {
+			project.RuntimeImage = existing.RuntimeImage
+		}
+		if strings.TrimSpace(existing.RuntimePullPolicy) != "" {
+			project.RuntimePullPolicy = existing.RuntimePullPolicy
+		}
+		if strings.TrimSpace(existing.SkillsImage) != "" {
+			project.SkillsImage = existing.SkillsImage
+		}
+		if strings.TrimSpace(existing.SkillsPullPolicy) != "" {
+			project.SkillsPullPolicy = existing.SkillsPullPolicy
+		}
+	}
+	project = normalizeProjectContract(project)
+	if err := s.ensureProviderProfileExists(r.Context(), project.ProviderProfileID); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.projectStore.PutProject(r.Context(), project); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
+		Actor:  actor,
+		Action: "onboarding-save-repository",
+		Metadata: map[string]string{
+			"project_id":          project.ID,
+			"repo_url":            project.RepoURL,
+			"provider_profile_id": project.ProviderProfileID,
+		},
+	})
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (s *server) handleOnboardingCredentialValidate(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req onboardingCredentialValidateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	if projectID == "" {
+		writeErr(w, http.StatusBadRequest, "project_id is required")
+		return
+	}
+	status, err := s.resolveOnboardingCredentialStatus(r.Context(), projectID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	actor := strings.TrimSpace(req.Actor)
+	if actor == "" {
+		actor = "operator"
+	}
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
+		Actor:  actor,
+		Action: "onboarding-validate-credential",
+		Metadata: map[string]string{
+			"project_id":     status.ProjectID,
+			"credential_set": strconv.FormatBool(status.CredentialSet),
+			"valid":          strconv.FormatBool(status.Valid),
+		},
+	})
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *server) resolveOnboardingCredentialStatus(ctx context.Context, projectID string) (onboardingCredentialStatus, error) {
+	status := onboardingCredentialStatus{ProjectID: projectID, CredentialSet: false, Valid: false}
+	if s.projectCred == nil {
+		status.Message = "project credential store unavailable"
+		return status, nil
+	}
+	cred, found, err := s.projectCred.GetProjectCredential(ctx, projectID)
+	if err != nil {
+		return onboardingCredentialStatus{}, err
+	}
+	if !found || strings.TrimSpace(cred.PAT) == "" {
+		status.Message = "credential missing"
+		return status, nil
+	}
+	status.GitHubUser = strings.TrimSpace(cred.GitHubUser)
+	status.CredentialSet = true
+	status.CredentialMasked = maskCredentialValue(cred.PAT)
+	status.UpdatedAt = formatRFC3339OrEmpty(cred.UpdatedAt)
+	if strings.TrimSpace(cred.GitHubUser) == "" {
+		status.Message = "github_user is missing"
+		status.Valid = false
+		return status, nil
+	}
+	status.Valid = true
+	status.Message = "credential available"
+	return status, nil
+}
+
+func missingRequirementIDs(requirements []onboardingRequirement) []string {
+	out := make([]string, 0, len(requirements))
+	for _, requirement := range requirements {
+		if strings.TrimSpace(requirement.Status) == "complete" {
+			continue
+		}
+		out = append(out, requirement.ID)
+	}
+	return out
+}
+
+func nextMissingRequirement(requirements []onboardingRequirement) string {
+	for _, requirement := range requirements {
+		if strings.TrimSpace(requirement.Status) == "complete" {
+			continue
+		}
+		return requirement.ID
+	}
+	return ""
+}
+
+func (s *server) handleProviderCatalog(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(r) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, provider.SupportedProviderCatalog())
 }
 
 func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
@@ -2417,6 +3309,15 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "create-provider-profile",
+			Metadata: map[string]string{
+				"provider_id":   normalized.ID,
+				"provider_type": normalized.ProviderType,
+				"secret_ref":    normalized.SecretRef,
+			},
+		})
 		writeJSON(w, http.StatusOK, normalized)
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -2428,7 +3329,7 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/v1/providers/")
+	id := providerIDFromPath(r.URL.Path)
 	id = strings.TrimSpace(id)
 	if id == "" {
 		writeErr(w, http.StatusBadRequest, "provider id is required")
@@ -2472,6 +3373,15 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "update-provider-profile",
+			Metadata: map[string]string{
+				"provider_id":   normalized.ID,
+				"provider_type": normalized.ProviderType,
+				"secret_ref":    normalized.SecretRef,
+			},
+		})
 		writeJSON(w, http.StatusOK, normalized)
 	case http.MethodDelete:
 		projects, err := s.projectStore.ListProjects(r.Context())
@@ -2493,6 +3403,13 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "delete-provider-profile",
+			Metadata: map[string]string{
+				"provider_id": id,
+			},
+		})
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -2531,11 +3448,15 @@ func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		secretAction := "create-secret"
 		if existing, found, err := s.secrets.GetSecret(r.Context(), normalized.ID); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		} else if found && normalized.Value == "" {
 			normalized.Value = existing.Value
+			secretAction = "update-secret"
+		} else if found {
+			secretAction = "update-secret"
 		}
 		if strings.TrimSpace(normalized.Value) == "" {
 			writeErr(w, http.StatusBadRequest, "secret value is required")
@@ -2545,6 +3466,13 @@ func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: secretAction,
+			Metadata: map[string]string{
+				"secret_id": normalized.ID,
+			},
+		})
 		writeJSON(w, http.StatusOK, secretResponse(normalized))
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -2616,6 +3544,13 @@ func (s *server) handleSecretByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "update-secret",
+			Metadata: map[string]string{
+				"secret_id": normalized.ID,
+			},
+		})
 		writeJSON(w, http.StatusOK, secretResponse(normalized))
 	case http.MethodDelete:
 		profiles, err := s.providers.ListProviderProfiles(r.Context())
@@ -2633,6 +3568,13 @@ func (s *server) handleSecretByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "delete-secret",
+			Metadata: map[string]string{
+				"secret_id": id,
+			},
+		})
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -2690,6 +3632,15 @@ func (s *server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "create-project",
+			Metadata: map[string]string{
+				"project_id":          p.ID,
+				"provider_profile_id": p.ProviderProfileID,
+				"repo_url":            p.RepoURL,
+			},
+		})
 		writeJSON(w, http.StatusOK, p)
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -2701,7 +3652,7 @@ func (s *server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/v1/projects/")
+	id := projectIDFromPath(r.URL.Path)
 	if id == "" {
 		writeErr(w, http.StatusBadRequest, "project id is required")
 		return
@@ -2741,12 +3692,28 @@ func (s *server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "update-project",
+			Metadata: map[string]string{
+				"project_id":          p.ID,
+				"provider_profile_id": p.ProviderProfileID,
+				"repo_url":            p.RepoURL,
+			},
+		})
 		writeJSON(w, http.StatusOK, p)
 	case http.MethodDelete:
 		if err := s.projectStore.DeleteProject(r.Context(), id); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "delete-project",
+			Metadata: map[string]string{
+				"project_id": id,
+			},
+		})
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -3019,6 +3986,10 @@ func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) strin
 
 	if len(key) > 32 {
 		key = key[:32]
+	}
+	key = strings.Trim(key, "-")
+	if key == "" {
+		return fmt.Sprintf("%s-%s-%s", prefix, hashPart, fullHash[5:10])
 	}
 
 	return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
@@ -3303,6 +4274,499 @@ func shellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func (s *server) handleTasks(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		tasks, err := s.store.ListTaskContracts(r.Context())
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		out := make([]api.TaskContract, 0, len(tasks))
+		for _, task := range tasks {
+			out = append(out, modelTaskToAPI(task))
+		}
+		writeJSON(w, http.StatusOK, out)
+	case http.MethodPost:
+		var req taskContractCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		projectID := strings.TrimSpace(req.ProjectID)
+		providerProfileID := strings.TrimSpace(req.ProviderProfileID)
+		objective := strings.TrimSpace(req.Objective)
+		if projectID == "" || providerProfileID == "" || objective == "" {
+			writeErr(w, http.StatusBadRequest, "project_id, provider_profile_id, and objective are required")
+			return
+		}
+		validation := normalizeTaskList(req.Validation)
+		if len(validation) == 0 {
+			writeErr(w, http.StatusBadRequest, "at least one validation command is required")
+			return
+		}
+
+		status := model.TaskContractStatusDraft
+		if strings.TrimSpace(string(req.Status)) != "" {
+			status = apiTaskStatusToModel(req.Status)
+		}
+		if !model.IsTaskContractStatus(status) {
+			writeErr(w, http.StatusBadRequest, "invalid task status")
+			return
+		}
+		if status != model.TaskContractStatusDraft && status != model.TaskContractStatusValidated {
+			writeErr(w, http.StatusBadRequest, "task must start in draft or validated status")
+			return
+		}
+
+		taskID := strings.TrimSpace(req.ID)
+		if taskID == "" {
+			taskID = fmt.Sprintf("task-%d", time.Now().UTC().UnixNano())
+		}
+		correlationID := strings.TrimSpace(req.CorrelationID)
+		if correlationID == "" {
+			correlationID = fmt.Sprintf("task-corr-%d", time.Now().UTC().UnixNano())
+		}
+		task := model.TaskContract{
+			Kind:               "smith.task",
+			ID:                 taskID,
+			ProjectID:          projectID,
+			ProviderProfileID:  providerProfileID,
+			SourceDocument:     strings.TrimSpace(req.SourceDocument),
+			Objective:          objective,
+			Constraints:        normalizeTaskList(req.Constraints),
+			AcceptanceCriteria: normalizeTaskList(req.AcceptanceCriteria),
+			Validation:         validation,
+			Status:             status,
+			Metadata:           copyStringMap(req.Metadata),
+			CorrelationID:      correlationID,
+		}
+		if err := s.store.PutTaskContract(r.Context(), task); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		actor := strings.TrimSpace(req.Actor)
+		if actor == "" {
+			actor = "operator"
+		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  actor,
+			Action: "create-task",
+			Metadata: map[string]string{
+				"task_id": taskID,
+				"status":  string(task.Status),
+			},
+			CorrelationID: correlationID,
+		})
+
+		stored, found, err := s.store.GetTaskContract(r.Context(), taskID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusInternalServerError, "task not found after create")
+			return
+		}
+		writeJSON(w, http.StatusCreated, modelTaskToAPI(stored))
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func (s *server) handleTaskByID(w http.ResponseWriter, r *http.Request) {
+	taskID, route := splitTaskRoute(r.URL.Path)
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		writeErr(w, http.StatusBadRequest, "task id is required")
+		return
+	}
+
+	if route == "approve" {
+		if r.Method != http.MethodPost {
+			writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var req taskContractApproveRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		task, found, err := s.store.GetTaskContract(r.Context(), taskID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "task not found")
+			return
+		}
+		if task.Status != model.TaskContractStatusValidated {
+			writeErr(w, http.StatusConflict, "task must be validated before approval")
+			return
+		}
+		before := task
+		task.Status = model.TaskContractStatusApproved
+		if err := s.store.PutTaskContract(r.Context(), task); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		actor := strings.TrimSpace(req.Actor)
+		if actor == "" {
+			actor = "operator"
+		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  actor,
+			Action: "approve-task",
+			Metadata: map[string]string{
+				"task_id":     task.ID,
+				"status_from": string(before.Status),
+				"status_to":   string(task.Status),
+			},
+			CorrelationID: task.CorrelationID,
+		})
+		stored, found, err := s.store.GetTaskContract(r.Context(), taskID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusInternalServerError, "task not found after approval")
+			return
+		}
+		writeJSON(w, http.StatusOK, modelTaskToAPI(stored))
+		return
+	}
+	if route != "" {
+		writeErr(w, http.StatusNotFound, "endpoint not found")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		task, found, err := s.store.GetTaskContract(r.Context(), taskID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "task not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, modelTaskToAPI(task))
+	case http.MethodPatch:
+		var req taskContractPatchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json payload")
+			return
+		}
+		task, found, err := s.store.GetTaskContract(r.Context(), taskID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "task not found")
+			return
+		}
+		if task.Status != model.TaskContractStatusDraft && task.Status != model.TaskContractStatusValidated {
+			writeErr(w, http.StatusConflict, "task can only be patched in draft or validated status")
+			return
+		}
+
+		before := task
+		if req.ProjectID != nil {
+			task.ProjectID = strings.TrimSpace(*req.ProjectID)
+		}
+		if req.ProviderProfileID != nil {
+			task.ProviderProfileID = strings.TrimSpace(*req.ProviderProfileID)
+		}
+		if req.SourceDocument != nil {
+			task.SourceDocument = strings.TrimSpace(*req.SourceDocument)
+		}
+		if req.Objective != nil {
+			task.Objective = strings.TrimSpace(*req.Objective)
+		}
+		if req.Constraints != nil {
+			task.Constraints = normalizeTaskList(*req.Constraints)
+		}
+		if req.AcceptanceCriteria != nil {
+			task.AcceptanceCriteria = normalizeTaskList(*req.AcceptanceCriteria)
+		}
+		if req.Validation != nil {
+			task.Validation = normalizeTaskList(*req.Validation)
+		}
+		if req.Status != nil {
+			nextStatus := apiTaskStatusToModel(*req.Status)
+			if !model.IsTaskContractStatus(nextStatus) {
+				writeErr(w, http.StatusBadRequest, "invalid task status")
+				return
+			}
+			if nextStatus == model.TaskContractStatusApproved {
+				writeErr(w, http.StatusConflict, "use approve endpoint for validated->approved transition")
+				return
+			}
+			if !model.IsTaskContractPatchTransitionAllowed(task.Status, nextStatus) {
+				writeErr(w, http.StatusConflict, "invalid task status transition")
+				return
+			}
+			task.Status = nextStatus
+		}
+		if req.Metadata != nil {
+			task.Metadata = copyStringMap(req.Metadata)
+		}
+
+		if task.ProjectID == "" || task.ProviderProfileID == "" || task.Objective == "" {
+			writeErr(w, http.StatusBadRequest, "project_id, provider_profile_id, and objective are required")
+			return
+		}
+		if len(task.Validation) == 0 {
+			writeErr(w, http.StatusBadRequest, "at least one validation command is required")
+			return
+		}
+		if err := s.store.PutTaskContract(r.Context(), task); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		changedFields := taskChangedFields(before, task)
+		actor := strings.TrimSpace(req.Actor)
+		if actor == "" {
+			actor = "operator"
+		}
+		metadata := map[string]string{
+			"task_id":        task.ID,
+			"status_from":    string(before.Status),
+			"status_to":      string(task.Status),
+			"changed_fields": strings.Join(changedFields, ","),
+		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:         actor,
+			Action:        "patch-task",
+			CorrelationID: task.CorrelationID,
+			Metadata:      metadata,
+		})
+
+		stored, found, err := s.store.GetTaskContract(r.Context(), taskID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusInternalServerError, "task not found after update")
+			return
+		}
+		writeJSON(w, http.StatusOK, modelTaskToAPI(stored))
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func splitTaskRoute(path string) (taskID string, route string) {
+	remainder := strings.TrimPrefix(path, "/api/tasks/")
+	if remainder == path {
+		remainder = strings.TrimPrefix(path, "/v1/tasks/")
+	}
+	remainder = strings.TrimPrefix(remainder, "/")
+	if remainder == "" {
+		return "", ""
+	}
+	parts := strings.Split(remainder, "/")
+	taskID = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		route = strings.TrimSpace(strings.Join(parts[1:], "/"))
+	}
+	return taskID, route
+}
+
+func providerIDFromPath(path string) string {
+	remainder := strings.TrimPrefix(path, "/v1/providers/")
+	if remainder == path {
+		remainder = strings.TrimPrefix(path, "/api/providers/")
+	}
+	return strings.TrimSpace(strings.TrimPrefix(remainder, "/"))
+}
+
+func projectIDFromPath(path string) string {
+	remainder := strings.TrimPrefix(path, "/v1/projects/")
+	if remainder == path {
+		remainder = strings.TrimPrefix(path, "/api/projects/")
+	}
+	return strings.TrimSpace(strings.TrimPrefix(remainder, "/"))
+}
+
+func normalizeTaskList(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, item := range in {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func taskChangedFields(before, after model.TaskContract) []string {
+	out := make([]string, 0, 9)
+	if before.ProjectID != after.ProjectID {
+		out = append(out, "project_id")
+	}
+	if before.ProviderProfileID != after.ProviderProfileID {
+		out = append(out, "provider_profile_id")
+	}
+	if before.SourceDocument != after.SourceDocument {
+		out = append(out, "source_document")
+	}
+	if before.Objective != after.Objective {
+		out = append(out, "objective")
+	}
+	if !equalStringSlices(before.Constraints, after.Constraints) {
+		out = append(out, "constraints")
+	}
+	if !equalStringSlices(before.AcceptanceCriteria, after.AcceptanceCriteria) {
+		out = append(out, "acceptance_criteria")
+	}
+	if !equalStringSlices(before.Validation, after.Validation) {
+		out = append(out, "validation")
+	}
+	if before.Status != after.Status {
+		out = append(out, "status")
+	}
+	if !equalStringMap(before.Metadata, after.Metadata) {
+		out = append(out, "metadata")
+	}
+	return out
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStringMap(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *server) syncTaskContractStatusForLoop(ctx context.Context, loopID string, loopState model.LoopState, reason, actor, correlationID string) {
+	if s == nil || s.store == nil {
+		return
+	}
+	anomaly, found, err := s.store.GetAnomaly(ctx, loopID)
+	if err != nil || !found {
+		return
+	}
+	taskID := strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+	if taskID == "" {
+		return
+	}
+	task, found, err := s.store.GetTaskContract(ctx, taskID)
+	if err != nil || !found {
+		return
+	}
+	status, shouldUpdate := taskStatusForLoopState(loopState)
+	if !shouldUpdate || task.Status == status {
+		return
+	}
+	from := task.Status
+	task.Status = status
+	if strings.TrimSpace(correlationID) != "" {
+		task.CorrelationID = correlationID
+	}
+	if err := s.store.PutTaskContract(ctx, task); err != nil {
+		_ = s.appendJournal(ctx, model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "operator",
+			Level:         "warn",
+			ActorType:     "api",
+			ActorID:       "smith-api",
+			Message:       "failed to synchronize task contract status",
+			CorrelationID: correlationID,
+			Metadata: map[string]string{
+				"task_contract_id": taskID,
+				"loop_state":       string(loopState),
+				"target_status":    string(status),
+				"error":            err.Error(),
+			},
+		})
+		return
+	}
+	if strings.TrimSpace(actor) == "" {
+		actor = "operator"
+	}
+	_ = s.appendAudit(ctx, store.AuditRecord{
+		Actor:         actor,
+		Action:        "sync-task-status",
+		TargetLoopID:  loopID,
+		Reason:        reason,
+		CorrelationID: correlationID,
+		Metadata: map[string]string{
+			"task_id":      taskID,
+			"status_from":  string(from),
+			"status_to":    string(status),
+			"loop_state":   string(loopState),
+			"sync_trigger": "loop_state_transition",
+		},
+	})
+}
+
+func taskStatusForLoopState(loopState model.LoopState) (model.TaskContractStatus, bool) {
+	switch loopState {
+	case model.LoopStateRunning:
+		return model.TaskContractStatusRunning, true
+	case model.LoopStateSynced:
+		return model.TaskContractStatusCompleted, true
+	case model.LoopStateFlatline, model.LoopStateCancelled:
+		return model.TaskContractStatusBlocked, true
+	default:
+		return "", false
+	}
+}
+
+func modelTaskToAPI(in model.TaskContract) api.TaskContract {
+	return api.TaskContract{
+		Kind:               in.Kind,
+		ID:                 in.ID,
+		ProjectID:          in.ProjectID,
+		ProviderProfileID:  in.ProviderProfileID,
+		SourceDocument:     in.SourceDocument,
+		Objective:          in.Objective,
+		Constraints:        in.Constraints,
+		AcceptanceCriteria: in.AcceptanceCriteria,
+		Validation:         in.Validation,
+		Status:             modelTaskStatusToAPI(in.Status),
+		Metadata:           copyStringMap(in.Metadata),
+		CreatedAt:          in.CreatedAt,
+		UpdatedAt:          in.UpdatedAt,
+		CorrelationID:      in.CorrelationID,
+		SchemaVersion:      in.SchemaVersion,
+	}
+}
+
+func modelTaskStatusToAPI(in model.TaskContractStatus) api.TaskContractStatus {
+	return api.TaskContractStatus(in)
+}
+
+func apiTaskStatusToModel(in api.TaskContractStatus) model.TaskContractStatus {
+	return model.TaskContractStatus(in)
 }
 
 func (s *server) handleDocuments(w http.ResponseWriter, r *http.Request) {

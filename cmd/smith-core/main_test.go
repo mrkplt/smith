@@ -10,6 +10,7 @@ import (
 	"smith/internal/source/journalpolicy"
 	"smith/internal/source/model"
 	"smith/internal/source/replica"
+	"smith/internal/source/store"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -200,6 +201,22 @@ func TestWorkspacePRDConfigMapNameSanitizesAndBounds(t *testing.T) {
 	}
 }
 
+func TestHandoffConfigMapNameNoTrailingHyphenAfterTruncate(t *testing.T) {
+	loopID := "smi-9668e-prd-smoke-autonomous-prd-json-me"
+	got := handoffConfigMapName(loopID)
+	if strings.HasSuffix(got, "-") {
+		t.Fatalf("handoff configmap name must not end with hyphen: %q", got)
+	}
+}
+
+func TestWorkspacePRDConfigMapNameNoTrailingHyphenAfterTruncate(t *testing.T) {
+	loopID := "smi-9668e-prd-smoke-autonomous-prd-json-me"
+	got := workspacePRDConfigMapName(loopID)
+	if strings.HasSuffix(got, "-") {
+		t.Fatalf("workspace PRD configmap name must not end with hyphen: %q", got)
+	}
+}
+
 func TestWorkspacePRDPayload(t *testing.T) {
 	payload, ok, err := workspacePRDPayload(map[string]string{
 		"workspace_prd_json": `{"stories":[{"id":"US-001","status":"open"}],"meta":{"x":1}}`,
@@ -338,6 +355,72 @@ func TestLoopProviderFor(t *testing.T) {
 
 	if got := loopProviderFor(model.Anomaly{}); got != model.DefaultProviderID {
 		t.Fatalf("expected default provider %q, got %q", model.DefaultProviderID, got)
+	}
+}
+
+func TestTaskStatusForLoopState(t *testing.T) {
+	tests := []struct {
+		state model.LoopState
+		want  model.TaskContractStatus
+		ok    bool
+	}{
+		{state: model.LoopStateRunning, want: model.TaskContractStatusRunning, ok: true},
+		{state: model.LoopStateSynced, want: model.TaskContractStatusCompleted, ok: true},
+		{state: model.LoopStateCancelled, want: model.TaskContractStatusBlocked, ok: true},
+		{state: model.LoopStateFlatline, want: model.TaskContractStatusBlocked, ok: true},
+		{state: model.LoopStateUnresolved, want: "", ok: false},
+	}
+	for _, tc := range tests {
+		got, ok := taskStatusForLoopState(tc.state)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("state=%s expected (%s,%t), got (%s,%t)", tc.state, tc.want, tc.ok, got, ok)
+		}
+	}
+}
+
+func TestSyncTaskContractStatus(t *testing.T) {
+	ms := store.NewMemStore()
+	ctx := context.Background()
+	if err := ms.PutTaskContract(ctx, model.TaskContract{
+		Kind:              "smith.task",
+		ID:                "task-core",
+		ProjectID:         "smith",
+		ProviderProfileID: "openai-work",
+		Objective:         "Core sync",
+		Validation:        []string{"go test ./..."},
+		Status:            model.TaskContractStatusApproved,
+		CorrelationID:     "task-corr-core",
+	}); err != nil {
+		t.Fatalf("put task: %v", err)
+	}
+	orch := &orchestrator{
+		store: ms,
+		cfg:   config{holderID: "smith-core"},
+	}
+	anomaly := model.Anomaly{
+		ID:            "loop-core",
+		CorrelationID: "corr-core",
+		Metadata: map[string]string{
+			"task_contract_id": "task-core",
+		},
+	}
+
+	orch.syncTaskContractStatus(ctx, anomaly, model.LoopStateRunning, "scheduled-by-core")
+	task, found, err := ms.GetTaskContract(ctx, "task-core")
+	if err != nil || !found {
+		t.Fatalf("get task after running sync: found=%t err=%v", found, err)
+	}
+	if task.Status != model.TaskContractStatusRunning {
+		t.Fatalf("expected running status, got %s", task.Status)
+	}
+
+	orch.syncTaskContractStatus(ctx, anomaly, model.LoopStateFlatline, "replica-job-create-failed")
+	task, found, err = ms.GetTaskContract(ctx, "task-core")
+	if err != nil || !found {
+		t.Fatalf("get task after blocked sync: found=%t err=%v", found, err)
+	}
+	if task.Status != model.TaskContractStatusBlocked {
+		t.Fatalf("expected blocked status, got %s", task.Status)
 	}
 }
 
