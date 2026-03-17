@@ -2642,6 +2642,20 @@ func TestDeriveLoopIDDoesNotEndWithHyphen(t *testing.T) {
 	}
 }
 
+func TestDeriveLoopIDAvoidsAdjacentDuplicateSegments(t *testing.T) {
+	loopID := deriveLoopID("smith", "prd:prd:workspace-clone-smoke-1773759516-n#US-001", "prd_story", "prd:workspace-clone-smoke-1773759516-n#US-001")
+	if strings.Contains(loopID, "-prd-prd-") {
+		t.Fatalf("expected redundant adjacent segments to be collapsed, got %q", loopID)
+	}
+}
+
+func TestCollapseRedundantIDSegments(t *testing.T) {
+	got := collapseRedundantIDSegments("prd-prd-workspace---clone-clone-smoke")
+	if got != "prd-workspace-clone-smoke" {
+		t.Fatalf("unexpected collapsed segments: %q", got)
+	}
+}
+
 func setupTestGRPC(t *testing.T) (store.StateStore, pb.SmithServiceClient, func()) {
 	es := store.NewMemStore()
 

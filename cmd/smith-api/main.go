@@ -4000,6 +4000,7 @@ func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) strin
 		}
 		return -1
 	}, key)
+	key = collapseRedundantIDSegments(key)
 	key = strings.Trim(key, "-")
 
 	if len(key) > 32 {
@@ -4012,6 +4013,26 @@ func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) strin
 
 	return fmt.Sprintf("%s-%s-%s", prefix, hashPart, key)
 }
+
+func collapseRedundantIDSegments(value string) string {
+	parts := strings.Split(strings.TrimSpace(value), "-")
+	if len(parts) == 0 {
+		return ""
+	}
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if len(filtered) > 0 && filtered[len(filtered)-1] == part {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return strings.Join(filtered, "-")
+}
+
 func newIngressSummary(results []ingressResult) ingressSummary {
 	created := 0
 	existing := 0
