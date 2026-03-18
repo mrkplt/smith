@@ -318,6 +318,17 @@
         "enabled": { "type": "boolean" },
         "apiBaseUrl": { "type": "string", "minLength": 1 },
         "chatBaseUrl": { "type": "string", "minLength": 1 },
+        "operatorPermissions": { "type": "string" },
+        "featureCapabilityAccess": { "type": "boolean" },
+        "featureFlags": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tasks": { "type": "boolean" },
+            "featureCapability": { "type": "boolean" }
+          },
+          "required": ["tasks", "featureCapability"]
+        },
         "showComingSoonProviders": { "type": "boolean" },
         "goose": { "$ref": "#/definitions/gooseConfig" },
         "replicaCount": {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
   import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
+  import { isFeatureVisible } from '$lib/feature-flags';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
@@ -58,7 +59,7 @@
 
   <NavUl class="hidden lg:flex lg:gap-1" ulClass="flex flex-row space-x-1 mt-0 bg-transparent border-0">
     {#each shellPrimaryNav as item}
-      {#if String(item.id) !== 'feature-capability' || canAccessFeatureCapability}
+      {#if isFeatureVisible(String(item.id)) && (String(item.id) !== 'feature-capability' || canAccessFeatureCapability)}
       {@const active = currentPath.startsWith(item.href)}
       <NavLi 
         href={item.href} 
@@ -72,8 +73,6 @@
         </div>
       </NavLi>
       {/if}
-    {:else}
-      <!-- no items -->
     {/each}
   </NavUl>
 </Navbar>

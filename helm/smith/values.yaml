@@ -96,7 +96,12 @@ console:
   enabled: true
   apiBaseUrl: /api
   chatBaseUrl: /chat
+  operatorPermissions: ""
+  featureCapabilityAccess: false
   showComingSoonProviders: false
+  featureFlags:
+    tasks: false
+    featureCapability: false
   autoscaling:
     enabled: false
     minReplicas: 2

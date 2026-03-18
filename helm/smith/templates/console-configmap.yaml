@@ -1,0 +1,17 @@
+{{- if .Values.console.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "smith.fullname" . }}-console-config
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+data:
+  SMITH_API_BASE_URL: {{ .Values.console.apiBaseUrl | quote }}
+  SMITH_CHAT_BASE_URL: {{ .Values.console.chatBaseUrl | default "/chat" | quote }}
+  SMITH_OPERATOR_PERMISSIONS: {{ .Values.console.operatorPermissions | quote }}
+  SMITH_FEATURE_TASKS_ENABLED: {{ .Values.console.featureFlags.tasks | quote }}
+  SMITH_FEATURE_CAPABILITY_ENABLED: {{ .Values.console.featureFlags.featureCapability | quote }}
+  SMITH_FEATURE_CAPABILITY_ACCESS: {{ .Values.console.featureCapabilityAccess | quote }}
+  SMITH_SHOW_COMING_SOON_PROVIDERS: {{ .Values.console.showComingSoonProviders | quote }}
+{{- end }}

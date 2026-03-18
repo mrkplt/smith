@@ -4,6 +4,7 @@
   import { Button, Label } from 'flowbite-svelte';
   import TopBar from '$lib/components/TopBar.svelte';
   import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
+  import { isFeatureCapabilityEnabled } from '$lib/feature-flags';
   import {
     executeFeatureCapabilityTask,
     FeatureCapabilityExecutionError,
@@ -110,6 +111,10 @@
   }
 
   onMount(() => {
+    if (!isFeatureCapabilityEnabled()) {
+      void goto('/pods');
+      return;
+    }
     if (!hasFeatureCapabilityAccess()) {
       void goto('/feature-capability/access-denied');
       return;
