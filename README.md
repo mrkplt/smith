@@ -108,6 +108,8 @@ API contracts, ingress flows, terminal control details, and contributor workflow
 - [docs/loop-ingress-and-cli.md](docs/loop-ingress-and-cli.md)
 - [docs/loop-retention-cleanup.md](docs/loop-retention-cleanup.md)
 - [docs/task-contracts-and-feature-capability.md](docs/task-contracts-and-feature-capability.md)
+- [docs/feature-flags.md](docs/feature-flags.md)
+- [docs/environment-variables.md](docs/environment-variables.md)
 - [docs/documentation-audit-chat-wip.md](docs/documentation-audit-chat-wip.md)
 - [docs/contributing.md](docs/contributing.md)
 - [docs/local-dev-make-workflow.md](docs/local-dev-make-workflow.md)

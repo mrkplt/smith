@@ -96,6 +96,8 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Settings API and Console Configuration](settings-api-and-console.md)
 - [Loop Retention and Cleanup](loop-retention-cleanup.md)
 - [Task Contracts and Feature Capability Flow](task-contracts-and-feature-capability.md)
+- [Feature Flags Map](feature-flags.md)
+- [Environment Variables (Important)](environment-variables.md)
 - [Loop Environment Profile](loop-environment-profiles.md)
 - [Multi-Provider Skill Mount Abstraction](multi-provider-skill-mount-abstraction.md)
 - [Skill Volume Mounts for Loop Runtime](skill-volume-mounts.md)

@@ -1,25 +1,13 @@
+import { getRuntimeConfig, isFeatureCapabilityEnabled, parseBoolean } from '$lib/feature-flags';
+
 export const FEATURE_CAPABILITY_ACCESS_PERMISSION = 'feature_capability:access';
 
-type RuntimeConfig = {
+type FeatureCapabilityRuntimeConfig = {
+  featureCapabilityEnabled?: boolean | string;
   featureCapabilityAccess?: boolean | string;
   operatorPermissions?: string[] | string;
   permissions?: string[] | string;
 };
-
-function parseBoolean(value: boolean | string): boolean | null {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
-    return true;
-  }
-  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
-    return false;
-  }
-  return null;
-}
 
 function normalizePermissions(value: string[] | string | undefined): string[] {
   if (Array.isArray(value)) {
@@ -34,15 +22,12 @@ function normalizePermissions(value: string[] | string | undefined): string[] {
   return [];
 }
 
-function getRuntimeConfig(): RuntimeConfig {
-  if (typeof window === 'undefined') {
-    return {};
-  }
-  return ((window as any).__SMITH_CONFIG__ || {}) as RuntimeConfig;
-}
-
 /** Returns whether the current operator can access the feature capability flow. */
-export function hasFeatureCapabilityAccess(config = getRuntimeConfig()): boolean {
+export function hasFeatureCapabilityAccess(config: FeatureCapabilityRuntimeConfig = getRuntimeConfig() as FeatureCapabilityRuntimeConfig): boolean {
+  if (!isFeatureCapabilityEnabled(config)) {
+    return false;
+  }
+
   if (config.featureCapabilityAccess !== undefined) {
     const parsed = parseBoolean(config.featureCapabilityAccess);
     if (parsed !== null) {

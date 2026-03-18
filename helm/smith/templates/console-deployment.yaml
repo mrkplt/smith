@@ -20,6 +20,7 @@ spec:
         app.kubernetes.io/component: console
     spec:
       {{- $runtimeSecretName := include "smith.runtimeSecretName" . }}
+      {{- $consoleConfigName := printf "%s-console-config" (include "smith.fullname" .) }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -31,11 +32,40 @@ spec:
           imagePullPolicy: {{ .Values.console.image.pullPolicy }}
           env:
             - name: SMITH_API_BASE_URL
-              value: {{ .Values.console.apiBaseUrl | quote }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_API_BASE_URL
             - name: SMITH_CHAT_BASE_URL
-              value: {{ .Values.console.chatBaseUrl | default "/chat" | quote }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_CHAT_BASE_URL
+            - name: SMITH_OPERATOR_PERMISSIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_OPERATOR_PERMISSIONS
+            - name: SMITH_FEATURE_TASKS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_TASKS_ENABLED
+            - name: SMITH_FEATURE_CAPABILITY_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_CAPABILITY_ENABLED
+            - name: SMITH_FEATURE_CAPABILITY_ACCESS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_CAPABILITY_ACCESS
             - name: SMITH_SHOW_COMING_SOON_PROVIDERS
-              value: {{ .Values.console.showComingSoonProviders | quote }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_SHOW_COMING_SOON_PROVIDERS
             {{- if $runtimeSecretName }}
             - name: SMITH_RUNTIME_CREDENTIALS
               valueFrom:

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
 	import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
+	import { isFeatureCapabilityEnabled, isTasksEnabled } from '$lib/feature-flags';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
   import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
@@ -8,6 +9,8 @@
   import { sineIn } from 'svelte/easing';
   import { shellConfigurationNav, shellRuntimeNav } from '$lib/navigation';
   const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
+  const tasksEnabled = $derived(isTasksEnabled());
+  const featureCapabilityEnabled = $derived(isFeatureCapabilityEnabled());
 
   let transitionParams = {
     x: -320,
@@ -54,7 +57,7 @@
       <SidebarGroup>
         <div class="px-6 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Runtime</div>
         {#each shellRuntimeNav as item}
-          {#if String(item.id) !== 'feature-capability' || canAccessFeatureCapability}
+          {#if (String(item.id) !== 'tasks' || tasksEnabled) && (String(item.id) !== 'feature-capability' || (featureCapabilityEnabled && canAccessFeatureCapability))}
           {@const active = currentPath.startsWith(item.href)}
           <SidebarItem
             href={item.href}
@@ -74,7 +77,7 @@
 
         <div class="px-6 pt-5 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Configuration</div>
         {#each shellConfigurationNav as item}
-          {#if String(item.id) !== 'feature-capability' || canAccessFeatureCapability}
+          {#if (String(item.id) !== 'tasks' || tasksEnabled) && (String(item.id) !== 'feature-capability' || (featureCapabilityEnabled && canAccessFeatureCapability))}
           {@const active = currentPath.startsWith(item.href)}
           <SidebarItem
             href={item.href}

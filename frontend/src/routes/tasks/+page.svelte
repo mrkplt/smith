@@ -10,6 +10,7 @@
     patchTaskContract,
     type TaskContract
   } from '$lib/api';
+  import { isTasksEnabled } from '$lib/feature-flags';
   import { goto } from '$app/navigation';
 
   let tasks = $state<TaskContract[]>([]);
@@ -30,6 +31,11 @@
   let validationCommands = $state('go test ./...');
 
   onMount(async () => {
+    if (!isTasksEnabled()) {
+      pushToast('Tasks is not enabled in this environment', 'muted');
+      await goto('/pods', { replaceState: true });
+      return;
+    }
     projectID = $appState.projects[0]?.id || 'smith';
     await loadTasks();
   });
