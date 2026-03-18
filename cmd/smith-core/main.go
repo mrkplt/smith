@@ -1164,7 +1164,7 @@ func loadConfig() (config, error) {
 		etcdDialTimeout:     envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
 		namespace:           envString("SMITH_NAMESPACE", "default"),
 		holderID:            holderID,
-		replicaImage:        envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.1.0"),
+		replicaImage:        envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.3.1"),
 		replicaPullPolicy:   envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
 		workspaceSeedImage:  strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
 		workspaceSeedPolicy: envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),

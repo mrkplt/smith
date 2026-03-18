@@ -21,6 +21,26 @@
 - Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
 - Pods list defaults to healthy-state filtering; destructive cleanup is policy/API-driven rather than tile-level UI actions.
 
+## v0.3.1
+
+Release date: 2026-03-18
+
+This patch release follows `v0.3.0` by gating unfinished console/runtime surfaces behind feature flags so incomplete experiences stay hidden by default while current operator workflows remain intact.
+
+### Highlights
+
+- Gated unfinished UI routes and related navigation affordances behind runtime-config feature flags.
+- Preserved the existing assistant/chat flow while reducing accidental exposure to in-progress surfaces.
+
+### Included Changes
+
+- `6aff1ed` - `feat(console): gate unfinished runtime surfaces with configmap flags`
+- `7d444ac` - `Merge pull request #196 from callmeradical/feature-flags-gating`
+
+### Notes
+
+- `v0.3.1` is a patch release because it tightens default visibility/guardrails without introducing new public API contracts.
+
 ## v0.2.0
 
 Release date: 2026-03-15

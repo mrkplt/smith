@@ -57,7 +57,7 @@ make deploy-staging
 make deploy-prod
 ```
 
-Local note: `make deploy-local` builds the Smith images locally and imports them into the k3d cluster before Helm runs, so the default `ghcr.io/smith/*:v0.1.0` refs resolve without a remote registry pull.
+Local note: `make deploy-local` builds the Smith images locally and imports them into the k3d cluster before Helm runs, so the default `ghcr.io/smith/*:v0.3.1` refs resolve without a remote registry pull.
 
 ## Values Contract
 
@@ -85,10 +85,10 @@ Loop policy defaults:
 - `core.replicaTemplate.serviceAccountName: ""` (defaults to `<release>-smith-replica` when empty)
 
 Image tag defaults:
-- `core.image.tag: v0.1.0`
-- `api.image.tag: v0.1.0`
-- `console.image.tag: v0.1.0`
-- `chat.image.tag: v0.1.0`
+- `core.image.tag: v0.3.1`
+- `api.image.tag: v0.3.1`
+- `console.image.tag: v0.3.1`
+- `chat.image.tag: v0.3.1`
 - Chat provider defaults:
   - `chat.goose.provider: ""` (optional; injects `GOOSE_PROVIDER` into chat service when set)
   - `chat.goose.model: ""` (optional; injects `GOOSE_MODEL` into chat service when set)

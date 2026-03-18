@@ -50,7 +50,7 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | --- | --- | --- |
 | `SMITH_CORE_PORT` | `8083` | Core health/metrics server port. |
 | `SMITH_CORE_HOLDER_ID` | hostname-derived | Leader/lock holder identity for state transitions. |
-| `SMITH_REPLICA_IMAGE` | `ghcr.io/smith/replica:v0.1.0` | Runtime replica image used for loop Jobs. |
+| `SMITH_REPLICA_IMAGE` | `ghcr.io/smith/replica:v0.3.1` | Runtime replica image used for loop Jobs. |
 | `SMITH_REPLICA_IMAGE_PULL_POLICY` | `IfNotPresent` | Pull policy for replica image. |
 | `SMITH_RUNTIME_CREDENTIALS` | empty | Runtime provider credentials passed to loop execution environment. |
 | `SMITH_GIT_PAT_SECRET_NAME` | empty | Secret name containing git PAT for replica setup. |
