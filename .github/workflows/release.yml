@@ -23,7 +23,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build smithctl binaries
-        run: make dist
+        run: make dist GO=go
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
