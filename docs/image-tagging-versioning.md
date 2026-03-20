@@ -3,7 +3,7 @@
 ## Tag Types
 
 - Semver release tag:
-  - `vMAJOR.MINOR.PATCH` (example: `v0.5.0`)
+  - `vMAJOR.MINOR.PATCH` (example: `v0.5.1`)
   - immutable, promoted for production Helm values
 - Commit SHA tag:
   - `sha-<git_sha>` (example: `sha-a1b2c3d`)
@@ -23,7 +23,7 @@
 
 | Chart Version | core/api/console Default Tag | Compatibility |
 | --- | --- | --- |
-| `0.5.x` | `v0.5.0` (or newer `v0.5.x`) | fully supported |
+| `0.5.x` | `v0.5.1` (or newer `v0.5.x`) | fully supported |
 | `0.5.x` | `sha-*` built from `0.5.x` branch | supported for CI/canary |
 | `0.5.x` | `branch-*` | non-prod only |
 
