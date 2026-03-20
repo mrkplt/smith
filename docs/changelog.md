@@ -21,6 +21,26 @@
 - Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
 - Pods list defaults to healthy-state filtering; destructive cleanup is policy/API-driven rather than tile-level UI actions.
 
+## v0.4.1
+
+Release date: 2026-03-20
+
+This patch release promotes dependency maintenance updates after `v0.4.0`, keeping runtime behavior stable while pulling in the latest indirect parser fix.
+
+### Highlights
+
+- Updated indirect Go dependency `github.com/buger/jsonparser` from `v1.1.1` to `v1.1.2`.
+- Bumped chart/image/frontend/docs defaults to the `v0.4.1` patch line for release consistency.
+
+### Included Changes
+
+- `121be38` - `build(deps): bump github.com/buger/jsonparser from 1.1.1 to 1.1.2`
+- `48306b5` - `Merge pull request #205 from callmeradical/dependabot/go_modules/github.com/buger/jsonparser-1.1.2`
+
+### Notes
+
+- `v0.4.1` is a patch release because it contains dependency maintenance and version-reference alignment only.
+
 ## v0.3.1
 
 Release date: 2026-03-18
