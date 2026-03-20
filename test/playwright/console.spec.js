@@ -96,13 +96,15 @@ test('provider API key config', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure' }).first().click();
 
   // Fill in the API key
+  await page.getByTestId('provider-credential-id').fill('codex-default-key');
   await page.getByPlaceholder('sk-...').fill('sk-test-key');
 
   // Submit the form
   await page.getByRole('button', { name: 'Update Profile' }).click();
 
-  // Verify auth state was updated
-  await expect.poll(() => api.authState.connected).toBe(true);
+  // Verify provider and secret state were updated
+  await expect.poll(() => api.providersState.find((provider) => provider.id === 'codex-default')?.secret_ref).toBe('codex-default-key');
+  await expect.poll(() => api.secretsState.some((secret) => secret.id === 'codex-default-key')).toBe(true);
 });
 
 test('project management', async ({ page }) => {

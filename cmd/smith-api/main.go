@@ -88,7 +88,7 @@ type config struct {
 	providerGeminiEnabled               bool
 	documentStoreBackend                string
 	documentsPostgresDSN                string
-	documentsPostgresMaxConns           int
+	documentsPostgresMaxConns           int32
 	documentsGarageEndpoint             string
 	documentsGarageRegion               string
 	documentsGarageBucket               string
@@ -528,7 +528,7 @@ func main() {
 	if docstore.IsPostgresGarageBackend(cfg.documentStoreBackend) {
 		primaryDocumentStore, primaryErr := docstore.NewPostgresGarageStore(ctx, docstore.PostgresGarageConfig{
 			PostgresDSN:           cfg.documentsPostgresDSN,
-			PostgresMaxConns:      int32(cfg.documentsPostgresMaxConns),
+			PostgresMaxConns:      cfg.documentsPostgresMaxConns,
 			GarageEndpoint:        cfg.documentsGarageEndpoint,
 			GarageRegion:          cfg.documentsGarageRegion,
 			GarageBucket:          cfg.documentsGarageBucket,
@@ -4288,7 +4288,7 @@ func loadConfig() (config, error) {
 		providerGeminiEnabled:               envBool("SMITH_PROVIDER_GEMINI_ENABLED", false),
 		documentStoreBackend:                documentStoreBackend,
 		documentsPostgresDSN:                strings.TrimSpace(envString("SMITH_DOCUMENTS_POSTGRES_DSN", "")),
-		documentsPostgresMaxConns:           envInt("SMITH_DOCUMENTS_POSTGRES_MAX_CONNS", 10),
+		documentsPostgresMaxConns:           envInt32("SMITH_DOCUMENTS_POSTGRES_MAX_CONNS", 10),
 		documentsGarageEndpoint:             strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_ENDPOINT", "")),
 		documentsGarageRegion:               strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_REGION", "us-east-1")),
 		documentsGarageBucket:               strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_BUCKET", "")),
@@ -4619,6 +4619,18 @@ func envInt(name string, fallback int) int {
 		return fallback
 	}
 	return v
+}
+
+func envInt32(name string, fallback int32) int32 {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return int32(v)
 }
 
 func ioReadAllLimit(body io.Reader, max int64) ([]byte, error) {

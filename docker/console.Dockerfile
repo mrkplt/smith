@@ -13,7 +13,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine3.20
 
 USER root
-RUN apk upgrade --no-cache libcrypto3 libssl3 libxml2 && \
+RUN apk upgrade --no-cache libcrypto3 libssl3 libxml2 libexpat && \
     rm -rf /var/cache/apk/*
 USER 101
 

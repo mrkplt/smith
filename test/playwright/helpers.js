@@ -160,6 +160,7 @@ export async function emitChatEvent(page, sessionID, type, payload) {
 export async function mockApiRoutes(page, options = {}) {
   const loops = options.loops || loopsFixture;
   const documentsState = options.documents || documentsFixture;
+  const runtimeConfig = options.runtimeConfig || {};
   const providersState = options.providers || [
     {
       id: 'codex-default',
@@ -192,12 +193,18 @@ export async function mockApiRoutes(page, options = {}) {
   let lastChatSessionID = '';
 
   // ── runtime config ────────────────────────────────────────────────
-  await page.addInitScript(() => {
-    window.__SMITH_CONFIG__ = { apiBaseUrl: '', operatorToken: 'test-token' };
+  await page.addInitScript((cfg) => {
+    window.__SMITH_CONFIG__ = {
+      apiBaseUrl: '',
+      operatorToken: 'test-token',
+      featureChatEnabled: true,
+      featureSecretsEnabled: true,
+      ...cfg,
+    };
     // auto-confirm dialogs
     window.__lastConfirmMessage = '';
     window.confirm = (msg) => { window.__lastConfirmMessage = String(msg || ''); return true; };
-  });
+  }, runtimeConfig);
 
   // ── HTTP routes ───────────────────────────────────────────────────
 
@@ -274,10 +281,35 @@ export async function mockApiRoutes(page, options = {}) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify([
-        { id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
+        { id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
         { id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
         { id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
       ])
+    });
+  });
+
+  // GET /v1/providers/:id/models
+  await page.route(/\/v1\/providers\/[^/]+\/models$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const url = new URL(route.request().url());
+    const segments = url.pathname.split('/').filter(Boolean);
+    const providerID = decodeURIComponent(segments[segments.length - 2] || '');
+    const provider = providersState.find((entry) => String(entry?.id || '') === providerID) || null;
+    const providerType = String(provider?.provider_type || '').trim().toLowerCase();
+    let modelIDs = ['gpt-5-codex', 'gpt-5-codex-mini'];
+    if (providerType === 'claude') {
+      modelIDs = ['claude-sonnet-4-5', 'claude-haiku-4-5'];
+    } else if (providerType === 'gemini') {
+      modelIDs = ['gemini-2.5-pro', 'gemini-2.5-flash'];
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        provider_type: providerType || 'codex',
+        default_model: String(provider?.default_model || ''),
+        models: modelIDs.map((id) => ({ id })),
+      }),
     });
   });
 
@@ -295,14 +327,71 @@ export async function mockApiRoutes(page, options = {}) {
     return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'provider not found' }) });
   });
 
-  // GET /v1/secrets
-  await page.route(/\/v1\/secrets$/, async (route) => {
-    if (route.request().method() !== 'GET') return route.fallback();
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(secretsState)
-    });
+  // GET/POST /v1/secrets
+  await page.route(/\/v1\/secrets\/?$/, async (route) => {
+    const method = route.request().method();
+    if (method === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(secretsState)
+      });
+    }
+    if (method === 'POST') {
+      const payload = route.request().postDataJSON() || {};
+      const id = String(payload.id || '').trim();
+      if (id === '') {
+        return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'secret id required' }) });
+      }
+      const next = {
+        id,
+        name: String(payload.name || id),
+        description: String(payload.description || ''),
+      };
+      const idx = secretsState.findIndex((secret) => String(secret?.id || '') === id);
+      if (idx >= 0) {
+        secretsState[idx] = next;
+      } else {
+        secretsState.push(next);
+      }
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(next) });
+    }
+    return route.fallback();
+  });
+
+  // GET/PUT/DELETE /v1/secrets/:id
+  await page.route(/\/v1\/secrets\/[^/]+$/, async (route) => {
+    const method = route.request().method();
+    const url = new URL(route.request().url());
+    const id = decodeURIComponent(url.pathname.split('/').pop() || '').trim();
+    const idx = secretsState.findIndex((secret) => String(secret?.id || '') === id);
+    if (method === 'GET') {
+      if (idx < 0) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(secretsState[idx]) });
+    }
+    if (method === 'PUT') {
+      if (idx < 0) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) });
+      }
+      const payload = route.request().postDataJSON() || {};
+      const updated = {
+        ...secretsState[idx],
+        id,
+        name: String(payload.name || secretsState[idx]?.name || id),
+        description: String(payload.description || secretsState[idx]?.description || ''),
+      };
+      secretsState[idx] = updated;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(updated) });
+    }
+    if (method === 'DELETE') {
+      if (idx >= 0) {
+        secretsState.splice(idx, 1);
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    return route.fallback();
   });
 
   // GET /v1/onboarding/readiness
