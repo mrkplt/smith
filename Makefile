@@ -28,6 +28,12 @@ SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_LOCAL_DAEMON_IMAGE ?= smith-daemon:local
 SMITH_LOCAL_GIT_PAT ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS ?=
+SMITH_LOCAL_OVERLAY ?=
+SMITH_BOOTSTRAP_DOCUMENT_STORAGE ?= false
+SMITH_BOOTSTRAP_ENV_FILE ?= $(HOME)/.smith/.env
+SMITH_BOOTSTRAP_SCRIPT ?= ./scripts/bootstrap-document-storage.sh
+SMITH_FORCE_HELM_ROLLOUT_ID ?= true
+SMITH_FORCE_ROLLOUT ?= true
 SMITH_MIN_GO_VERSION ?= 1.22.0
 SMITH_MIN_KUBECTL_VERSION ?= 1.29.0
 SMITH_MIN_HELM_VERSION ?= 3.13.0
@@ -39,7 +45,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-up-local cluster-up-k3d cluster-up-vcluster cluster-down cluster-down-local cluster-down-k3d cluster-down-vcluster cluster-reset cluster-health \
-	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-staging deploy-prod rollout-local undeploy undeploy-local \
+	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-local-document-storage deploy-staging deploy-prod rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
 	daemon-build-local daemon-load-local daemon-rollout-local daemon-deploy-local \
@@ -211,15 +217,38 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  echo "deploy-local: SMITH_LOCAL_RUNTIME_CREDENTIALS is required"; \
 	  exit 1; \
 	fi
+	@if [[ "$(SMITH_BOOTSTRAP_DOCUMENT_STORAGE)" == "true" ]]; then \
+	  if [[ ! -f "$(SMITH_BOOTSTRAP_ENV_FILE)" ]]; then \
+	    echo "deploy-local: expected env file not found for document storage bootstrap: $(SMITH_BOOTSTRAP_ENV_FILE)"; \
+	    exit 1; \
+	  fi; \
+	  if [[ ! -x "$(SMITH_BOOTSTRAP_SCRIPT)" ]]; then \
+	    echo "deploy-local: expected bootstrap script is not executable: $(SMITH_BOOTSTRAP_SCRIPT)"; \
+	    exit 1; \
+	  fi; \
+	  echo "deploy-local: pre-deploy document secret bootstrap"; \
+	  "$(SMITH_BOOTSTRAP_SCRIPT)" --env-file "$(SMITH_BOOTSTRAP_ENV_FILE)" --namespace "$(SMITH_NAMESPACE)" --release "$(SMITH_RELEASE)" --skip-garage; \
+	fi
 	$(MAKE) --no-print-directory images-local
-	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
+	@helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  --set-string secrets.managed.gitPat="$(SMITH_LOCAL_GIT_PAT)" \
 	  --set-string secrets.managed.runtimeCredentials="$(SMITH_LOCAL_RUNTIME_CREDENTIALS)" \
-	  --set global.rolloutId="$(shell date +%s)" \
-	  -f "$(SMITH_LOCAL_VALUES)"
-	$(MAKE) --no-print-directory rollout-local
+	  $(if $(filter true,$(SMITH_FORCE_HELM_ROLLOUT_ID)),--set global.rolloutId="$(shell date +%s)",) \
+	  -f "$(SMITH_LOCAL_VALUES)" \
+	  $(if $(strip $(SMITH_LOCAL_OVERLAY)),-f "$(SMITH_LOCAL_OVERLAY)",)
+	@if [[ "$(SMITH_FORCE_ROLLOUT)" == "true" ]]; then \
+	  $(MAKE) --no-print-directory rollout-local; \
+	else \
+	  echo "deploy-local: skipping forced rollout (SMITH_FORCE_ROLLOUT=false)"; \
+	fi
+	@if [[ "$(SMITH_BOOTSTRAP_DOCUMENT_STORAGE)" == "true" ]]; then \
+	  echo "deploy-local: post-deploy garage bootstrap"; \
+	  "$(SMITH_BOOTSTRAP_SCRIPT)" --env-file "$(SMITH_BOOTSTRAP_ENV_FILE)" --namespace "$(SMITH_NAMESPACE)" --release "$(SMITH_RELEASE)" --skip-secrets; \
+	fi
+deploy-local-document-storage: ## Deploy local with in-cluster Postgres+Garage bootstrap order
+	SMITH_BOOTSTRAP_DOCUMENT_STORAGE=true SMITH_FORCE_HELM_ROLLOUT_ID=false SMITH_FORCE_ROLLOUT=false SMITH_LOCAL_OVERLAY=helm/smith/values/local-document-storage-1password.yaml $(MAKE) --no-print-directory deploy-local
 console-build-local: ## Build only the console local image
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
 console-load-local: ## Load only the console image when using k3d

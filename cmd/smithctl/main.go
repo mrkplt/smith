@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -697,6 +698,8 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 		endpoint     string
 		defaultModel string
 		capabilities string
+		credentialID string
+		apiKey       string
 		secretRef    string
 	)
 	fs.StringVar(&id, "id", "", "Provider profile id")
@@ -705,13 +708,15 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 	fs.StringVar(&endpoint, "endpoint", "", "Provider endpoint override")
 	fs.StringVar(&defaultModel, "default-model", "", "Default provider model")
 	fs.StringVar(&capabilities, "capabilities", "chat,tools,loops", "Comma-delimited capabilities")
+	fs.StringVar(&credentialID, "credential-id", "", "Credential label/identifier")
+	fs.StringVar(&apiKey, "api-key", "", "Provider API key")
 	fs.StringVar(&secretRef, "secret-ref", "", "Settings secret reference")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl provider add --id <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+		fmt.Fprintln(stderr, "usage: smithctl provider add --id <id> --credential-id <label> --api-key <key> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--endpoint <url>] [--capabilities c1,c2]")
 		return 2
 	}
 	id = strings.TrimSpace(id)
@@ -719,10 +724,30 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 		fmt.Fprintln(stderr, "provider add requires --id")
 		return 2
 	}
+	resolvedCredentialID, err := resolveCredentialID(credentialID, secretRef)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if strings.TrimSpace(resolvedCredentialID) == "" {
+		fmt.Fprintln(stderr, "provider add requires --credential-id")
+		return 2
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		fmt.Fprintln(stderr, "provider add requires --api-key")
+		return 2
+	}
 	normalizedType, err := normalizeProviderType(providerType)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
+	}
+	providerLabel := strings.TrimSpace(name)
+	if providerLabel == "" {
+		providerLabel = id
+	}
+	if err := upsertProviderCredentialSecret(client, resolvedCredentialID, apiKey, providerLabel); err != nil {
+		return writeOperationResult(output, stdout, stderr, "provider.add", nil, fmt.Errorf("upsert provider credential %q failed: %w", resolvedCredentialID, err))
 	}
 	payload := map[string]any{
 		"id":            id,
@@ -731,7 +756,7 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 		"endpoint":      strings.TrimSpace(endpoint),
 		"default_model": strings.TrimSpace(defaultModel),
 		"capabilities":  splitCommaList(capabilities),
-		"secret_ref":    strings.TrimSpace(secretRef),
+		"secret_ref":    strings.TrimSpace(resolvedCredentialID),
 	}
 	var out any
 	err = client.Do(context.Background(), http.MethodPost, "/v1/providers", payload, &out)
@@ -740,7 +765,7 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 
 func cmdProviderConfigure(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
 		return 2
 	}
 	providerID := strings.TrimSpace(args[0])
@@ -752,6 +777,8 @@ func cmdProviderConfigure(client *client.Client, output string, args []string, s
 		endpoint     string
 		defaultModel string
 		capabilities string
+		credentialID string
+		apiKey       string
 		secretRef    string
 	)
 	fs.StringVar(&name, "name", "", "Provider display name")
@@ -759,13 +786,24 @@ func cmdProviderConfigure(client *client.Client, output string, args []string, s
 	fs.StringVar(&endpoint, "endpoint", "", "Provider endpoint override")
 	fs.StringVar(&defaultModel, "default-model", "", "Default provider model")
 	fs.StringVar(&capabilities, "capabilities", "", "Comma-delimited capabilities")
+	fs.StringVar(&credentialID, "credential-id", "", "Credential label/identifier")
+	fs.StringVar(&apiKey, "api-key", "", "Provider API key")
 	fs.StringVar(&secretRef, "secret-ref", "", "Settings secret reference")
 	if err := fs.Parse(args[1:]); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
+		return 2
+	}
+	resolvedCredentialID, err := resolveCredentialID(credentialID, secretRef)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	if strings.TrimSpace(apiKey) != "" && strings.TrimSpace(resolvedCredentialID) == "" {
+		fmt.Fprintln(stderr, "provider configure requires --credential-id when --api-key is set")
 		return 2
 	}
 	payload := map[string]any{"id": providerID}
@@ -791,8 +829,18 @@ func cmdProviderConfigure(client *client.Client, output string, args []string, s
 		payload["default_model"] = strings.TrimSpace(defaultModel)
 		changed = true
 	}
-	if strings.TrimSpace(secretRef) != "" {
-		payload["secret_ref"] = strings.TrimSpace(secretRef)
+	if strings.TrimSpace(resolvedCredentialID) != "" {
+		payload["secret_ref"] = strings.TrimSpace(resolvedCredentialID)
+		changed = true
+	}
+	if strings.TrimSpace(apiKey) != "" {
+		providerLabel := strings.TrimSpace(name)
+		if providerLabel == "" {
+			providerLabel = providerID
+		}
+		if err := upsertProviderCredentialSecret(client, resolvedCredentialID, apiKey, providerLabel); err != nil {
+			return writeOperationResult(output, stdout, stderr, "provider.configure", nil, fmt.Errorf("upsert provider credential %q failed: %w", resolvedCredentialID, err))
+		}
 		changed = true
 	}
 	if strings.TrimSpace(capabilities) != "" {
@@ -804,7 +852,7 @@ func cmdProviderConfigure(client *client.Client, output string, args []string, s
 		return 2
 	}
 	var out any
-	err := client.Do(context.Background(), http.MethodPut, "/v1/providers/"+providerID, payload, &out)
+	err = client.Do(context.Background(), http.MethodPut, "/v1/providers/"+providerID, payload, &out)
 	return writeOperationResult(output, stdout, stderr, "provider.configure", out, err)
 }
 
@@ -984,6 +1032,52 @@ func normalizeProviderType(raw string) (string, error) {
 	}
 }
 
+func resolveCredentialID(credentialID, secretRef string) (string, error) {
+	resolved := strings.TrimSpace(credentialID)
+	legacy := strings.TrimSpace(secretRef)
+	if resolved == "" {
+		resolved = legacy
+	}
+	if resolved != "" && legacy != "" && resolved != legacy {
+		return "", fmt.Errorf("--credential-id and --secret-ref must match when both are set")
+	}
+	return resolved, nil
+}
+
+func upsertProviderCredentialSecret(apiClient *client.Client, credentialID, apiKey, providerLabel string) error {
+	credentialID = strings.TrimSpace(credentialID)
+	if credentialID == "" {
+		return fmt.Errorf("credential id is required")
+	}
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return fmt.Errorf("api key is required")
+	}
+	providerLabel = strings.TrimSpace(providerLabel)
+	if providerLabel == "" {
+		providerLabel = credentialID
+	}
+	secretPayload := map[string]any{
+		"id":          credentialID,
+		"name":        credentialID,
+		"description": fmt.Sprintf("%s API key", providerLabel),
+		"value":       apiKey,
+	}
+	secretPath := "/v1/secrets/" + url.PathEscape(credentialID)
+	var existing any
+	err := apiClient.Do(context.Background(), http.MethodGet, secretPath, nil, &existing)
+	if err == nil {
+		var out any
+		return apiClient.Do(context.Background(), http.MethodPut, secretPath, secretPayload, &out)
+	}
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		var out any
+		return apiClient.Do(context.Background(), http.MethodPost, "/v1/secrets", secretPayload, &out)
+	}
+	return err
+}
+
 func ensureProviderFirstOnboarding(client *client.Client, output string, stdout, stderr io.Writer, operation string) int {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("SMITHCTL_SKIP_PROVIDER_FIRST")), "1") ||
 		strings.EqualFold(strings.TrimSpace(os.Getenv("SMITHCTL_SKIP_PROVIDER_FIRST")), "true") {
@@ -1001,7 +1095,7 @@ func ensureProviderFirstOnboarding(client *client.Client, output string, stdout,
 	if nextStep, ok := readiness["next_step"].(string); ok && strings.TrimSpace(nextStep) == "provider_catalog" {
 		errorMessage = "provider catalog is empty; configure a provider profile first"
 	}
-	suggested := "smithctl provider add --id codex-default --type codex"
+	suggested := "smithctl provider add --id codex-default --type codex --credential-id codex-default-key --api-key $SMITH_CODEX_API_KEY"
 
 	if output == "json" {
 		printOutput(stdout, output, map[string]any{
@@ -2285,7 +2379,7 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  smithctl loop list")
 	fmt.Fprintln(w, "  smithctl provider list")
-	fmt.Fprintln(w, "  smithctl provider add --id codex-default --type codex")
+	fmt.Fprintln(w, "  smithctl provider add --id codex-default --type codex --credential-id codex-default-key --api-key $SMITH_CODEX_API_KEY")
 	fmt.Fprintln(w, "  smithctl project add --id demo --repo-url https://github.com/acme/demo --provider-profile-id codex-default")
 	fmt.Fprintln(w, "  # Configure provider first, then create/configure projects")
 	fmt.Fprintln(w, "  smithctl loop get loop-abc123")
@@ -2319,8 +2413,8 @@ func printConfigHelp(w io.Writer) {
 func printProviderHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smithctl provider <command>")
 	fmt.Fprintln(w, "Commands: list, add, configure")
-	fmt.Fprintln(w, "  add --id <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
-	fmt.Fprintln(w, "  configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--secret-ref <secret>] [--endpoint <url>] [--capabilities c1,c2]")
+	fmt.Fprintln(w, "  add --id <id> --credential-id <label> --api-key <key> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--endpoint <url>] [--capabilities c1,c2]")
+	fmt.Fprintln(w, "  configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
 }
 
 func printProjectHelp(w io.Writer) {

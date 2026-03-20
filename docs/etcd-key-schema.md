@@ -9,6 +9,7 @@
 - `/smith/v1/locks/{loop_id}`: lease-backed single-writer lock record.
 - `/smith/v1/overrides/{loop_id}/{sequence}`: operator control actions.
 - `/smith/v1/audit/{yyyy}/{mm}/{dd}/{event_id}`: global immutable audit events.
+- `/smith/v1/documents/{document_id}`: legacy/compatibility document records (active when document backend is `etcd` or migration fallback is enabled).
 
 ## Schema Rules
 
@@ -17,6 +18,7 @@
 - Journal, handoff, override paths are append-only.
 - State transitions are compare-and-swap guarded with etcd revision checks.
 - Lock writes must include valid etcd lease IDs and heartbeats.
+- In `postgres-garage` mode, documents are no longer system-of-record in etcd; this prefix is compatibility/migration-only.
 
 ## Versioning Contract
 

@@ -5,10 +5,12 @@
     import ChatPanel from '$lib/components/chat/ChatPanel.svelte';
     import { buildGlobalChatContext, extractCarriedChatContext, sanitizeReturnToPath } from '$lib/chat/context';
     import { appState, chatType } from '$lib/stores';
+    import { isChatEnabled } from '$lib/feature-flags';
 
     const carriedContext = $derived(extractCarriedChatContext(page.url.searchParams));
     const returnTo = $derived(sanitizeReturnToPath(page.url.searchParams.get('returnTo') || '/projects'));
     const currentPath = $derived(page.url.pathname + page.url.search);
+    const chatEnabled = $derived(isChatEnabled());
 
     const pageChatContext = $derived.by(() => {
         if (Object.keys(carriedContext).length > 0) {
@@ -23,6 +25,12 @@
     function closePageChat() {
         void goto(returnTo);
     }
+
+    $effect(() => {
+        if (!chatEnabled) {
+            void goto(returnTo, { replaceState: true });
+        }
+    });
 </script>
 
 <TopBar title="Chat" />

@@ -6,6 +6,8 @@ This page captures the core technologies Smith currently depends on, and acknowl
 
 - Go (`go 1.25.0`) for core services and CLI (`smith-api`, `smith-chat`, `smith-core`, `smith-replica`, `smithctl`).
 - etcd (`go.etcd.io/etcd/client/v3`) as the authoritative store for loop state, locks, journals, handoffs, overrides, and audit records.
+- PostgreSQL (`github.com/jackc/pgx/v5`) for document metadata in `postgres-garage` document backend mode.
+- Garage S3-compatible object storage (`github.com/aws/aws-sdk-go-v2/service/s3`) for document content blobs in `postgres-garage` mode.
 - Kubernetes (`k8s.io/api`, `k8s.io/apimachinery`, `k8s.io/client-go`) as the execution substrate for control-plane deployments and replica Jobs.
 - Helm (`helm/smith`) for packaging and deploying Smith components.
 - Docker (`docker/*.Dockerfile`) for container images.

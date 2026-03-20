@@ -13,7 +13,7 @@ func SupportedProviderCatalog() []CatalogEntry {
 			ID:                   ProviderCodex,
 			DisplayName:          "Codex",
 			DefaultModel:         DefaultCodexModel,
-			RequiredConfigFields: []string{"id", "provider_type"},
+			RequiredConfigFields: []string{"id", "provider_type", "secret_ref"},
 		},
 		{
 			ID:                   ProviderClaude,

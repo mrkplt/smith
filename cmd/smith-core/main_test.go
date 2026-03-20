@@ -494,6 +494,44 @@ func TestLoadConfigGitPATSecretOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRuntimeCredentialDefaults(t *testing.T) {
+	t.Setenv("SMITH_RUNTIME_SECRET_NAME", "")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS_KEY", "")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS", "")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.runtimeSecretName != "" {
+		t.Fatalf("expected empty runtime secret name, got %q", cfg.runtimeSecretName)
+	}
+	if cfg.runtimeSecretKey != "runtime_credentials" {
+		t.Fatalf("expected default runtime credentials key runtime_credentials, got %q", cfg.runtimeSecretKey)
+	}
+	if cfg.runtimeCredentials != "" {
+		t.Fatalf("expected empty inline runtime credentials fallback, got %q", cfg.runtimeCredentials)
+	}
+}
+
+func TestLoadConfigRuntimeCredentialOverrides(t *testing.T) {
+	t.Setenv("SMITH_RUNTIME_SECRET_NAME", "smith-runtime")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS_KEY", "runtime_credentials_v2")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS", "sk-inline-fallback")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig error: %v", err)
+	}
+	if cfg.runtimeSecretName != "smith-runtime" {
+		t.Fatalf("expected runtime secret name override, got %q", cfg.runtimeSecretName)
+	}
+	if cfg.runtimeSecretKey != "runtime_credentials_v2" {
+		t.Fatalf("expected runtime credentials key override, got %q", cfg.runtimeSecretKey)
+	}
+	if cfg.runtimeCredentials != "sk-inline-fallback" {
+		t.Fatalf("expected inline runtime credentials fallback override, got %q", cfg.runtimeCredentials)
+	}
+}
+
 func TestLoadConfigGitPolicyOverrides(t *testing.T) {
 	t.Setenv("SMITH_GIT_POLICY_CONFIG_ENABLED", "true")
 	t.Setenv("SMITH_GIT_POLICY_BRANCH_CLEANUP", "never")

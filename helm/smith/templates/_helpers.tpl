@@ -39,3 +39,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-runtime" (include "smith.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "smith.documentsCredentialsSecretName" -}}
+{{- if .Values.documentDependencies.credentials.existingSecret -}}
+{{- .Values.documentDependencies.credentials.existingSecret -}}
+{{- else if .Values.documentDependencies.credentials.create -}}
+{{- printf "%s-documents-credentials" (include "smith.fullname" .) -}}
+{{- end -}}
+{{- end -}}

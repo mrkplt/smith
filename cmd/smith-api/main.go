@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"smith/internal/source/docstore"
 	"smith/internal/source/ingress"
 	"smith/internal/source/model"
 	"smith/internal/source/provider"
@@ -72,23 +73,40 @@ type config struct {
 	grpcPort      int
 	etcdEndpoints []string
 
-	etcdDialTimeout       time.Duration
-	operatorToken         string
-	authStoreBackend      string
-	authStorePath         string
-	authStoreK8sNamespace string
-	authStoreK8sSecret    string
-	authStoreK8sKey       string
-	defaultPreset         string
-	skillPolicy           model.SkillPolicy
-	runtimeNamespace      string
-	runtimeContainerName  string
+	etcdDialTimeout                     time.Duration
+	operatorToken                       string
+	authStoreBackend                    string
+	authStorePath                       string
+	authStoreK8sNamespace               string
+	authStoreK8sSecret                  string
+	authStoreK8sKey                     string
+	defaultPreset                       string
+	skillPolicy                         model.SkillPolicy
+	runtimeNamespace                    string
+	runtimeContainerName                string
+	providerClaudeEnabled               bool
+	providerGeminiEnabled               bool
+	documentStoreBackend                string
+	documentsPostgresDSN                string
+	documentsPostgresMaxConns           int32
+	documentsGarageEndpoint             string
+	documentsGarageRegion               string
+	documentsGarageBucket               string
+	documentsGarageAccessKeyID          string
+	documentsGarageSecretAccessKey      string
+	documentsGarageForcePathStyle       bool
+	documentsWatchPollInterval          time.Duration
+	documentsMigrationBackfillOnStartup bool
+	documentsMigrationReadThroughOnMiss bool
+	documentsMigrationMergeListFallback bool
+	documentsMigrationDualWriteEtcd     bool
 }
 
 type server struct {
 	cfg          config
 	store        store.StateStore
-	auth         *provider.AuthManager
+	documents    docstore.Store
+	modelCatalog provider.ModelInventoryService
 	projectCred  provider.ProjectCredentialStore
 	repoAccess   func(ctx context.Context, repoURL string, githubUser string, credential string) (bool, string, error)
 	providers    provider.ProviderProfileStore
@@ -104,9 +122,6 @@ type server struct {
 }
 type overrideRequest = api.OverrideRequest
 type costSummary = api.CostSummary
-type authStartRequest = api.AuthStartRequest
-type authCompleteRequest = api.AuthCompleteRequest
-type authAPIKeyRequest = api.AuthAPIKeyRequest
 type projectCredentialUpsertRequest = api.ProjectCredentialUpsertRequest
 type projectCredentialDeleteRequest = api.ProjectCredentialDeleteRequest
 type projectCredentialTestRequest = api.ProjectCredentialTestRequest
@@ -151,6 +166,8 @@ type githubWebhookPayload struct {
 }
 
 type prdIngressRequest = api.PRDIngressRequest
+type prdValidateRequest = api.PRDValidateRequest
+type prdValidateResponse = api.PRDValidateResponse
 type ingressResult = api.IngressResult
 type ingressSummary = api.IngressSummary
 type loopTraceResponse = api.LoopTraceResponse
@@ -463,6 +480,16 @@ func (s *server) appendJournal(ctx context.Context, entry model.JournalEntry) er
 	return s.store.AppendJournal(ctx, entry)
 }
 
+func (s *server) documentStore() docstore.Store {
+	if s.documents != nil {
+		return s.documents
+	}
+	if s.store != nil {
+		return docstore.NewEtcdStore(s.store)
+	}
+	return nil
+}
+
 // @title Smith API
 // @version 1.0
 // @description Smith API server for managing loops and anomalies.
@@ -497,6 +524,42 @@ func main() {
 	}
 	defer func() { _ = es.Close() }()
 
+	var documentStore docstore.Store = docstore.NewEtcdStore(es)
+	if docstore.IsPostgresGarageBackend(cfg.documentStoreBackend) {
+		primaryDocumentStore, primaryErr := docstore.NewPostgresGarageStore(ctx, docstore.PostgresGarageConfig{
+			PostgresDSN:           cfg.documentsPostgresDSN,
+			PostgresMaxConns:      cfg.documentsPostgresMaxConns,
+			GarageEndpoint:        cfg.documentsGarageEndpoint,
+			GarageRegion:          cfg.documentsGarageRegion,
+			GarageBucket:          cfg.documentsGarageBucket,
+			GarageAccessKeyID:     cfg.documentsGarageAccessKeyID,
+			GarageSecretAccessKey: cfg.documentsGarageSecretAccessKey,
+			GarageForcePathStyle:  cfg.documentsGarageForcePathStyle,
+			WatchPollInterval:     cfg.documentsWatchPollInterval,
+		})
+		if primaryErr != nil {
+			log.Fatalf("smith-api document store init failed: %v", primaryErr)
+		}
+		fallbackDocumentStore := docstore.NewEtcdStore(es)
+
+		if cfg.documentsMigrationBackfillOnStartup {
+			summary, backfillErr := docstore.BackfillDocuments(ctx, primaryDocumentStore, fallbackDocumentStore)
+			if backfillErr != nil {
+				log.Fatalf("smith-api document backfill failed: %v", backfillErr)
+			}
+			if summary.Upserted > 0 {
+				log.Printf("smith-api document backfill completed: scanned=%d upserted=%d", summary.Scanned, summary.Upserted)
+			}
+		}
+
+		documentStore = docstore.NewMigratingStore(primaryDocumentStore, fallbackDocumentStore, docstore.MigrationOptions{
+			DualWriteFallback: cfg.documentsMigrationDualWriteEtcd,
+			ReadThroughOnMiss: cfg.documentsMigrationReadThroughOnMiss,
+			MergeListFallback: cfg.documentsMigrationMergeListFallback,
+		})
+		defer func() { _ = documentStore.Close() }()
+	}
+
 	tokenStore, err := newTokenStore(ctx, cfg)
 	if err != nil {
 		log.Fatalf("smith-api auth store init failed: %v", err)
@@ -519,12 +582,6 @@ func main() {
 		log.Fatalf("smith-api secret store init failed: %v", err)
 	}
 
-	authManager := provider.NewAuthManager(
-		provider.ProviderCodex,
-		tokenStore,
-		provider.NewMockDeviceAuthClient(),
-		&auditBridge{store: es},
-	)
 	runtimePods, err := newRuntimePodReader()
 	if err != nil {
 		log.Printf("smith-api runtime pod lookup unavailable: %v", err)
@@ -542,7 +599,8 @@ func main() {
 	s := &server{
 		cfg:          cfg,
 		store:        es,
-		auth:         authManager,
+		documents:    documentStore,
+		modelCatalog: provider.NewAccountModelInventoryService(),
 		projectCred:  projectCredStore,
 		providers:    providerStore,
 		secrets:      secretStore,
@@ -570,6 +628,7 @@ func main() {
 	mux.HandleFunc("/v1/ingress/github/issues", s.handleIngressGitHubIssues)
 	mux.HandleFunc("/v1/webhooks/github/issues", s.handleGitHubWebhook)
 	mux.HandleFunc("/v1/ingress/prd", s.handleIngressPRD)
+	mux.HandleFunc("/v1/prd/validate", s.handlePRDValidate)
 	mux.HandleFunc("/v1/control/override", s.handleOverride)
 	mux.HandleFunc("/v1/audit", s.handleAudit)
 	mux.HandleFunc("/v1/audit/stream", s.handleAuditStream)
@@ -581,12 +640,6 @@ func main() {
 	mux.HandleFunc("/v1/documents", s.handleDocuments)
 	mux.HandleFunc("/v1/documents/stream", s.handleDocumentStream)
 	mux.HandleFunc("/v1/documents/", s.handleDocumentByID)
-	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
-	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
-	mux.HandleFunc("/v1/auth/codex/connect/api-key", s.handleCodexAuthAPIKey)
-	mux.HandleFunc("/v1/auth/codex/status", s.handleCodexAuthStatus)
-	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
-	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
 	mux.HandleFunc("/api/projects/credentials/github", s.handleProjectGitHubCredential)
 	mux.HandleFunc("/api/projects/credentials/github/test", s.handleProjectGitHubCredentialTest)
 	mux.HandleFunc("/v1/projects/credentials/github", s.handleProjectGitHubCredential)
@@ -1071,6 +1124,63 @@ func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, newIngressSummary(results))
+}
+
+func (s *server) handlePRDValidate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req prdValidateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	format := strings.ToLower(strings.TrimSpace(req.Format))
+	if format == "" {
+		trimmedMarkdown := strings.TrimSpace(req.Markdown)
+		trimmedJSON := strings.TrimSpace(req.JSON)
+		switch {
+		case trimmedJSON != "" || len(req.PRD) > 0:
+			format = "json"
+		case trimmedMarkdown != "":
+			format = "markdown"
+		default:
+			writeErr(w, http.StatusBadRequest, "markdown or json input is required")
+			return
+		}
+	}
+
+	out := prdValidateResponse{Format: format}
+	switch format {
+	case "markdown", "md":
+		_, out.Report = model.ValidatePRDMarkdown([]byte(req.Markdown))
+		out.Format = "markdown"
+	case "json", "structured":
+		rawJSON := req.PRD
+		if strings.TrimSpace(req.JSON) != "" {
+			rawJSON = json.RawMessage(req.JSON)
+		}
+		if len(rawJSON) == 0 {
+			writeErr(w, http.StatusBadRequest, "json input is required")
+			return
+		}
+		prd, report := model.ValidatePRDJSON(rawJSON)
+		out.Report = report
+		out.Format = "json"
+		if report.Valid {
+			if markdown, markdownReport := prd.RenderMarkdown(); markdownReport.Valid {
+				out.CanonicalMarkdown = markdown
+			}
+		}
+	default:
+		writeErr(w, http.StatusBadRequest, "format must be markdown or json")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 func buildPRDIngressDrafts(format, markdown string, rawPRD json.RawMessage, sourceRef string, metadata map[string]string) ([]ingress.LoopDraft, *model.PRDValidationReport, error) {
@@ -2733,172 +2843,6 @@ func (s *server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, records)
 }
 
-func (s *server) handleCodexAuthStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req authStartRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	session, err := s.auth.StartConnect(r.Context(), strings.TrimSpace(req.Actor))
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, session)
-}
-
-func (s *server) handleCodexAuthComplete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req authCompleteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	token, err := s.auth.CompleteConnect(r.Context(), strings.TrimSpace(req.Actor), strings.TrimSpace(req.DeviceCode))
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"connected":       true,
-		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
-		"account_id":      token.AccountID,
-		"auth_method":     token.AuthMethod,
-		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
-		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
-	})
-}
-
-func (s *server) handleCodexAuthAPIKey(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req authAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	token, err := s.auth.ConnectAPIKey(
-		r.Context(),
-		strings.TrimSpace(req.Actor),
-		strings.TrimSpace(req.APIKey),
-		strings.TrimSpace(req.AccountID),
-	)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"connected":       true,
-		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
-		"account_id":      token.AccountID,
-		"auth_method":     token.AuthMethod,
-		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
-		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
-	})
-}
-
-func (s *server) handleCodexAuthStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	status, err := s.auth.Status(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out := map[string]any{
-		"connected": status.Connected,
-		"provider":  provider.ProviderCodex,
-	}
-	if status.Connected {
-		out["expires_at"] = status.ExpiresAt.UTC().Format(time.RFC3339)
-		out["account_id"] = status.AccountID
-		out["auth_method"] = status.AuthMethod
-		out["connected_at"] = formatRFC3339OrEmpty(status.ConnectedAt)
-		out["last_refresh_at"] = formatRFC3339OrEmpty(status.LastRefreshAt)
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *server) handleCodexAuthCredential(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	cred, err := s.auth.StoredCredential(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out := map[string]any{
-		"connected": cred.Connected,
-		"provider":  provider.ProviderCodex,
-	}
-	if !cred.Connected {
-		writeJSON(w, http.StatusOK, out)
-		return
-	}
-	out["auth_method"] = cred.AuthMethod
-	out["account_id"] = cred.AccountID
-	if strings.EqualFold(cred.AuthMethod, "api_key") {
-		out["api_key_masked"] = maskCredentialValue(cred.APIKey)
-		reveal := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("reveal")), "true")
-		if reveal {
-			out["api_key"] = cred.APIKey
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *server) handleCodexAuthDisconnect(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
-	if actor == "" {
-		var req authStartRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		actor = strings.TrimSpace(req.Actor)
-	}
-	if err := s.auth.Disconnect(r.Context(), actor); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"connected": false})
-}
-
 func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Request) {
 	if !s.authorized(r) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -3471,7 +3415,7 @@ func (s *server) handleProviderCatalog(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeJSON(w, http.StatusOK, provider.SupportedProviderCatalog())
+	writeJSON(w, http.StatusOK, s.filterProviderCatalogByFlags(provider.SupportedProviderCatalog()))
 }
 
 func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
@@ -3486,7 +3430,7 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, profiles)
+		writeJSON(w, http.StatusOK, s.filterProviderProfilesForFlags(profiles))
 	case http.MethodPost:
 		var profile provider.ProviderProfile
 		if err := json.NewDecoder(r.Body).Decode(&profile); err != nil {
@@ -3495,6 +3439,14 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		normalized, err := provider.NormalizeProviderProfile(profile)
 		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !s.isProviderTypeEnabled(normalized.ProviderType) {
+			writeErr(w, http.StatusForbidden, fmt.Sprintf("provider_type %q is disabled by feature flag", normalized.ProviderType))
+			return
+		}
+		if err := s.ensureProviderSecretRefRequired(normalized); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -3526,10 +3478,17 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	id := providerIDFromPath(r.URL.Path)
-	id = strings.TrimSpace(id)
+	id, route := splitProviderRoute(r.URL.Path)
 	if id == "" {
 		writeErr(w, http.StatusBadRequest, "provider id is required")
+		return
+	}
+	if route != "" {
+		if route == "models" {
+			s.handleProviderModels(w, r, id)
+			return
+		}
+		writeErr(w, http.StatusNotFound, "provider route not found")
 		return
 	}
 	switch r.Method {
@@ -3540,6 +3499,10 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !found {
+			writeErr(w, http.StatusNotFound, "provider profile not found")
+			return
+		}
+		if !s.isProviderTypeEnabled(profile.ProviderType) {
 			writeErr(w, http.StatusNotFound, "provider profile not found")
 			return
 		}
@@ -3559,6 +3522,14 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 		}
 		normalized, err := provider.NormalizeProviderProfile(profile)
 		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !s.isProviderTypeEnabled(normalized.ProviderType) {
+			writeErr(w, http.StatusForbidden, fmt.Sprintf("provider_type %q is disabled by feature flag", normalized.ProviderType))
+			return
+		}
+		if err := s.ensureProviderSecretRefRequired(normalized); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -3611,6 +3582,105 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (s *server) handleProviderModels(w http.ResponseWriter, r *http.Request, providerID string) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	profile, found, err := s.providers.GetProviderProfile(r.Context(), providerID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, "provider profile not found")
+		return
+	}
+	if !s.isProviderTypeEnabled(profile.ProviderType) {
+		writeErr(w, http.StatusNotFound, "provider profile not found")
+		return
+	}
+
+	credential, err := s.resolveProviderCredentialForModelInventory(r.Context(), profile)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	includeAll := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("include")), "all")
+	models, err := s.modelInventory().ListModels(r.Context(), provider.ModelInventoryRequest{
+		Profile:    profile,
+		Credential: credential,
+		IncludeAll: includeAll,
+	})
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	_ = s.appendAudit(r.Context(), store.AuditRecord{
+		Actor:  "operator",
+		Action: "list-provider-models",
+		Metadata: map[string]string{
+			"provider_id":   profile.ID,
+			"provider_type": profile.ProviderType,
+			"model_count":   strconv.Itoa(len(models)),
+		},
+	})
+
+	source := "account_scoped_chat"
+	if includeAll {
+		source = "account_scoped_all"
+	}
+
+	apiModels := make([]api.ProviderModel, 0, len(models))
+	for _, item := range models {
+		apiModels = append(apiModels, api.ProviderModel{
+			ID:      item.ID,
+			OwnedBy: item.OwnedBy,
+			Created: item.Created,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, api.ProviderModelsResponse{
+		ProviderID:   profile.ID,
+		ProviderType: profile.ProviderType,
+		DefaultModel: profile.DefaultModel,
+		Source:       source,
+		FetchedAt:    time.Now().UTC().Format(time.RFC3339),
+		Models:       apiModels,
+	})
+}
+
+func (s *server) modelInventory() provider.ModelInventoryService {
+	if s.modelCatalog != nil {
+		return s.modelCatalog
+	}
+	return provider.NewAccountModelInventoryService()
+}
+
+func (s *server) resolveProviderCredentialForModelInventory(ctx context.Context, profile provider.ProviderProfile) (string, error) {
+	if secretRef := strings.TrimSpace(profile.SecretRef); secretRef != "" {
+		if s.secrets == nil {
+			return "", errors.New("secret store unavailable")
+		}
+		secret, found, err := s.secrets.GetSecret(ctx, secretRef)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			return "", fmt.Errorf("secret %q not found for provider profile %q", secretRef, profile.ID)
+		}
+		value := strings.TrimSpace(secret.Value)
+		if value == "" {
+			return "", fmt.Errorf("secret %q has no value", secretRef)
+		}
+		return value, nil
+	}
+	return "", fmt.Errorf("provider profile %q requires secret_ref for model inventory", profile.ID)
 }
 
 func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
@@ -3922,14 +3992,72 @@ func (s *server) ensureProviderProfileExists(ctx context.Context, providerProfil
 	if providerProfileID == "" {
 		providerProfileID = provider.DefaultProviderProfileID
 	}
-	_, found, err := s.providers.GetProviderProfile(ctx, providerProfileID)
+	profile, found, err := s.providers.GetProviderProfile(ctx, providerProfileID)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return fmt.Errorf("provider profile %q not found", providerProfileID)
 	}
+	if !s.isProviderTypeEnabled(profile.ProviderType) {
+		return fmt.Errorf("provider profile %q is disabled by feature flag", providerProfileID)
+	}
 	return nil
+}
+
+func (s *server) isProviderTypeEnabled(providerType string) bool {
+	switch canonicalProviderType(providerType) {
+	case provider.ProviderCodex:
+		return true
+	case provider.ProviderClaude:
+		return s.cfg.providerClaudeEnabled
+	case provider.ProviderGemini:
+		return s.cfg.providerGeminiEnabled
+	default:
+		return false
+	}
+}
+
+func (s *server) filterProviderProfilesForFlags(profiles []provider.ProviderProfile) []provider.ProviderProfile {
+	if len(profiles) == 0 {
+		return []provider.ProviderProfile{}
+	}
+	filtered := make([]provider.ProviderProfile, 0, len(profiles))
+	for _, profile := range profiles {
+		if !s.isProviderTypeEnabled(profile.ProviderType) {
+			continue
+		}
+		filtered = append(filtered, profile)
+	}
+	return filtered
+}
+
+func (s *server) filterProviderCatalogByFlags(entries []provider.CatalogEntry) []provider.CatalogEntry {
+	if len(entries) == 0 {
+		return []provider.CatalogEntry{}
+	}
+	filtered := make([]provider.CatalogEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !s.isProviderTypeEnabled(entry.ID) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func canonicalProviderType(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	switch normalized {
+	case provider.ProviderCodex, "openai":
+		return provider.ProviderCodex
+	case provider.ProviderClaude, "anthropic":
+		return provider.ProviderClaude
+	case provider.ProviderGemini, "google":
+		return provider.ProviderGemini
+	default:
+		return ""
+	}
 }
 
 func (s *server) ensureSecretExists(ctx context.Context, secretRef string) error {
@@ -3946,6 +4074,17 @@ func (s *server) ensureSecretExists(ctx context.Context, secretRef string) error
 	}
 	if !found {
 		return fmt.Errorf("secret %q not found", secretRef)
+	}
+	return nil
+}
+
+func (s *server) ensureProviderSecretRefRequired(profile provider.ProviderProfile) error {
+	providerType := canonicalProviderType(profile.ProviderType)
+	if providerType == "" {
+		return fmt.Errorf("unsupported provider_type %q", profile.ProviderType)
+	}
+	if strings.TrimSpace(profile.SecretRef) == "" {
+		return fmt.Errorf("provider profile %q requires secret_ref", profile.ID)
 	}
 	return nil
 }
@@ -4125,22 +4264,42 @@ func loadConfig() (config, error) {
 	authStoreK8sNamespace := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_NAMESPACE", envString("POD_NAMESPACE", "default")))
 	authStoreK8sSecret := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_SECRET", "smith-auth-store"))
 	authStoreK8sKey := strings.TrimSpace(envString("SMITH_AUTH_STORE_K8S_KEY", "tokens.json"))
+	documentStoreBackend := docstore.NormalizeBackend(envString("SMITH_DOCUMENT_STORE_BACKEND", "etcd"))
+	if !docstore.IsSupportedBackend(documentStoreBackend) {
+		return config{}, fmt.Errorf("unsupported document store backend %q", documentStoreBackend)
+	}
 	return config{
 		port:          envInt("SMITH_API_PORT", defaultPort),
 		grpcPort:      envInt("SMITH_GRPC_PORT", defaultGRPCPort),
 		etcdEndpoints: endpoints,
 
-		etcdDialTimeout:       envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
-		operatorToken:         strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
-		authStoreBackend:      authStoreBackend,
-		authStorePath:         envString("SMITH_AUTH_STORE_PATH", "/tmp/smith-auth/tokens.json"),
-		authStoreK8sNamespace: authStoreK8sNamespace,
-		authStoreK8sSecret:    authStoreK8sSecret,
-		authStoreK8sKey:       authStoreK8sKey,
-		defaultPreset:         strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
-		skillPolicy:           skillPolicy,
-		runtimeNamespace:      strings.TrimSpace(envString("SMITH_RUNTIME_NAMESPACE", envString("SMITH_NAMESPACE", authStoreK8sNamespace))),
-		runtimeContainerName:  strings.TrimSpace(envString("SMITH_RUNTIME_CONTAINER_NAME", "replica")),
+		etcdDialTimeout:                     envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
+		operatorToken:                       strings.TrimSpace(os.Getenv("SMITH_OPERATOR_TOKEN")),
+		authStoreBackend:                    authStoreBackend,
+		authStorePath:                       envString("SMITH_AUTH_STORE_PATH", "/tmp/smith-auth/tokens.json"),
+		authStoreK8sNamespace:               authStoreK8sNamespace,
+		authStoreK8sSecret:                  authStoreK8sSecret,
+		authStoreK8sKey:                     authStoreK8sKey,
+		defaultPreset:                       strings.TrimSpace(os.Getenv("SMITH_DEFAULT_ENV_PRESET")),
+		skillPolicy:                         skillPolicy,
+		runtimeNamespace:                    strings.TrimSpace(envString("SMITH_RUNTIME_NAMESPACE", envString("SMITH_NAMESPACE", authStoreK8sNamespace))),
+		runtimeContainerName:                strings.TrimSpace(envString("SMITH_RUNTIME_CONTAINER_NAME", "replica")),
+		providerClaudeEnabled:               envBool("SMITH_PROVIDER_CLAUDE_ENABLED", false),
+		providerGeminiEnabled:               envBool("SMITH_PROVIDER_GEMINI_ENABLED", false),
+		documentStoreBackend:                documentStoreBackend,
+		documentsPostgresDSN:                strings.TrimSpace(envString("SMITH_DOCUMENTS_POSTGRES_DSN", "")),
+		documentsPostgresMaxConns:           envInt32("SMITH_DOCUMENTS_POSTGRES_MAX_CONNS", 10),
+		documentsGarageEndpoint:             strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_ENDPOINT", "")),
+		documentsGarageRegion:               strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_REGION", "us-east-1")),
+		documentsGarageBucket:               strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_BUCKET", "")),
+		documentsGarageAccessKeyID:          strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_ACCESS_KEY_ID", "")),
+		documentsGarageSecretAccessKey:      strings.TrimSpace(envString("SMITH_DOCUMENTS_GARAGE_SECRET_ACCESS_KEY", "")),
+		documentsGarageForcePathStyle:       envBool("SMITH_DOCUMENTS_GARAGE_FORCE_PATH_STYLE", true),
+		documentsWatchPollInterval:          envDuration("SMITH_DOCUMENTS_WATCH_POLL_INTERVAL", 2*time.Second),
+		documentsMigrationBackfillOnStartup: envBool("SMITH_DOCUMENTS_MIGRATION_BACKFILL_ON_STARTUP", true),
+		documentsMigrationReadThroughOnMiss: envBool("SMITH_DOCUMENTS_MIGRATION_READ_THROUGH_ON_MISS", true),
+		documentsMigrationMergeListFallback: envBool("SMITH_DOCUMENTS_MIGRATION_MERGE_LIST_FALLBACK", true),
+		documentsMigrationDualWriteEtcd:     envBool("SMITH_DOCUMENTS_MIGRATION_DUAL_WRITE_ETCD", false),
 	}, nil
 }
 
@@ -4460,6 +4619,18 @@ func envInt(name string, fallback int) int {
 		return fallback
 	}
 	return v
+}
+
+func envInt32(name string, fallback int32) int32 {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return int32(v)
 }
 
 func ioReadAllLimit(body io.Reader, max int64) ([]byte, error) {
@@ -4800,12 +4971,26 @@ func splitTaskRoute(path string) (taskID string, route string) {
 	return taskID, route
 }
 
-func providerIDFromPath(path string) string {
+func splitProviderRoute(path string) (providerID string, route string) {
 	remainder := strings.TrimPrefix(path, "/v1/providers/")
 	if remainder == path {
 		remainder = strings.TrimPrefix(path, "/api/providers/")
 	}
-	return strings.TrimSpace(strings.TrimPrefix(remainder, "/"))
+	remainder = strings.TrimPrefix(remainder, "/")
+	if remainder == "" {
+		return "", ""
+	}
+	parts := strings.Split(remainder, "/")
+	providerID = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		route = strings.TrimSpace(strings.Join(parts[1:], "/"))
+	}
+	return providerID, route
+}
+
+func providerIDFromPath(path string) string {
+	id, _ := splitProviderRoute(path)
+	return id
 }
 
 func projectIDFromPath(path string) string {
@@ -4988,9 +5173,14 @@ func apiTaskStatusToModel(in api.TaskContractStatus) model.TaskContractStatus {
 }
 
 func (s *server) handleDocuments(w http.ResponseWriter, r *http.Request) {
+	docStore := s.documentStore()
+	if docStore == nil {
+		writeErr(w, http.StatusInternalServerError, "document store unavailable")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		docs, err := s.store.ListDocuments(r.Context())
+		docs, err := docStore.ListDocuments(r.Context())
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -5026,7 +5216,7 @@ func (s *server) handleDocuments(w http.ResponseWriter, r *http.Request) {
 			Metadata:      req.Metadata,
 			CorrelationID: fmt.Sprintf("doc-corr-%d", time.Now().UTC().UnixNano()),
 		}
-		if err := s.store.PutDocument(r.Context(), doc); err != nil {
+		if err := docStore.PutDocument(r.Context(), doc); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -5037,6 +5227,11 @@ func (s *server) handleDocuments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
+	docStore := s.documentStore()
+	if docStore == nil {
+		writeErr(w, http.StatusInternalServerError, "document store unavailable")
+		return
+	}
 	id := strings.TrimPrefix(r.URL.Path, "/v1/documents/")
 	parts := strings.Split(id, "/")
 	docID := parts[0]
@@ -5049,7 +5244,7 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		route = parts[1]
 	}
 
-	doc, found, err := s.store.GetDocument(r.Context(), docID)
+	doc, found, err := docStore.GetDocument(r.Context(), docID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -5110,13 +5305,19 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		}
 
 		results := make([]ingressResult, 0, len(drafts))
+		buildRunID := fmt.Sprintf("build-%d", time.Now().UTC().UnixNano())
 		for i, draft := range drafts {
 			title := draft.Title
 			if doc.Title != "" {
 				title = fmt.Sprintf("[%s] %s", doc.Title, draft.Title)
 			}
+			idempotencyKey := strings.TrimSpace(draft.IdempotencyKey)
+			if idempotencyKey == "" {
+				idempotencyKey = fmt.Sprintf("%s#%d", strings.TrimSpace(draft.SourceRef), i)
+			}
+			idempotencyKey = fmt.Sprintf("%s|%s", idempotencyKey, buildRunID)
 			res := s.createOneLoop(r.Context(), loopCreateRequest{
-				IdempotencyKey: draft.IdempotencyKey,
+				IdempotencyKey: idempotencyKey,
 				Title:          title,
 				Description:    draft.Description,
 				SourceType:     draft.SourceType,
@@ -5145,6 +5346,9 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid json payload")
 			return
 		}
+		if strings.TrimSpace(req.ProjectID) != "" {
+			doc.ProjectID = strings.TrimSpace(req.ProjectID)
+		}
 		if req.Title != "" {
 			doc.Title = req.Title
 		}
@@ -5160,13 +5364,13 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		if req.Metadata != nil {
 			doc.Metadata = req.Metadata
 		}
-		if err := s.store.PutDocument(r.Context(), doc); err != nil {
+		if err := docStore.PutDocument(r.Context(), doc); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, doc)
 	case http.MethodDelete:
-		if err := s.store.DeleteDocument(r.Context(), docID); err != nil {
+		if err := docStore.DeleteDocument(r.Context(), docID); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -5254,6 +5458,11 @@ func (s *server) handleLoopStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDocumentStream(w http.ResponseWriter, r *http.Request) {
+	docStore := s.documentStore()
+	if docStore == nil {
+		writeErr(w, http.StatusInternalServerError, "document store unavailable")
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -5287,14 +5496,14 @@ func (s *server) handleDocumentStream(w http.ResponseWriter, r *http.Request) {
 
 	_ = send("ready", map[string]string{"status": "connected"})
 
-	docs, err := s.store.ListDocuments(r.Context())
+	docs, err := docStore.ListDocuments(r.Context())
 	if err == nil {
 		for _, doc := range docs {
 			_ = send("update", doc)
 		}
 	}
 
-	events := s.store.WatchDocuments(r.Context())
+	events := docStore.WatchDocuments(r.Context())
 	for {
 		select {
 		case <-r.Context().Done():

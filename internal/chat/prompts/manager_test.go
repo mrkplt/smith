@@ -54,6 +54,8 @@ func TestManager_BuildSystemPrompt(t *testing.T) {
 		assert.Contains(t, prompt, "Smith Interactive Chat Assistant")
 		assert.Contains(t, prompt, "prd-refinement")
 		assert.Contains(t, prompt, "CONTEXT: PRD Refinement")
+		assert.Contains(t, prompt, `"sessionIntent": "document_refinement"`)
+		assert.Contains(t, prompt, "document_patch_proposal")
 		assert.NotContains(t, prompt, "Document Title:")
 	})
 
@@ -129,6 +131,59 @@ func TestManager_BuildSystemPrompt(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Contains(t, prompt, "CONTEXT: PRD Refinement")
 		assert.NotContains(t, prompt, "Document Title:")
+	})
+
+	t.Run("PRD Refinement - Envelope Includes Intent and Drift Warning", func(t *testing.T) {
+		bridge := &mockBridge{
+			getDocumentFn: func(ctx context.Context, docID string) (*model.Document, error) {
+				return &model.Document{
+					ID:        "doc-123",
+					Title:     "Refine This",
+					Content:   "# PRD\n\n## Overview\nNeeds more detail",
+					Format:    "markdown",
+					UpdatedAt: time.Date(2026, 3, 18, 14, 0, 0, 0, time.UTC),
+				}, nil
+			},
+		}
+		manager := NewManager(bridge)
+		session := &chat.Session{
+			Type: chat.SessionTypePRDRefinement,
+			Context: map[string]string{
+				"documentId":      "doc-123",
+				"documentVersion": "2026-03-18T13:00:00Z",
+				"sessionIntent":   "readiness_review",
+			},
+		}
+
+		prompt, err := manager.BuildSystemPrompt(ctx, session)
+		assert.NoError(t, err)
+		assert.Contains(t, prompt, `"sessionIntent": "readiness_review"`)
+		assert.Contains(t, prompt, "Context Warning: document changed since this session was bound")
+		assert.Contains(t, prompt, "Behavior Requirements:")
+	})
+
+	t.Run("PRD Refinement - Includes Focus Context in Envelope", func(t *testing.T) {
+		bridge := &mockBridge{}
+		manager := NewManager(bridge)
+		session := &chat.Session{
+			Type: chat.SessionTypePRDRefinement,
+			Context: map[string]string{
+				"focusSurface":       "document_editor",
+				"focusEntityType":    "document",
+				"focusEntitySubtype": "prd",
+				"focusSectionId":     "acceptance_criteria",
+				"focusSelectionText": "- retries are bounded",
+				"focusActivePane":    "Guidepost",
+				"focusCenterTab":     "document",
+			},
+		}
+
+		prompt, err := manager.BuildSystemPrompt(ctx, session)
+		assert.NoError(t, err)
+		assert.Contains(t, prompt, `"focus": {`)
+		assert.Contains(t, prompt, `"sectionId": "acceptance_criteria"`)
+		assert.Contains(t, prompt, `"selectionText": "- retries are bounded"`)
+		assert.Contains(t, prompt, `"activePane": "Guidepost"`)
 	})
 
 	t.Run("Loop Assist - Without Loop", func(t *testing.T) {

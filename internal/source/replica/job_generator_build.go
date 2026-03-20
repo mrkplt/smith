@@ -137,31 +137,31 @@ func appendSkillMountEnv(env []EnvVar, skillMounts []SkillMount) []EnvVar {
 }
 
 func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
+	if strings.TrimSpace(req.RuntimeSecretName) != "" {
+		return append(env,
+			EnvVar{
+				Name: "SMITH_RUNTIME_CREDENTIALS",
+				SecretKeyRef: &SecretKeyRef{
+					Name: req.RuntimeSecretName,
+					Key:  req.RuntimeCredentialsKey,
+				},
+			},
+			EnvVar{
+				Name: "OPENAI_API_KEY",
+				SecretKeyRef: &SecretKeyRef{
+					Name: req.RuntimeSecretName,
+					Key:  req.RuntimeCredentialsKey,
+				},
+			},
+		)
+	}
 	if strings.TrimSpace(req.RuntimeCredentialsValue) != "" {
 		return append(env,
 			EnvVar{Name: "SMITH_RUNTIME_CREDENTIALS", Value: req.RuntimeCredentialsValue},
 			EnvVar{Name: "OPENAI_API_KEY", Value: req.RuntimeCredentialsValue},
 		)
 	}
-	if req.RuntimeSecretName == "" {
-		return env
-	}
-	return append(env,
-		EnvVar{
-			Name: "SMITH_RUNTIME_CREDENTIALS",
-			SecretKeyRef: &SecretKeyRef{
-				Name: req.RuntimeSecretName,
-				Key:  req.RuntimeCredentialsKey,
-			},
-		},
-		EnvVar{
-			Name: "OPENAI_API_KEY",
-			SecretKeyRef: &SecretKeyRef{
-				Name: req.RuntimeSecretName,
-				Key:  req.RuntimeCredentialsKey,
-			},
-		},
-	)
+	return env
 }
 
 func appendGitPolicyEnv(env []EnvVar, req JobRequest) []EnvVar {

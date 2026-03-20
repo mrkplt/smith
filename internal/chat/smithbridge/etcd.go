@@ -8,11 +8,23 @@ import (
 )
 
 type EtcdBridge struct {
-	store store.StateStore
+	store           store.StateStore
+	documentFetcher interface {
+		GetDocument(ctx context.Context, docID string) (*model.Document, error)
+	}
 }
 
 func NewEtcdBridge(s store.StateStore) *EtcdBridge {
 	return &EtcdBridge{store: s}
+}
+
+func NewEtcdBridgeWithDocumentFetcher(s store.StateStore, documentFetcher interface {
+	GetDocument(ctx context.Context, docID string) (*model.Document, error)
+}) *EtcdBridge {
+	return &EtcdBridge{
+		store:           s,
+		documentFetcher: documentFetcher,
+	}
 }
 
 func (b *EtcdBridge) GetLoop(ctx context.Context, loopID string) (*model.State, error) {
@@ -31,6 +43,9 @@ func (b *EtcdBridge) GetJournal(ctx context.Context, loopID string, limit int64)
 }
 
 func (b *EtcdBridge) GetDocument(ctx context.Context, docID string) (*model.Document, error) {
+	if b.documentFetcher != nil {
+		return b.documentFetcher.GetDocument(ctx, docID)
+	}
 	d, found, err := b.store.GetDocument(ctx, docID)
 	if err != nil {
 		return nil, err

@@ -18,6 +18,8 @@
   import ProjectEditorDrawer from '$lib/components/ProjectEditorDrawer.svelte';
   import ProviderEditorDrawer from '$lib/components/ProviderEditorDrawer.svelte';
   import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
+  import { isChatEnabled, isIntegrationsEnabled, isProviderTypeEnabled, isSecretsEnabled } from '$lib/feature-flags';
+  import { includeSelectedModel, loadProviderModels } from '$lib/providers/models';
   import { appState, pushToast } from '$lib/stores';
   import { apiBaseUrl, chatBaseUrl, deleteJSON, fetchJSON, postJSON, requestJSON } from '$lib/api';
 
@@ -29,41 +31,56 @@
     description: string;
   };
 
-  const sections: SettingsNavItem[] = [
-    {
-      id: 'general',
-      label: 'General',
-      description: 'Installation context and system defaults'
-    },
-    {
-      id: 'providers',
-      label: 'Providers',
-      description: 'Reusable model and credential profiles'
-    },
-    {
-      id: 'projects',
-      label: 'Projects',
-      description: 'Repository runtime contexts for loops'
-    },
-    {
-      id: 'chat',
-      label: 'Chat',
-      description: 'Operator assistant behavior and defaults'
-    },
-    {
-      id: 'integrations',
-      label: 'Integrations',
-      description: 'External systems and repository connections'
-    },
-    {
-      id: 'secrets',
-      label: 'Secrets',
-      description: 'Credential references used by settings profiles'
+  const chatFeatureEnabled = $derived(isChatEnabled());
+  const integrationsFeatureEnabled = $derived(isIntegrationsEnabled());
+  const secretsFeatureEnabled = $derived(isSecretsEnabled());
+
+  const sections = $derived.by((): SettingsNavItem[] => {
+    const base: SettingsNavItem[] = [
+      {
+        id: 'general',
+        label: 'General',
+        description: 'Installation context and system defaults'
+      },
+      {
+        id: 'providers',
+        label: 'Providers',
+        description: 'Reusable model and credential profiles'
+      },
+      {
+        id: 'projects',
+        label: 'Projects',
+        description: 'Repository runtime contexts for loops'
+      }
+    ];
+    if (chatFeatureEnabled) {
+      base.push({
+        id: 'chat',
+        label: 'Chat',
+        description: 'Operator assistant behavior and defaults'
+      });
     }
-  ];
+    if (integrationsFeatureEnabled) {
+      base.push({
+        id: 'integrations',
+        label: 'Integrations',
+        description: 'External systems and repository connections'
+      });
+    }
+    if (secretsFeatureEnabled) {
+      base.push({
+        id: 'secrets',
+        label: 'Secrets',
+        description: 'Credential references used by settings profiles'
+      });
+    }
+    return base;
+  });
 
   let providerProfileID = $state('');
   let defaultModel = $state('');
+  let modelOptions = $state<string[]>([]);
+  let modelOptionsBusy = $state(false);
   let thinkingLevel = $state('balanced');
   let providerApiKey = $state('');
   let preferFullScreen = $state(false);
@@ -85,6 +102,7 @@
   const selectedChatProfile = $derived(
     providerProfiles.find((profile) => String(profile?.id || '') === providerProfileID) || null
   );
+  const availableModelOptions = $derived(includeSelectedModel(modelOptions, defaultModel));
 
   const generalRows = $derived([
     { label: 'Installation', value: 'smith-console' },
@@ -106,14 +124,18 @@
     buildLabel = String(config.build || config.version || 'local');
 
     void loadProviderProfiles().then(loadChatSettingsFromBrowser);
-    void loadSecrets();
+    if (secretsFeatureEnabled) {
+      void loadSecrets();
+    }
     void refreshOnboardingState();
   });
 
   async function loadProviderProfiles() {
     try {
       const profiles = await fetchJSON('/v1/providers');
-      providerProfiles = Array.isArray(profiles) ? profiles : [];
+      providerProfiles = Array.isArray(profiles)
+        ? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+        : [];
     } catch (err: any) {
       pushToast(err?.message || 'Failed to load provider profiles', 'err');
     }
@@ -129,9 +151,26 @@
     thinkingLevel = settings.thinkingLevel;
     providerApiKey = settings.providerApiKey;
     preferFullScreen = settings.preferFullScreen;
+    void loadModelOptions(providerProfileID);
+  }
+
+  async function loadModelOptions(nextProfileID: string) {
+    const normalizedProfileID = String(nextProfileID || '').trim();
+    const profile = providerProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
+    const providerTypeHint = String(profile?.provider_type || '').trim();
+    modelOptionsBusy = true;
+    try {
+      modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+    } finally {
+      modelOptionsBusy = false;
+    }
   }
 
   async function loadSecrets() {
+    if (!secretsFeatureEnabled) {
+      secrets = [];
+      return;
+    }
     try {
       const records = await fetchJSON('/v1/secrets');
       secrets = Array.isArray(records) ? records : [];
@@ -156,6 +195,9 @@
 
   function handleProviderSaved() {
     void loadProviderProfiles();
+    if (secretsFeatureEnabled) {
+      void loadSecrets();
+    }
     void refreshOnboardingState();
   }
 
@@ -218,6 +260,7 @@
   function selectChatProviderProfile(nextProfileID: string) {
     providerProfileID = nextProfileID;
     defaultModel = resolveDefaultModel(providerProfiles, nextProfileID, '');
+    void loadModelOptions(nextProfileID);
   }
 
   function openConfig(providerProfile: any) {
@@ -249,9 +292,9 @@
   }
 
   function providerStatus(providerProfile: any): string {
-    const providerType = String(providerProfile?.provider_type || '').toLowerCase();
-    if (providerType === 'codex') {
-      return $appState.providerStatus?.codex?.connected ? 'connected' : 'needs auth';
+    const secretRef = String(providerProfile?.secret_ref || '').trim();
+    if (secretRef === '') {
+      return 'needs secret';
     }
     return 'configured';
   }
@@ -266,6 +309,15 @@
   }
 
   function parseSection(value: string | null): SettingsSection {
+    if (value === 'chat' && !chatFeatureEnabled) {
+      return 'general';
+    }
+    if (value === 'secrets' && !secretsFeatureEnabled) {
+      return 'general';
+    }
+    if (value === 'integrations' && !integrationsFeatureEnabled) {
+      return 'general';
+    }
     if (value === 'providers' || value === 'projects' || value === 'chat' || value === 'general' || value === 'integrations' || value === 'secrets') {
       return value;
     }
@@ -426,13 +478,19 @@
 
           <div>
             <Label class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">Default Model</Label>
-            <input
-              type="text"
+            <select
               class="w-full bg-slate-900 border border-gray-800 text-white text-sm rounded-none px-3 py-2"
-              placeholder="Leave blank to use provider profile default"
               value={defaultModel}
-              oninput={(event) => defaultModel = (event.currentTarget as HTMLInputElement).value}
-            />
+              oninput={(event) => defaultModel = (event.currentTarget as HTMLSelectElement).value}
+            >
+              <option value="">Use provider profile default</option>
+              {#if modelOptionsBusy}
+                <option value={defaultModel} disabled>{defaultModel !== '' ? defaultModel : 'Loading models...'}</option>
+              {/if}
+              {#each availableModelOptions as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </select>
             {#if selectedChatProfile && selectedChatProfile.default_model}
               <p class="mt-2 text-[11px] text-gray-500">
                 Profile default: `{selectedChatProfile.default_model}`
@@ -537,7 +595,10 @@
                     <div class="w-12 h-12 bg-[#86BC25]/10 flex items-center justify-center text-[#86BC25]">
                       <BrainSolid size="lg" />
                     </div>
-                    <Badge color={providerConnection === 'connected' ? 'green' : 'gray'} class={`uppercase text-[10px] font-bold px-2 py-0.5 rounded-none ${providerConnection === 'connected' ? 'bg-[#86BC25] text-black' : 'bg-slate-800 text-gray-300'}`}>
+                    <Badge
+                      color={providerConnection === 'needs secret' ? 'red' : 'green'}
+                      class={`uppercase text-[10px] font-bold px-2 py-0.5 rounded-none ${providerConnection === 'needs secret' ? 'bg-red-900/40 text-red-200 border border-red-700/50' : 'bg-[#86BC25] text-black'}`}
+                    >
                       {providerConnection}
                     </Badge>
                   </div>

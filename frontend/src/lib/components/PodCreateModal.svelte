@@ -4,6 +4,8 @@
 	import { onDestroy } from 'svelte';
 	import { slugifySegment } from '$lib/utils';
 	import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
+	import { isProviderTypeEnabled } from '$lib/feature-flags';
+	import { includeSelectedModel, loadProviderModels } from '$lib/providers/models';
 	import { connectPRDChat, sendPRDChatMessage, type PRDChatMessage, type PRDChatSocket } from '$lib/chat/prd-chat';
   import { Modal, Button, Badge } from 'flowbite-svelte';
   import { ArrowLeftOutline, ArrowRightOutline, RocketOutline } from 'flowbite-svelte-icons';
@@ -36,8 +38,11 @@
 	let chatProviderProfiles = $state<any[]>([]);
 	let chatProviderProfileID = $state('');
 	let chatDefaultModel = $state('');
+	let chatModelOptions = $state<string[]>([]);
+	let chatModelOptionsBusy = $state(false);
 	let chatThinkingLevel = $state('balanced');
 	let finalPRD = $state<string | null>(null);
+	const chatAvailableModelOptions = $derived(includeSelectedModel(chatModelOptions, chatDefaultModel));
 
 	const isInteractive = $derived(method === 'issue' || method === 'generate_prd');
 	const maxStep = $derived(isInteractive ? 4 : 3);
@@ -64,13 +69,15 @@
 	async function loadProviderProfiles() {
 		try {
 			const profiles = await fetchJSON('/v1/providers');
-			chatProviderProfiles = Array.isArray(profiles) ? profiles : [];
+			chatProviderProfiles = Array.isArray(profiles)
+				? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+				: [];
 		} catch {
 			chatProviderProfiles = [];
 		}
 	}
 
-	function applyStoredChatSettings() {
+	async function applyStoredChatSettings() {
 		if (typeof window === 'undefined') {
 			return;
 		}
@@ -78,11 +85,25 @@
 		chatProviderProfileID = settings.providerProfileID;
 		chatDefaultModel = settings.defaultModel;
 		chatThinkingLevel = settings.thinkingLevel;
+		await loadChatModelOptions(chatProviderProfileID);
+	}
+
+	async function loadChatModelOptions(nextProfileID: string) {
+		const normalizedProfileID = String(nextProfileID || '').trim();
+		const profile = chatProviderProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
+		const providerTypeHint = String(profile?.provider_type || '').trim();
+		chatModelOptionsBusy = true;
+		try {
+			chatModelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+		} finally {
+			chatModelOptionsBusy = false;
+		}
 	}
 
 	function chooseChatProviderProfile(nextProfileID: string) {
 		chatProviderProfileID = nextProfileID;
 		chatDefaultModel = resolveDefaultModel(chatProviderProfiles, nextProfileID, '');
+		void loadChatModelOptions(nextProfileID);
 	}
 
 	function nextStep() {
@@ -211,7 +232,7 @@
 			}
 			return;
     }
-		void loadProviderProfiles().then(applyStoredChatSettings);
+		void loadProviderProfiles().then(() => void applyStoredChatSettings());
   });
 
 	onDestroy(() => {
@@ -271,6 +292,8 @@
 				chatProviderProfiles={chatProviderProfiles}
 				chatProviderProfileID={chatProviderProfileID}
 				chatDefaultModel={chatDefaultModel}
+				chatModelOptions={chatAvailableModelOptions}
+				chatModelOptionsBusy={chatModelOptionsBusy}
         {chatThinkingLevel}
         onChatInputChange={(value) => chatInput = value}
 				onChatProviderProfileChange={(value) => chooseChatProviderProfile(value)}

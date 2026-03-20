@@ -1,0 +1,51 @@
+# Staging overlay for in-cluster Postgres + Garage document backend.
+#
+# Usage:
+#   helm upgrade --install smith ./helm/smith \
+#     -n smith-system \
+#     -f ./helm/smith/values/staging.yaml \
+#     -f ./helm/smith/values/staging-document-storage.yaml \
+#     --wait --timeout 10m
+
+api:
+  documents:
+    backend: postgres-garage
+    postgres:
+      maxConns: 15
+    garage:
+      # Auto-derived from in-chart Garage service when left empty.
+      endpoint: ""
+      region: us-east-1
+      bucket: smith-documents-staging
+      forcePathStyle: true
+    migration:
+      backfillOnStartup: true
+      readThroughOnMiss: true
+      mergeListFallback: true
+      dualWriteEtcd: true
+
+documentDependencies:
+  postgres:
+    enabled: true
+    persistence:
+      size: 30Gi
+  garage:
+    enabled: true
+    config:
+      replicationFactor: 1
+      dbEngine: sqlite
+      rpcSecret: 5a3cfb4e61d73f0cc67011dbf6f3ab7df5ac8f7d9c5e515c1bc9cf6df8c3ea56
+      adminToken: smith-stage-garage-admin-token
+      metricsToken: smith-stage-garage-metrics-token
+      region: us-east-1
+      bucket: smith-documents-staging
+    persistence:
+      size: 50Gi
+    bootstrap:
+      enabled: true
+      keyName: smith-documents-key
+      zone: dc1
+      capacity: 10G
+  credentials:
+    # Create this secret before deploying this overlay.
+    existingSecret: smith-stage-documents

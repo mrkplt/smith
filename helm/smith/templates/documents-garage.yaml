@@ -1,0 +1,116 @@
+{{- if .Values.documentDependencies.garage.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage-config
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage
+type: Opaque
+stringData:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = {{ .Values.documentDependencies.garage.config.dbEngine | quote }}
+
+    replication_factor = {{ .Values.documentDependencies.garage.config.replicationFactor }}
+
+    rpc_bind_addr = "[::]:{{ .Values.documentDependencies.garage.service.rpcPort }}"
+    rpc_public_addr = "{{ include "smith.fullname" . }}-documents-garage:{{ .Values.documentDependencies.garage.service.rpcPort }}"
+    rpc_secret = {{ .Values.documentDependencies.garage.config.rpcSecret | quote }}
+
+    [s3_api]
+    api_bind_addr = "[::]:{{ .Values.documentDependencies.garage.service.s3Port }}"
+    s3_region = {{ .Values.documentDependencies.garage.config.region | quote }}
+
+    [admin]
+    api_bind_addr = "[::]:{{ .Values.documentDependencies.garage.service.adminPort }}"
+    admin_token = {{ .Values.documentDependencies.garage.config.adminToken | quote }}
+    metrics_token = {{ .Values.documentDependencies.garage.config.metricsToken | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage
+spec:
+  selector:
+    {{- include "smith.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage
+  ports:
+    - name: s3
+      port: {{ .Values.documentDependencies.garage.service.s3Port }}
+      targetPort: s3
+    - name: rpc
+      port: {{ .Values.documentDependencies.garage.service.rpcPort }}
+      targetPort: rpc
+    - name: admin
+      port: {{ .Values.documentDependencies.garage.service.adminPort }}
+      targetPort: admin
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage
+spec:
+  serviceName: {{ include "smith.fullname" . }}-documents-garage
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "smith.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: documents-garage
+  template:
+    metadata:
+      labels:
+        {{- include "smith.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: documents-garage
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: garage
+          image: "{{ .Values.documentDependencies.garage.image.repository }}:{{ .Values.documentDependencies.garage.image.tag }}"
+          imagePullPolicy: {{ .Values.documentDependencies.garage.image.pullPolicy }}
+          command:
+            - /garage
+          args:
+            - -c
+            - /etc/garage/garage.toml
+            - server
+          ports:
+            - name: s3
+              containerPort: {{ .Values.documentDependencies.garage.service.s3Port }}
+            - name: rpc
+              containerPort: {{ .Values.documentDependencies.garage.service.rpcPort }}
+            - name: admin
+              containerPort: {{ .Values.documentDependencies.garage.service.adminPort }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/garage
+            - name: data
+              mountPath: /var/lib/garage
+          resources:
+            {{- toYaml .Values.documentDependencies.garage.resources | nindent 12 }}
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ include "smith.fullname" . }}-documents-garage-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.documentDependencies.garage.persistence.storageClassName }}
+        storageClassName: {{ .Values.documentDependencies.garage.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.documentDependencies.garage.persistence.size | quote }}
+{{- end }}

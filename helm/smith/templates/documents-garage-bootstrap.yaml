@@ -1,0 +1,168 @@
+{{- if and .Values.documentDependencies.garage.enabled .Values.documentDependencies.garage.bootstrap.enabled }}
+{{- if not .Values.rbac.create -}}
+{{- fail "documentDependencies.garage.bootstrap.enabled=true requires rbac.create=true" -}}
+{{- end -}}
+{{- $documentsCredentialsSecretName := include "smith.documentsCredentialsSecretName" . -}}
+{{- if eq $documentsCredentialsSecretName "" -}}
+{{- fail "set documentDependencies.credentials.existingSecret or enable documentDependencies.credentials.create when documentDependencies.garage.bootstrap.enabled=true" -}}
+{{- end -}}
+{{- $documentsGarageBucket := .Values.api.documents.garage.bucket -}}
+{{- if and (eq $documentsGarageBucket "") .Values.documentDependencies.garage.enabled -}}
+{{- $documentsGarageBucket = .Values.documentDependencies.garage.config.bucket -}}
+{{- end -}}
+{{- if eq $documentsGarageBucket "" -}}
+{{- fail "set api.documents.garage.bucket or documentDependencies.garage.config.bucket when documentDependencies.garage.bootstrap.enabled=true" -}}
+{{- end -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage-bootstrap
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage-bootstrap
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage-bootstrap
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-garage-bootstrap
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        {{- include "smith.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: documents-garage-bootstrap
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smith.fullname" . }}-documents-garage-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: "{{ .Values.documentDependencies.garage.bootstrap.image.repository }}:{{ .Values.documentDependencies.garage.bootstrap.image.tag }}"
+          imagePullPolicy: {{ .Values.documentDependencies.garage.bootstrap.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+
+              namespace="{{ .Release.Namespace }}"
+              garage_pod="{{ include "smith.fullname" . }}-documents-garage-0"
+              credentials_secret="{{ $documentsCredentialsSecretName }}"
+              access_key_field="{{ .Values.documentDependencies.credentials.keys.garageAccessKeyId }}"
+              secret_key_field="{{ .Values.documentDependencies.credentials.keys.garageSecretAccessKey }}"
+              key_name="{{ .Values.documentDependencies.garage.bootstrap.keyName }}"
+              bucket="{{ $documentsGarageBucket }}"
+              zone="{{ .Values.documentDependencies.garage.bootstrap.zone }}"
+              capacity="{{ .Values.documentDependencies.garage.bootstrap.capacity }}"
+
+              run_garage() {
+                kubectl -n "$namespace" exec "$garage_pod" -- /garage -c /etc/garage/garage.toml "$@"
+              }
+
+              kubectl -n "$namespace" wait --for=condition=ready "pod/$garage_pod" --timeout={{ .Values.documentDependencies.garage.bootstrap.waitTimeout | quote }}
+
+              access_key_b64="$(kubectl -n "$namespace" get secret "$credentials_secret" -o "jsonpath={.data['$access_key_field']}")"
+              secret_key_b64="$(kubectl -n "$namespace" get secret "$credentials_secret" -o "jsonpath={.data['$secret_key_field']}")"
+
+              if [ -z "$access_key_b64" ] || [ -z "$secret_key_b64" ]; then
+                echo "garage credential keys are missing from secret $credentials_secret"
+                exit 1
+              fi
+
+              access_key_id="$(printf '%s' "$access_key_b64" | base64 -d)"
+              secret_access_key="$(printf '%s' "$secret_key_b64" | base64 -d)"
+
+              if [ -z "$access_key_id" ] || [ -z "$secret_access_key" ]; then
+                echo "garage credential values are empty in secret $credentials_secret"
+                exit 1
+              fi
+
+              node_id="$(run_garage status | awk '/==== HEALTHY NODES ====/{seen=1;next} seen && $1 ~ /^[0-9a-f]+$/ {print $1; exit}')"
+              if [ -z "$node_id" ]; then
+                echo "failed to discover Garage node id"
+                exit 1
+              fi
+
+              run_garage layout assign -z "$zone" -c "$capacity" "$node_id" || true
+
+              layout_applied=false
+              for version in 1 2 3 4 5 6 7 8 9 10; do
+                if run_garage layout apply --version "$version" >/dev/null 2>&1; then
+                  echo "applied Garage layout version $version"
+                  layout_applied=true
+                  break
+                fi
+              done
+              if [ "$layout_applied" = false ]; then
+                echo "Garage layout apply skipped (already applied or no staged changes)"
+              fi
+
+              if ! run_garage bucket info "$bucket" >/dev/null 2>&1; then
+                run_garage bucket create "$bucket"
+              fi
+
+              if run_garage key info "$key_name" >/tmp/garage-key-info.txt 2>/dev/null; then
+                existing_key_id="$(sed -n 's/^Key ID:[[:space:]]*//p' /tmp/garage-key-info.txt | head -n 1 | tr -d '[:space:]')"
+                if [ "$existing_key_id" != "$access_key_id" ]; then
+                  echo "existing Garage key '$key_name' uses key id '$existing_key_id' but expected '$access_key_id'"
+                  exit 1
+                fi
+              else
+                run_garage key import --yes -n "$key_name" "$access_key_id" "$secret_access_key"
+              fi
+
+              run_garage bucket allow --read --write --owner "$bucket" --key "$key_name"
+{{- end }}

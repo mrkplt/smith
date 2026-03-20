@@ -41,6 +41,8 @@ This page describes the current make-first local development workflow. For the c
   - Build local artifacts used by the local cluster workflow.
 - `make deploy-local`
   - Build and deploy Smith into the active cluster, importing images only for `k3d`.
+- `make deploy-local-document-storage`
+  - Ordered local deploy path for in-cluster Postgres + Garage: pre-deploy secret sync, Helm deploy, then post-deploy Garage bootstrap.
 - `make daemon-deploy-local`
   - Build/load/restart only `smith-daemon` for retention-policy iteration without full stack redeploy.
 - `make undeploy-local`
@@ -76,6 +78,21 @@ make cluster-up
 make cluster-health
 make build-local
 make deploy-local
+```
+
+For local document-storage deployment work (`postgres-garage` overlay + 1Password-backed env file):
+
+```bash
+set -a
+source ~/.smith/.env
+set +a
+make deploy-local-document-storage
+```
+
+`deploy-local-document-storage` defaults to idempotent behavior (no forced rollout-id mutation and no forced rollout restart). Override only when you intentionally want restarts:
+
+```bash
+SMITH_FORCE_HELM_ROLLOUT_ID=true SMITH_FORCE_ROLLOUT=true make deploy-local-document-storage
 ```
 
 For local validation:

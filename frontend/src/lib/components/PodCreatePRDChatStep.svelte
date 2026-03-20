@@ -11,6 +11,8 @@
 		chatProviderProfiles: any[];
 		chatProviderProfileID: string;
 		chatDefaultModel: string;
+		chatModelOptions: string[];
+		chatModelOptionsBusy: boolean;
     chatThinkingLevel: string;
     onChatInputChange: (value: string) => void;
 		onChatProviderProfileChange: (value: string) => void;
@@ -28,6 +30,8 @@
 		chatProviderProfiles,
 		chatProviderProfileID,
 		chatDefaultModel,
+		chatModelOptions,
+		chatModelOptionsBusy,
     chatThinkingLevel,
     onChatInputChange,
 		onChatProviderProfileChange,
@@ -53,13 +57,19 @@
         {/each}
       {/if}
     </select>
-    <Input
-      type="text"
-      class="md:col-span-2 bg-slate-900 border-gray-800 text-white rounded-none"
-      placeholder="Model override (optional)"
+    <select
+      class="md:col-span-2 bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
       value={chatDefaultModel}
-      oninput={(event) => onChatDefaultModelChange((event.currentTarget as HTMLInputElement).value)}
-    />
+      oninput={(event) => onChatDefaultModelChange((event.currentTarget as HTMLSelectElement).value)}
+    >
+      <option value="">Model: profile default</option>
+      {#if chatModelOptionsBusy}
+        <option value={chatDefaultModel} disabled>{chatDefaultModel !== '' ? chatDefaultModel : 'Loading models...'}</option>
+      {/if}
+      {#each chatModelOptions as model}
+        <option value={model}>{model}</option>
+      {/each}
+    </select>
     <select
       class="bg-slate-900 border border-gray-800 text-white text-xs rounded-none px-2 py-2"
       value={chatThinkingLevel}

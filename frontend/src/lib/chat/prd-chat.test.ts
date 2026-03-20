@@ -66,6 +66,10 @@ describe('PRD chat helpers', () => {
     expect(MockEventSource.instances).toHaveLength(1);
     expect(MockEventSource.instances[0].url).toBe('/chat/v1/chat/sessions/sess_1/stream');
 
+    const createCall = fetchMock.mock.calls[0];
+    const createBody = JSON.parse(String(createCall?.[1]?.body));
+    expect(createBody.context.sessionIntent).toBe('document_refinement');
+
     const postCall = fetchMock.mock.calls[1];
     const postBody = JSON.parse(String(postCall?.[1]?.body));
     expect(postBody.message).toContain('I want to draft a new document');
@@ -75,10 +79,10 @@ describe('PRD chat helpers', () => {
     MockEventSource.instances[0].emit('message.completed', JSON.stringify({}));
 
     await vi.waitFor(() => {
-      expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'Hello world' }], finalContent: 'Hello world', finalTitle: 'Drafted Document' });
+      expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'Hello world' }], finalContent: 'Hello world', finalTitle: 'Drafted Document', assistantDraft: null });
     });
     expect(states).toContainEqual({ starting: false });
-    expect(states).toContainEqual({ busy: true });
+    expect(states).toContainEqual({ busy: true, assistantDraft: '' });
     expect(states).toContainEqual({ busy: false });
   });
 
@@ -129,7 +133,7 @@ describe('PRD chat helpers', () => {
 
     MockEventSource.instances[0].emit('error', JSON.stringify({ message: 'goose failed' }));
     await vi.waitFor(() => {
-      expect(states).toContainEqual({ messages: [{ type: 'error', error: 'goose failed' }] });
+      expect(states).toContainEqual({ messages: [{ type: 'error', error: 'goose failed' }], assistantDraft: null });
     });
 
     expect(sendPRDChatMessage(socket, 'hello')).toBe(true);
@@ -169,7 +173,91 @@ describe('PRD chat helpers', () => {
     MockEventSource.instances[1].emit('message.completed', JSON.stringify({}));
 
     await vi.waitFor(() => {
-      expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'Recovered answer' }], finalContent: 'Recovered answer', finalTitle: 'Drafted Document' });
+      expect(states).toContainEqual({ messages: [{ type: 'agent', text: 'Recovered answer' }], finalContent: 'Recovered answer', finalTitle: 'Drafted Document', assistantDraft: null });
+    });
+  });
+
+  it('consumes document-bound stream metadata and patch proposals', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/chat/v1/chat/sessions')) {
+        return jsonResponse({ sessionId: 'sess_1' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/messages')) {
+        return jsonResponse({ status: 'queued' });
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const states: Record<string, unknown>[] = [];
+    connectPRDChat((next) => states.push(next));
+
+    await vi.waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    MockEventSource.instances[0].emit('stream.keepalive', JSON.stringify({ timestamp: '2026-03-19T12:00:00Z' }));
+    MockEventSource.instances[0].emit('context.loaded', JSON.stringify({
+      sessionIntent: 'document_refinement',
+      documentVersion: '2026-03-18T12:00:00Z',
+      documentTitle: 'Existing PRD'
+    }));
+    MockEventSource.instances[0].emit('readiness.updated', JSON.stringify({ status: 'warn' }));
+    MockEventSource.instances[0].emit('document.patch.proposed', JSON.stringify({
+      type: 'document_patch_proposal',
+      operations: [{ op: 'replace_document', content: '# Revised PRD\n\n- updated' }]
+    }));
+    MockEventSource.instances[0].emit('message.delta', JSON.stringify({ delta: 'Patch proposed.' }));
+    MockEventSource.instances[0].emit('message.completed', JSON.stringify({}));
+
+    await vi.waitFor(() => {
+      expect(states).toContainEqual({ readinessStatus: 'warn' });
+    });
+    await vi.waitFor(() => {
+      expect(states).toContainEqual({
+        patchProposal: {
+          type: 'document_patch_proposal',
+          operations: [{ op: 'replace_document', content: '# Revised PRD\n\n- updated' }]
+        },
+        finalContent: '# Revised PRD\n\n- updated',
+        finalTitle: 'Drafted Document'
+      });
+    });
+  });
+
+  it('updates session focus context through context endpoint', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/chat/v1/chat/sessions')) {
+        return jsonResponse({ sessionId: 'sess_1' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/messages')) {
+        return jsonResponse({ status: 'queued' });
+      }
+      if (url.endsWith('/chat/v1/chat/sessions/sess_1/context')) {
+        const body = JSON.parse(String(init?.body || '{}'));
+        expect(body.type).toBe('ui.context.updated');
+        expect(body.focusContext.sectionId).toBe('acceptance_criteria');
+        return jsonResponse({ status: 'updated' });
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const socket = connectPRDChat(() => {});
+    await vi.waitFor(() => expect(MockEventSource.instances).toHaveLength(1));
+
+    socket.updateContext({
+      focusContext: {
+        surface: 'document_editor',
+        sectionId: 'acceptance_criteria'
+      }
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/chat/v1/chat/sessions/sess_1/context',
+        expect.objectContaining({ method: 'POST' })
+      );
     });
   });
 });

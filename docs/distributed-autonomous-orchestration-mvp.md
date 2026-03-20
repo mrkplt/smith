@@ -138,7 +138,7 @@ Helm chart requirements:
 - `POST /v1/control/override` applies an operator state override with required reason and audit/journal side effects.
 - `POST /v1/ingress/github/issues` and `POST /v1/ingress/prd` ingest external work into loop specs.
 - `GET /v1/reporting/cost?loop_id={id}` aggregates token/cost metadata from journal events.
-- `POST /v1/auth/codex/connect/start|complete`, `GET /v1/auth/codex/status`, and `POST /v1/auth/codex/disconnect` manage provider auth lifecycle.
+- Provider credentials are configured via provider profile `secret_ref` (API-key backed secret reference model).
 
 ## Aspirational Operator API Surface (Not Yet Implemented)
 
@@ -175,9 +175,7 @@ Operator/API surface verified:
 - `POST /v1/ingress/github/issues`
 - `POST /v1/ingress/prd`
 - `GET /v1/reporting/cost?loop_id={id}`
-- `POST /v1/auth/codex/connect/start|complete`
-- `GET /v1/auth/codex/status`
-- `POST /v1/auth/codex/disconnect`
+- Provider auth is configured through `POST/PUT /v1/providers` + `POST/PUT /v1/secrets`.
 
 Aspirational surface retained for roadmap visibility (not implemented yet):
 - `GET /v1/loops/{id}/trace`

@@ -8,10 +8,15 @@ export interface Message {
 }
 
 export type ChatEventType =
+    | 'session.started'
+    | 'context.loaded'
+    | 'stream.keepalive'
     | 'message.delta'
     | 'message.completed'
     | 'tool.started'
     | 'tool.completed'
+    | 'document.patch.proposed'
+    | 'readiness.updated'
     | 'structured.result'
     | 'error';
 

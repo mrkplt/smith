@@ -64,6 +64,12 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Reconciliation Loop](reconciliation-loop.md)
 - [Completion Commit Protocol](completion-commit-protocol.md)
 - [Lock Strategy](lock-strategy.md)
+- [Document Storage Architecture](document-storage-architecture.md)
+
+## Diagram Index
+
+- [Document Storage Architecture](document-storage-architecture.md) - ERD and write/read/backfill sequence diagrams.
+- [Secret Reference System](secret-reference-system.md) - runtime secret-ref, local bootstrap, and proposed declarative sync sequence diagrams.
 
 ## Requirements and Traceability
 
@@ -77,6 +83,8 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Cluster Autoscaler Prerequisites and Runbook](cluster-autoscaler-prerequisites-runbook.md)
 - [Image Tagging and Versioning](image-tagging-versioning.md)
 - [Helm Upgrade/Rollback Runbook](helm-upgrade-rollback-runbook.md)
+- [Document Storage Bootstrap Script](document-storage-bootstrap-script.md)
+- [Secret Reference System](secret-reference-system.md)
 - [Docs Site: Zensical + GitHub Pages](docs-site-github-pages.md)
 - [Docs Site Style Contract (Sidecar-Inspired)](docs-site-style-sidecar.md)
 

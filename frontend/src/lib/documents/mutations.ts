@@ -7,34 +7,41 @@ export interface DocumentDraft {
   title: string;
   content: string;
   projectID: string;
+  format: 'markdown' | 'json';
 }
 
 /**
  * The subset of document data needed for archive toggles.
  */
 export interface DocumentRecord {
+  id?: string;
+  project_id?: string;
+  title?: string;
+  content?: string;
+  format?: 'markdown' | 'json' | string;
   status: string;
+  updated_at?: string;
 }
 
 /**
  * Persists a new or existing document draft.
  */
-export async function saveDocumentDraft(selectedDocID: string | null, draft: DocumentDraft): Promise<void> {
+export async function saveDocumentDraft(selectedDocID: string | null, draft: DocumentDraft): Promise<DocumentRecord> {
   if (!selectedDocID) {
-    await postJSON('/v1/documents', {
+    return postJSON('/v1/documents', {
       project_id: draft.projectID,
       title: draft.title,
       content: draft.content,
-      format: 'markdown',
+      format: draft.format,
       status: 'active'
     });
-    return;
   }
 
-  await requestJSON(`/v1/documents/${selectedDocID}`, 'PUT', {
+  return requestJSON(`/v1/documents/${selectedDocID}`, 'PUT', {
     title: draft.title,
     content: draft.content,
-    project_id: draft.projectID
+    project_id: draft.projectID,
+    format: draft.format
   });
 }
 

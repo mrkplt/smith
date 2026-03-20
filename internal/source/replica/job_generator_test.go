@@ -185,6 +185,28 @@ func TestBuildReplicaJobUsesInlineRuntimeCredentialValue(t *testing.T) {
 	}
 }
 
+func TestBuildReplicaJobPrefersSecretRuntimeCredentialWhenBothProvided(t *testing.T) {
+	req := validRequest()
+	req.RuntimeSecretName = "smith-runtime"
+	req.RuntimeCredentialsKey = "runtime_credentials"
+	req.RuntimeCredentialsValue = "sk-inline-should-not-be-used"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["SMITH_RUNTIME_CREDENTIALS"].SecretKeyRef == nil || env["SMITH_RUNTIME_CREDENTIALS"].Value != "" {
+		t.Fatalf("expected SMITH_RUNTIME_CREDENTIALS to come from secret ref, got %+v", env["SMITH_RUNTIME_CREDENTIALS"])
+	}
+	if env["OPENAI_API_KEY"].SecretKeyRef == nil || env["OPENAI_API_KEY"].Value != "" {
+		t.Fatalf("expected OPENAI_API_KEY to come from secret ref, got %+v", env["OPENAI_API_KEY"])
+	}
+}
+
 func TestBuildReplicaJobIncludesWorkspaceSeedInitContainer(t *testing.T) {
 	req := validRequest()
 	req.WorkspaceSeedImage = "ghcr.io/acme/workspace-seed:latest"

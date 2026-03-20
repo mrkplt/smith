@@ -20,6 +20,25 @@ spec:
         app.kubernetes.io/component: api
     spec:
       {{- $runtimeSecretName := include "smith.runtimeSecretName" . }}
+      {{- $documentsCredentialsSecretName := include "smith.documentsCredentialsSecretName" . }}
+      {{- $documentsPostgresDSN := .Values.api.documents.postgres.dsn }}
+      {{- if and (eq $documentsPostgresDSN "") (not $documentsCredentialsSecretName) .Values.documentDependencies.postgres.enabled .Values.documentDependencies.credentials.managed.postgresPassword }}
+      {{- $documentsPostgresDSN = printf "postgres://%s:%s@%s-documents-postgres:%v/%s?sslmode=disable" .Values.documentDependencies.postgres.auth.username .Values.documentDependencies.credentials.managed.postgresPassword (include "smith.fullname" .) .Values.documentDependencies.postgres.service.port .Values.documentDependencies.postgres.auth.database }}
+      {{- end }}
+      {{- $documentsGarageEndpoint := .Values.api.documents.garage.endpoint }}
+      {{- if and (eq $documentsGarageEndpoint "") .Values.documentDependencies.garage.enabled }}
+      {{- $documentsGarageEndpoint = printf "http://%s-documents-garage:%v" (include "smith.fullname" .) .Values.documentDependencies.garage.service.s3Port }}
+      {{- end }}
+      {{- $documentsGarageRegion := .Values.api.documents.garage.region }}
+      {{- if and (eq $documentsGarageRegion "") .Values.documentDependencies.garage.enabled }}
+      {{- $documentsGarageRegion = .Values.documentDependencies.garage.config.region }}
+      {{- end }}
+      {{- $documentsGarageBucket := .Values.api.documents.garage.bucket }}
+      {{- if and (eq $documentsGarageBucket "") .Values.documentDependencies.garage.enabled }}
+      {{- $documentsGarageBucket = .Values.documentDependencies.garage.config.bucket }}
+      {{- end }}
+      {{- $documentsGarageAccessKeyID := .Values.api.documents.garage.accessKeyId }}
+      {{- $documentsGarageSecretAccessKey := .Values.api.documents.garage.secretAccessKey }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -42,6 +61,59 @@ spec:
               value: "{{ include "smith.fullname" . }}-auth-store"
             - name: SMITH_AUTH_STORE_K8S_KEY
               value: "tokens.json"
+            - name: SMITH_PROVIDER_CLAUDE_ENABLED
+              value: {{ .Values.api.featureFlags.providerClaude | quote }}
+            - name: SMITH_PROVIDER_GEMINI_ENABLED
+              value: {{ .Values.api.featureFlags.providerGemini | quote }}
+            - name: SMITH_DOCUMENT_STORE_BACKEND
+              value: {{ .Values.api.documents.backend | quote }}
+            - name: SMITH_DOCUMENTS_POSTGRES_DSN
+              {{- if $documentsCredentialsSecretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $documentsCredentialsSecretName }}
+                  key: {{ .Values.documentDependencies.credentials.keys.postgresDsn }}
+              {{- else }}
+              value: {{ $documentsPostgresDSN | quote }}
+              {{- end }}
+            - name: SMITH_DOCUMENTS_POSTGRES_MAX_CONNS
+              value: {{ .Values.api.documents.postgres.maxConns | quote }}
+            - name: SMITH_DOCUMENTS_GARAGE_ENDPOINT
+              value: {{ $documentsGarageEndpoint | quote }}
+            - name: SMITH_DOCUMENTS_GARAGE_REGION
+              value: {{ $documentsGarageRegion | quote }}
+            - name: SMITH_DOCUMENTS_GARAGE_BUCKET
+              value: {{ $documentsGarageBucket | quote }}
+            - name: SMITH_DOCUMENTS_GARAGE_ACCESS_KEY_ID
+              {{- if $documentsCredentialsSecretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $documentsCredentialsSecretName }}
+                  key: {{ .Values.documentDependencies.credentials.keys.garageAccessKeyId }}
+              {{- else }}
+              value: {{ $documentsGarageAccessKeyID | quote }}
+              {{- end }}
+            - name: SMITH_DOCUMENTS_GARAGE_SECRET_ACCESS_KEY
+              {{- if $documentsCredentialsSecretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $documentsCredentialsSecretName }}
+                  key: {{ .Values.documentDependencies.credentials.keys.garageSecretAccessKey }}
+              {{- else }}
+              value: {{ $documentsGarageSecretAccessKey | quote }}
+              {{- end }}
+            - name: SMITH_DOCUMENTS_GARAGE_FORCE_PATH_STYLE
+              value: {{ .Values.api.documents.garage.forcePathStyle | quote }}
+            - name: SMITH_DOCUMENTS_WATCH_POLL_INTERVAL
+              value: {{ .Values.api.documents.watchPollInterval | quote }}
+            - name: SMITH_DOCUMENTS_MIGRATION_BACKFILL_ON_STARTUP
+              value: {{ .Values.api.documents.migration.backfillOnStartup | quote }}
+            - name: SMITH_DOCUMENTS_MIGRATION_READ_THROUGH_ON_MISS
+              value: {{ .Values.api.documents.migration.readThroughOnMiss | quote }}
+            - name: SMITH_DOCUMENTS_MIGRATION_MERGE_LIST_FALLBACK
+              value: {{ .Values.api.documents.migration.mergeListFallback | quote }}
+            - name: SMITH_DOCUMENTS_MIGRATION_DUAL_WRITE_ETCD
+              value: {{ .Values.api.documents.migration.dualWriteEtcd | quote }}
             {{- if $runtimeSecretName }}
             - name: SMITH_GIT_PAT
               valueFrom:

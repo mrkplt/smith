@@ -79,12 +79,12 @@ Provider/project onboarding sequence:
 
 - **Add a provider profile:**
   ```bash
-  smithctl provider add --id codex-default --type codex --default-model gpt-5-codex
+  smithctl provider add --id codex-default --type codex --default-model gpt-5-codex --credential-id codex-default-key --api-key "$SMITH_CODEX_API_KEY"
   ```
 
 - **Configure an existing provider profile:**
   ```bash
-  smithctl provider configure codex-default --secret-ref openai-key
+  smithctl provider configure codex-default --credential-id openai-key --api-key "$SMITH_CODEX_API_KEY"
   ```
 
 Supported provider types: `codex`, `claude`, `gemini`.
@@ -138,6 +138,8 @@ Supported provider types: `codex`, `claude`, `gemini`.
   ```bash
   smithctl loop cancel <loop-id> --reason "User requested"
   ```
+
+> **Notice (Gated / Under Development):** Task Contract UI/API surfaces (`/tasks`, `/v1/tasks`) are feature-flagged and may be disabled by default depending on runtime configuration.
 
 Task contract management currently ships through API/Console (`/v1/tasks`, `/tasks` route). `smithctl` does not yet expose a dedicated `task` resource command group.
 

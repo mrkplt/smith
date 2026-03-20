@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { sidebarOpen, chatOpen } from '$lib/stores';
-  import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
-  import { isFeatureVisible } from '$lib/feature-flags';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { Button, Navbar, NavBrand, NavUl, NavLi } from 'flowbite-svelte';
+  import { isChatEnabled } from '$lib/feature-flags';
+  import { Button, Navbar, NavBrand } from 'flowbite-svelte';
   import { BarsOutline, MessagesOutline } from 'flowbite-svelte-icons';
-  import { shellPrimaryNav } from '$lib/navigation';
 
 	import type { Snippet } from 'svelte';
 
@@ -16,10 +14,12 @@
 	}
 
 	let { title, controls }: Props = $props();
-  const currentPath = $derived(page.url.pathname);
-  const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
+  const chatEnabled = $derived(isChatEnabled());
 
   function openOperatorChat() {
+    if (!chatEnabled) {
+      return;
+    }
     if (typeof window !== 'undefined' && window.localStorage.getItem('smith.chat.preferFullScreen') === 'true') {
       const returnTo = encodeURIComponent(page.url.pathname + page.url.search);
       void goto(`/assistant?returnTo=${returnTo}`);
@@ -29,24 +29,25 @@
   }
 </script>
 
-<Navbar fluid class="bg-black border-b border-gray-800 px-4 py-2 sticky top-0 z-40">
+<Navbar fluid class="bg-black/90 border-b border-gray-800 px-4 py-2 sticky top-0 z-40 backdrop-blur">
   <NavBrand href="/">
-    <div class="flex items-center gap-3">
-      <span id="api-dot" class="dot w-3 h-3 rounded-full bg-[#86BC25] shadow-[0_0_10px_rgba(134,188,37,0.8)]" aria-hidden="true"></span>
+    <div class="flex items-center gap-2">
       <span class="text-xl font-bold tracking-tighter text-white uppercase font-sans">SMITH</span>
     </div>
   </NavBrand>
 
   <div class="flex items-center gap-2 lg:order-2">
-    <Button
-      color="alternative"
-      class="p-2 text-blue-500 hover:bg-white/5 transition-colors hidden lg:flex items-center gap-2"
-      onclick={openOperatorChat}
-      aria-label="Toggle Chat"
-    >
-      <MessagesOutline size="md" />
-      <span class="uppercase tracking-widest text-[10px] font-bold">Chat</span>
-    </Button>
+    {#if chatEnabled}
+      <Button
+        color="alternative"
+        class="p-2 text-blue-500 hover:bg-white/5 transition-colors hidden lg:flex items-center gap-2"
+        onclick={openOperatorChat}
+        aria-label="Toggle Chat"
+      >
+        <MessagesOutline size="md" />
+        <span class="uppercase tracking-widest text-[10px] font-bold">Chat</span>
+      </Button>
+    {/if}
     <Button
       color="alternative"
       class="p-2 text-[#86BC25] hover:bg-white/5 transition-colors lg:hidden"
@@ -57,24 +58,6 @@
     </Button>
   </div>
 
-  <NavUl class="hidden lg:flex lg:gap-1" ulClass="flex flex-row space-x-1 mt-0 bg-transparent border-0">
-    {#each shellPrimaryNav as item}
-      {#if isFeatureVisible(String(item.id)) && (String(item.id) !== 'feature-capability' || canAccessFeatureCapability)}
-      {@const active = currentPath.startsWith(item.href)}
-      <NavLi 
-        href={item.href} 
-        activeClass="text-white border-b-2 border-[#86BC25] bg-transparent"
-        nonActiveClass="text-gray-400 hover:text-[#86BC25] bg-transparent"
-        class="px-4 py-3 transition-all hover:bg-transparent"
-      >
-        <div class="flex items-center gap-2 uppercase tracking-widest text-[10px] font-bold">
-          <item.icon size="sm" class={active ? 'text-[#86BC25]' : 'text-gray-500'} />
-          {item.label}
-        </div>
-      </NavLi>
-      {/if}
-    {/each}
-  </NavUl>
 </Navbar>
 
 <div class="page-header py-6 flex items-center justify-between px-4">

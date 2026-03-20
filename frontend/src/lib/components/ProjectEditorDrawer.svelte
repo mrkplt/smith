@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
 	import { postJSON, requestJSON, deleteJSON, fetchJSON } from '$lib/api';
+	import { isProviderTypeEnabled } from '$lib/feature-flags';
 	import { slugifySegment } from '$lib/utils';
   import { Drawer, Button, Label } from 'flowbite-svelte';
   import { ArchiveOutline, TrashBinOutline, CheckOutline, CloseOutline } from 'flowbite-svelte-icons';
@@ -73,7 +74,9 @@
 	async function loadProviderProfiles() {
 		try {
 			const profiles = await fetchJSON('/v1/providers');
-			providerProfiles = Array.isArray(profiles) ? profiles : [];
+			providerProfiles = Array.isArray(profiles)
+				? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+				: [];
 		} catch {
 			providerProfiles = [];
 		}

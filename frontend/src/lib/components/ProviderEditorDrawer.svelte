@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getJSON, postJSON, requestJSON, deleteJSON } from '$lib/api';
+	import { isProviderTypeEnabled } from '$lib/feature-flags';
+	import { includeSelectedModel, loadProviderModels, staticModelsForProviderType } from '$lib/providers/models';
 	import { pushToast } from '$lib/stores';
 	import { Drawer, Button, Input, Label, Helper } from 'flowbite-svelte';
 	import { CheckOutline, CloseOutline, AdjustmentsHorizontalOutline, TrashBinOutline } from 'flowbite-svelte-icons';
@@ -23,15 +25,26 @@
 	let capabilities = $state('chat,tools,loops');
 	let secretRef = $state('');
 	let apiKey = $state('');
-	let accountId = $state('');
-	let codexCredential = $state<any>({ connected: false });
-	let codexCredentialBusy = $state(false);
+	let providerModelOptions = $state<string[]>([]);
+	let providerModelOptionsBusy = $state(false);
 	let busy = $state(false);
-	let providerCatalog = $state<any[]>([
-		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
+	const fallbackProviderCatalog = [
+		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
 		{ id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
 		{ id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
-	]);
+	];
+
+	function filterCatalogByProviderFlags(catalog: any[]): any[] {
+		if (!Array.isArray(catalog)) {
+			return [];
+		}
+		return catalog.filter((entry) => {
+			const providerID = String(entry?.provider_type || entry?.id || '').trim().toLowerCase();
+			return isProviderTypeEnabled(providerID);
+		});
+	}
+
+	let providerCatalog = $state<any[]>(filterCatalogByProviderFlags(fallbackProviderCatalog));
 
 	let isHidden = $state(true);
 	$effect(() => {
@@ -61,44 +74,48 @@
 	const requiresSecretRef = $derived(
 		!!(selectedCatalogEntry && Array.isArray(selectedCatalogEntry.required_config_fields) && selectedCatalogEntry.required_config_fields.includes('secret_ref'))
 	);
+	const availableProviderModelOptions = $derived(includeSelectedModel(providerModelOptions, defaultModel));
+
+	function canonicalProviderType(raw: string): string {
+		const normalized = String(raw || '').trim().toLowerCase();
+		if (normalized === '' || normalized === 'codex' || normalized === 'openai') {
+			return 'codex';
+		}
+		if (normalized === 'claude' || normalized === 'anthropic') {
+			return 'claude';
+		}
+		if (normalized === 'gemini' || normalized === 'google') {
+			return 'gemini';
+		}
+		return normalized;
+	}
 
 	async function loadProviderCatalog() {
 		try {
 			const response = await getJSON('/v1/providers/catalog');
-			if (Array.isArray(response) && response.length > 0) {
-				providerCatalog = response;
+			const filteredResponse = filterCatalogByProviderFlags(response);
+			if (filteredResponse.length > 0) {
+				providerCatalog = filteredResponse;
+				return;
 			}
+			providerCatalog = filterCatalogByProviderFlags(fallbackProviderCatalog);
 		} catch {
 			// Keep built-in fallback catalog for local/offline usage.
+			providerCatalog = filterCatalogByProviderFlags(fallbackProviderCatalog);
 		}
 	}
 
-	async function loadCodexCredential() {
-		if (providerType !== 'codex') {
-			codexCredential = { connected: false };
-			return;
-		}
-		codexCredentialBusy = true;
+	async function loadProviderModelOptions() {
+		const canonicalType = canonicalProviderType(providerType);
+		providerModelOptionsBusy = true;
 		try {
-			const response = await getJSON('/v1/auth/codex/credential');
-			codexCredential = response || { connected: false };
-		} catch {
-			codexCredential = { connected: false };
+			if (isEditing && id.trim() !== '') {
+				providerModelOptions = await loadProviderModels(id.trim(), canonicalType);
+				return;
+			}
+			providerModelOptions = staticModelsForProviderType(canonicalType);
 		} finally {
-			codexCredentialBusy = false;
-		}
-	}
-
-	async function disconnectCodexCredential() {
-		codexCredentialBusy = true;
-		try {
-			await postJSON('/v1/auth/codex/disconnect', { actor: 'operator' });
-			await loadCodexCredential();
-			pushToast('Codex credential revoked', 'ok');
-		} catch (err: any) {
-			pushToast(err?.message || 'Failed to revoke Codex credential', 'err');
-		} finally {
-			codexCredentialBusy = false;
+			providerModelOptionsBusy = false;
 		}
 	}
 
@@ -110,7 +127,7 @@
 		if (provider) {
 			id = provider.id || '';
 			name = provider.name || '';
-			providerType = provider.provider_type || 'codex';
+			providerType = canonicalProviderType(provider.provider_type || 'codex');
 			endpoint = provider.endpoint || '';
 			defaultModel = provider.default_model || '';
 			capabilities = Array.isArray(provider.capabilities)
@@ -127,8 +144,7 @@
 			secretRef = '';
 		}
 		apiKey = '';
-		accountId = '';
-		void loadCodexCredential();
+		void loadProviderModelOptions();
 	});
 
 	$effect(() => {
@@ -138,7 +154,7 @@
 		if (providerType.trim() === '') {
 			return;
 		}
-		void loadCodexCredential();
+		void loadProviderModelOptions();
 	});
 
 	$effect(() => {
@@ -156,39 +172,55 @@
 			return;
 		}
 		if (requiresSecretRef && secretRef.trim() === '') {
-			pushToast(`Secret reference is required for ${selectedProviderLabel} providers`, 'err');
+			pushToast(`Credential label is required for ${selectedProviderLabel} providers`, 'err');
 			return;
 		}
-		if (providerType.trim().toLowerCase() === 'codex' && apiKey.trim() !== '' && !apiKey.trim().startsWith('sk-')) {
-			pushToast('Codex API key must start with sk-', 'err');
+		const existingSecretRef = String(provider?.secret_ref || '').trim();
+		const normalizedSecretRef = secretRef.trim();
+		const normalizedAPIKey = apiKey.trim();
+		if (normalizedAPIKey === '' && (!isEditing || existingSecretRef === '' || existingSecretRef !== normalizedSecretRef)) {
+			pushToast('API key is required when creating a new credential label', 'err');
 			return;
 		}
 		busy = true;
 		try {
+			const canonicalType = canonicalProviderType(providerType);
+			if (normalizedAPIKey !== '') {
+				const secretPayload = {
+					id: normalizedSecretRef,
+					name: normalizedSecretRef,
+					description: `${selectedProviderLabel} API key`,
+					value: normalizedAPIKey
+				};
+				const secretPath = `/v1/secrets/${encodeURIComponent(normalizedSecretRef)}`;
+				try {
+					await requestJSON(secretPath, 'PUT', secretPayload);
+				} catch (err: any) {
+					const message = String(err?.message || '').toLowerCase();
+					if (message.includes('not found')) {
+						await postJSON('/v1/secrets', secretPayload);
+					} else {
+						throw err;
+					}
+				}
+			}
+
 			const payload = {
 				id: id.trim(),
 				name: name.trim(),
-				provider_type: providerType.trim().toLowerCase(),
+				provider_type: canonicalType,
 				endpoint: endpoint.trim(),
 				default_model: defaultModel.trim(),
 				capabilities: capabilities
 					.split(',')
 					.map((value) => value.trim())
 					.filter((value) => value !== ''),
-				secret_ref: secretRef.trim()
+				secret_ref: normalizedSecretRef
 			};
 			if (isEditing) {
 				await requestJSON(`/v1/providers/${payload.id}`, 'PUT', payload);
 			} else {
 				await postJSON('/v1/providers', payload);
-			}
-
-			if (providerType.trim().toLowerCase() === 'codex' && apiKey.trim() !== '') {
-				await postJSON('/v1/auth/codex/connect/api-key', {
-					actor: 'operator',
-					api_key: apiKey.trim(),
-					account_id: accountId.trim() || 'default'
-				});
 			}
 
 			pushToast(`Provider profile ${isEditing ? 'updated' : 'created'} successfully`, 'ok');
@@ -294,14 +326,20 @@
 
 				<div>
 					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Default Model</Label>
-					<Input
-						type="text"
+					<select
+						class="w-full bg-black border border-gray-800 text-white text-sm rounded-none px-3 py-2"
 						value={defaultModel}
-						oninput={(event) => defaultModel = (event.currentTarget as HTMLInputElement).value}
+						oninput={(event) => defaultModel = (event.currentTarget as HTMLSelectElement).value}
 						disabled={busy}
-						placeholder="gpt-5.4"
-						class="bg-black border-gray-800 text-white rounded-none"
-					/>
+					>
+						<option value="">Use provider default</option>
+						{#if providerModelOptionsBusy}
+							<option value={defaultModel} disabled>{defaultModel !== '' ? defaultModel : 'Loading models...'}</option>
+						{/if}
+						{#each availableProviderModelOptions as model}
+							<option value={model}>{model}</option>
+						{/each}
+					</select>
 				</div>
 
 				<div>
@@ -329,15 +367,17 @@
 				</div>
 
 				<div>
-					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Secret Reference (Optional)</Label>
+					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">
+						Credential Label / ID {requiresSecretRef ? '(Required)' : '(Optional)'}
+					</Label>
 					<Input
-						data-testid="provider-secret-ref"
+						data-testid="provider-credential-id"
 						list="provider-secret-options"
 						type="text"
 						value={secretRef}
 						oninput={(event) => secretRef = (event.currentTarget as HTMLInputElement).value}
 						disabled={busy}
-						placeholder="openai-key"
+						placeholder="openai-work-key"
 						class="bg-black border-gray-800 text-white rounded-none"
 					/>
 					<datalist id="provider-secret-options">
@@ -345,60 +385,26 @@
 							<option value={secretRecord.id}>{secretRecord.name || secretRecord.id}</option>
 						{/each}
 					</datalist>
+					<Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">Used as the secret identifier that stores this provider API key.</Helper>
 				</div>
 
-				{#if providerType === 'codex'}
-					<div class="space-y-4 pt-4 border-t border-gray-900">
-						<div class="border border-gray-800 bg-slate-900/30 p-3 space-y-2">
-							<div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500">Credential Status</div>
-							<div class="text-xs text-gray-200">{codexCredential.connected ? 'Connected' : 'Not connected'}</div>
-							{#if codexCredential.connected}
-								<div class="space-y-1 text-[11px] text-gray-400">
-									{#if codexCredential.api_key_masked}
-										<div>Key: <span class="font-mono">{codexCredential.api_key_masked}</span></div>
-									{/if}
-									{#if codexCredential.account_id}
-										<div>Account: <span class="font-mono">{codexCredential.account_id}</span></div>
-									{/if}
-									{#if codexCredential.last_refresh_at}
-										<div>Last Refresh: <span class="font-mono">{codexCredential.last_refresh_at}</span></div>
-									{/if}
-								</div>
-							{/if}
-							<div class="pt-1">
-								<Button
-									size="xs"
-									color="alternative"
-									class="rounded-none border-gray-700 bg-slate-900 text-gray-300"
-									data-testid="provider-codex-revoke"
-									onclick={disconnectCodexCredential}
-									disabled={codexCredentialBusy || !codexCredential.connected}
-								>
-									Revoke Credential
-								</Button>
-							</div>
-						</div>
-
-						<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Codex API Key (Optional)</Label>
-						<Input
-							type="password"
-							value={apiKey}
-							oninput={(event) => apiKey = (event.currentTarget as HTMLInputElement).value}
-							disabled={busy}
-							placeholder="sk-..."
-							class="bg-black border-gray-800 text-white rounded-none"
-						/>
-						<Input
-							type="text"
-							value={accountId}
-							oninput={(event) => accountId = (event.currentTarget as HTMLInputElement).value}
-							disabled={busy}
-							placeholder="account id (optional)"
-							class="bg-black border-gray-800 text-white rounded-none"
-						/>
-						<Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">Leave blank to keep current credential. Set a new key to rotate.</Helper>
-					</div>
-				{/if}
+				<div>
+					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">
+						API Key {isEditing ? '(Optional)' : '(Required)'}
+					</Label>
+					<Input
+						data-testid="provider-api-key"
+						type="password"
+						value={apiKey}
+						oninput={(event) => apiKey = (event.currentTarget as HTMLInputElement).value}
+						disabled={busy}
+						placeholder="sk-..."
+						class="bg-black border-gray-800 text-white rounded-none"
+					/>
+					<Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">
+						Provide a key when creating, or when rotating/changing credential label.
+					</Helper>
+				</div>
 			</div>
 
 			<div class="pt-10 pb-20 border-t border-gray-900 flex justify-between gap-4 mt-auto">

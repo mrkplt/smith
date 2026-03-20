@@ -1,127 +1,37 @@
-# Agent Provider + Codex Authentication Design
+# Agent Provider Credentials (API Key + Label)
 
 ## Goal
 
-Define how Smith selects and talks to agent providers, starting with Codex, and how users authenticate in a way consistent with current Codex CLI behavior.
+Define the current provider credential model used by Smith across Codex and other providers.
 
-## Scope
+Current direction: provider credentials are API-key based and stored as reusable secrets; provider profiles reference those secrets by label/identifier.
 
-- Initial provider: Codex.
-- Future providers: add via provider adapter interface.
-- Authentication UX: browser-based/device-style login flow similar to Codex CLI, with secure token lifecycle handling.
+## Current Credential Model
 
-## Architecture
+- Provider profiles require `secret_ref` for all provider types (`codex`, `claude`, `gemini`).
+- Secret values are stored via Settings Secrets APIs and are never returned in plaintext from list/get responses.
+- Model inventory and runtime execution resolve provider credentials from `secret_ref` only.
+- Codex connected-auth endpoints are no longer part of the active workflow.
 
-### 1. Provider Registry
+## Operator UX
 
-Smith Agent Core exposes a provider registry:
-- `provider_id` (e.g., `codex`)
-- capabilities (streaming, tools, max context, reasoning controls)
-- auth mode and token requirements
-- model catalog metadata
+Provider configuration in Settings is API-key first:
 
-Loop definition includes:
-- `provider_id`
-- `model`
-- provider-specific options (validated against provider schema)
+- Enter provider profile information (`id`, `name`, provider type, defaults).
+- Enter a credential label/identifier (stored as `secret_ref`).
+- Enter API key.
 
-Default provider for MVP: `codex`.
+On save, the Console writes/updates the secret value and then saves the provider profile pointing at that `secret_ref`.
 
-### 2. Provider Adapter Interface
+For existing profiles:
 
-Each provider implements a common interface:
-- `CreateSession(ctx, request)`
-- `SendTurn(ctx, session, input)`
-- `StreamEvents(ctx, session)`
-- `CloseSession(ctx, session)`
-- `ValidateConfig(config)`
+- Keeping the same credential label allows profile updates without rotating the key.
+- Changing credential label requires entering an API key for the new label.
+- Entering a new API key rotates the secret value for that credential label.
 
-Codex adapter handles OpenAI/Codex-specific request/response mapping and event normalization into Smith journal records.
+## API Surface (Current)
 
-### 3. Codex Auth Flow (CLI-Compatible Pattern)
-
-Authentication should mirror Codex CLI user experience:
-1. Operator chooses "Connect Codex" in UI/CLI.
-2. System initiates browser/device-style login flow.
-3. On success, Smith receives scoped tokens.
-4. Tokens are stored in secure backend (not plaintext in etcd).
-5. Runtime retrieves short-lived access token for provider calls.
-6. Refresh flow runs before expiry; failures emit actionable operator alerts.
-
-## Token and Secret Handling
-
-- Never store raw tokens in etcd task keys.
-- Store provider credentials in secure secret store (Kubernetes Secret initially; external secret manager pluggable).
-- Encrypt at rest per platform defaults + optional KMS integration.
-- Redact tokens from logs/journal/errors.
-- Track token metadata (issuer, expiry, scopes, last-refresh) for observability.
-
-## Runtime Behavior
-
-- On loop start, Agent Core resolves provider credentials by workspace/project scope.
-- If auth missing/expired and non-refreshable:
-  - mark anomaly as blocked with auth reason
-  - surface reconnect action in Operator Console
-- If refresh succeeds, continue without interrupting in-flight loop.
-
-## Operator Experience
-
-- Console includes provider account panel:
-  - connect/disconnect Codex account
-  - current auth status (connected/expired/error)
-  - last refresh time and scope summary
-- Loop creation form includes provider/model selector.
-
-## Auditing
-
-Audit events for:
-- login initiated/succeeded/failed
-- token refresh succeeded/failed
-- credential revocation/disconnect
-- provider call auth errors
-
-Audit entries include actor, timestamp, provider, scope, and correlation ID.
-
-## MVP Decisions
-
-- Supported provider in MVP: Codex only.
-- Auth mode in MVP: Codex CLI-style browser/device login flow.
-- Credential backend in MVP: Kubernetes Secrets.
-- Deferred: multi-provider routing policies and external secrets backends.
-
-## Non-Goals (MVP)
-
-- Full multi-tenant identity federation.
-- Bring-your-own OAuth provider framework.
-- Fine-grained per-turn model arbitration across providers.
-
-
-## Implemented Surface (Current)
-
-### Provider Auth Lifecycle Components
-
-- `internal/source/provider/AuthManager`
-- `internal/source/provider/TokenStore` interface
-- `internal/source/provider/FileTokenStore` (0600 permissions)
-- `internal/source/provider/SecretTokenStore` (Kubernetes Secret-backed token persistence)
-- `internal/source/provider/MockDeviceAuthClient` (device-style flow harness)
-
-Lifecycle behavior:
-- Connect start -> device code session issued.
-- Connect complete -> token stored in secure backend.
-- Runtime token check -> refresh before expiry.
-- Refresh/auth failures -> actionable errors (`ErrAuthRequired`, `ErrTokenExpired`, `ErrTokenRefresh`).
-
-### API Endpoints (smith-api)
-
-- `POST /v1/auth/codex/connect/start`
-- `POST /v1/auth/codex/connect/complete`
-- `POST /v1/auth/codex/connect/api-key`
-- `GET /v1/auth/codex/status`
-- `GET /v1/auth/codex/credential`
-- `POST /v1/auth/codex/disconnect`
-
-Provider profiles and project/provider binding:
+Provider profiles and project binding:
 
 - `GET /v1/providers`
 - `POST /v1/providers`
@@ -134,7 +44,7 @@ Provider profiles and project/provider binding:
 - `PUT /v1/projects/{id}`
 - `DELETE /v1/projects/{id}`
 
-Settings secrets (write-only values, masked in API responses):
+Secrets (write-only values, masked reads):
 
 - `GET /v1/secrets`
 - `POST /v1/secrets`
@@ -142,23 +52,20 @@ Settings secrets (write-only values, masked in API responses):
 - `PUT /v1/secrets/{id}`
 - `DELETE /v1/secrets/{id}`
 
-Validation behavior:
+## Validation Rules
 
-- Provider profile `secret_ref` must reference an existing secret.
-- Project `provider_profile_id` defaults to `codex-default` when omitted.
-- Deleting a secret is rejected when referenced by a provider profile.
-- Deleting a provider profile is rejected when referenced by a project.
+- Provider profile `secret_ref` is required and must reference an existing secret.
+- Unsupported provider types are rejected.
+- Deleting a secret is rejected when referenced by any provider profile.
+- Deleting a provider profile is rejected when referenced by any project.
 
-Environment variables:
-- `SMITH_AUTH_STORE_PATH` for auth token storage path.
-- `SMITH_AUTH_STORE_BACKEND` (`file` or `kubernetes`).
-- `SMITH_AUTH_STORE_K8S_NAMESPACE`, `SMITH_AUTH_STORE_K8S_SECRET`, `SMITH_AUTH_STORE_K8S_KEY` for Kubernetes-backed storage.
-- `SMITH_OPERATOR_TOKEN` for operator auth gating.
+## Storage Backends and Environment
 
-Current UI surface:
+- `SMITH_AUTH_STORE_BACKEND` selects storage backend (`file` or `k8s-secret`) for provider/project/credential settings data.
+- `SMITH_AUTH_STORE_PATH` configures file-backed credential/settings persistence.
+- `SMITH_AUTH_STORE_K8S_NAMESPACE`, `SMITH_AUTH_STORE_K8S_SECRET`, `SMITH_AUTH_STORE_K8S_KEY` configure Kubernetes-backed persistence.
 
-- Settings navigation now centralizes configuration under `General`, `Providers`, `Projects`, `Chat`, `Integrations`, and `Secrets`.
-- Chat is available in drawer mode and a dedicated full-screen route at `/assistant`.
-- Chat defaults support provider profile selection, optional model/API key overrides, and opaque thinking level (`quick`, `balanced`, `deep`).
+## Audit
 
-Auth lifecycle actions emit audit records through Smith audit append path.
+- Secret mutations emit `create-secret`, `update-secret`, and `delete-secret` audit actions.
+- Project Git credential mutations emit `update-project-credential`, `delete-project-credential`, and `test-project-credential` audit actions.

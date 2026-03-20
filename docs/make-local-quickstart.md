@@ -13,11 +13,12 @@ If `make doctor` fails, follow the remediation lines printed in output.
 
 ## 2. Start Local Cluster and Deploy Smith
 
-Set local runtime credentials in your shell (kept out of tracked values files):
+Load local runtime credentials from your private env file:
 
 ```bash
-export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
-export SMITH_LOCAL_RUNTIME_CREDENTIALS="<runtime-credential>"
+set -a
+source ~/.smith/.env
+set +a
 ```
 
 ```bash
@@ -25,6 +26,26 @@ make cluster-up
 make cluster-health
 make build-local
 make deploy-local
+```
+
+If running `postgres-garage` with in-chart Garage, use the ordered bootstrap-aware make target:
+
+```bash
+make deploy-local-document-storage
+```
+
+`deploy-local-document-storage` enforces the bootstrap order automatically:
+
+1. pre-deploy secret sync (`--skip-garage`)
+2. Helm upgrade + rollout
+3. post-deploy Garage bootstrap (`--skip-secrets`)
+
+Manual script invocation remains available when you need custom flags.
+
+By default this target runs in idempotent mode (no forced rollout-id mutation, no forced rollout restarts). If you intentionally want to force rollout restarts, override flags:
+
+```bash
+SMITH_FORCE_HELM_ROLLOUT_ID=true SMITH_FORCE_ROLLOUT=true make deploy-local-document-storage
 ```
 
 `make cluster-up` now targets the current `kubectl` context by default, which fits Docker Desktop Kubernetes well. `make deploy-local` builds the Smith images locally and skips k3d import unless you intentionally use `make cluster-up-k3d` or `make cluster-up-vcluster`.

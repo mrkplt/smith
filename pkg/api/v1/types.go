@@ -267,21 +267,6 @@ type CostSummary struct {
 	LastActivityAt string  `json:"last_activity_at,omitempty"`
 }
 
-type AuthStartRequest struct {
-	Actor string `json:"actor"`
-}
-
-type AuthCompleteRequest struct {
-	Actor      string `json:"actor"`
-	DeviceCode string `json:"device_code"`
-}
-
-type AuthAPIKeyRequest struct {
-	Actor     string `json:"actor"`
-	APIKey    string `json:"api_key"`
-	AccountID string `json:"account_id"`
-}
-
 type ProjectCredentialUpsertRequest struct {
 	Actor      string `json:"actor"`
 	ProjectID  string `json:"project_id"`
@@ -492,6 +477,17 @@ type ChatPostMessageResponse struct {
 	Status string `json:"status"`
 }
 
+type ChatUpdateContextRequest struct {
+	Type         string            `json:"type,omitempty"`
+	Context      map[string]string `json:"context,omitempty"`
+	FocusContext map[string]any    `json:"focusContext,omitempty"`
+}
+
+type ChatUpdateContextResponse struct {
+	Status  string            `json:"status"`
+	Context map[string]string `json:"context,omitempty"`
+}
+
 type ChatCommitActionRequest struct {
 	Action  string `json:"action"`
 	Payload any    `json:"payload"`
@@ -499,6 +495,21 @@ type ChatCommitActionRequest struct {
 
 type ChatCommitActionResponse struct {
 	Status string `json:"status"`
+}
+
+type ProviderModel struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by,omitempty"`
+	Created int64  `json:"created,omitempty"`
+}
+
+type ProviderModelsResponse struct {
+	ProviderID   string          `json:"provider_id"`
+	ProviderType string          `json:"provider_type"`
+	DefaultModel string          `json:"default_model,omitempty"`
+	Source       string          `json:"source"`
+	FetchedAt    string          `json:"fetched_at"`
+	Models       []ProviderModel `json:"models"`
 }
 
 type LoopCreateRequest struct {
@@ -544,6 +555,19 @@ type PRDIngressRequest struct {
 	PRD       json.RawMessage   `json:"prd,omitempty"`
 	Tasks     []PRDTask         `json:"tasks,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+type PRDValidateRequest struct {
+	Format   string          `json:"format,omitempty"`
+	Markdown string          `json:"markdown,omitempty"`
+	JSON     string          `json:"json,omitempty"`
+	PRD      json.RawMessage `json:"prd,omitempty"`
+}
+
+type PRDValidateResponse struct {
+	Format            string                    `json:"format"`
+	Report            model.PRDValidationReport `json:"report"`
+	CanonicalMarkdown string                    `json:"canonical_markdown,omitempty"`
 }
 
 type IngressResult struct {

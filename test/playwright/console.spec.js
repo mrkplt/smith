@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { mockEventSource, mockApiRoutes, emitLoopUpdates, loopsFixture } from './helpers.js';
+import {
+  mockEventSource,
+  mockApiRoutes,
+  emitLoopUpdates,
+  emitDocumentUpdates,
+  emitChatEvent,
+  loopsFixture,
+  documentsFixture,
+} from './helpers.js';
 
 // ── helpers ────────────────────────────────────────────────────────
 
@@ -88,13 +96,15 @@ test('provider API key config', async ({ page }) => {
   await page.getByRole('button', { name: 'Configure' }).first().click();
 
   // Fill in the API key
+  await page.getByTestId('provider-credential-id').fill('codex-default-key');
   await page.getByPlaceholder('sk-...').fill('sk-test-key');
 
   // Submit the form
   await page.getByRole('button', { name: 'Update Profile' }).click();
 
-  // Verify auth state was updated
-  await expect.poll(() => api.authState.connected).toBe(true);
+  // Verify provider and secret state were updated
+  await expect.poll(() => api.providersState.find((provider) => provider.id === 'codex-default')?.secret_ref).toBe('codex-default-key');
+  await expect.poll(() => api.secretsState.some((secret) => secret.id === 'codex-default-key')).toBe(true);
 });
 
 test('project management', async ({ page }) => {
@@ -118,4 +128,53 @@ test('project management', async ({ page }) => {
 
   // Verify project was created via API
   await expect.poll(() => api.projectsState.find(p => p.name === 'new-project')).toBeDefined();
+});
+
+test('document refinement chat shows context and patch workflow', async ({ page }) => {
+  await mockEventSource(page);
+  const api = await mockApiRoutes(page, { documents: documentsFixture });
+
+  await page.goto('/documents');
+  await emitDocumentUpdates(page, documentsFixture);
+
+  await page.locator('.doc-item', { hasText: 'Checkout PRD' }).click();
+  await expect(page.getByRole('heading', { name: 'Checkout PRD' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'EDIT' }).click();
+
+  await page.getByRole('button', { name: 'Refine with AI' }).click();
+
+  await expect(page.locator('#documents-prd-chat-drawer')).toBeVisible();
+  await expect.poll(() => api.getLastChatSessionID()).not.toBe('');
+
+  const sessionID = api.getLastChatSessionID();
+  await emitChatEvent(page, sessionID, 'context.loaded', {
+    sessionIntent: 'document_refinement',
+    documentTitle: 'Checkout PRD',
+    documentVersion: '2026-03-18T12:00:00Z',
+  });
+  await emitChatEvent(page, sessionID, 'readiness.updated', { status: 'warn' });
+  await emitChatEvent(page, sessionID, 'document.patch.proposed', {
+    type: 'document_patch_proposal',
+    operations: [
+      {
+        op: 'replace_document',
+        content: '# Revised heading\n\n## Acceptance Criteria\n- retries are bounded\n',
+      },
+    ],
+  });
+  await emitChatEvent(page, sessionID, 'message.delta', { delta: 'Patch proposed for review.' });
+  await emitChatEvent(page, sessionID, 'message.completed', {});
+
+  await page.locator('.line-canvas .rendered-line-row', { hasText: 'Acceptance Criteria' }).click();
+
+  await expect.poll(() => api.contextUpdatePayloads.length).toBeGreaterThan(0);
+  await expect.poll(() => api.contextUpdatePayloads.some((payload) => payload?.focusContext?.sectionId === 'acceptance_criteria')).toBe(true);
+
+  await expect(page.locator('#documents-prd-chat-drawer')).toContainText('Readiness: warn');
+  await expect(page.locator('#documents-prd-chat-drawer')).toContainText('Patch Proposed');
+
+  await page.getByRole('button', { name: 'Accept Patch' }).click();
+  await expect(page.locator('#documents-prd-chat-drawer')).toBeHidden();
+  await expect(page.locator('.line-canvas')).toContainText('Revised heading');
 });

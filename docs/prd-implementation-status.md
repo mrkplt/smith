@@ -2,6 +2,8 @@
 
 This checklist tracks implementation progress for approved PRDs that are actively being delivered.
 
+> **Notice (Gated / Under Development):** Several surfaces listed here (for example `/tasks`, `/feature-capability`, `/assistant`, and Settings Secrets) are behind feature flags and may be disabled by default.
+
 ## Smith Settings UI Architecture PRD
 
 Source: `docs/prds/approved/smith_settings_ui_architecture_prd.md`

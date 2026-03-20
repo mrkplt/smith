@@ -65,20 +65,14 @@ spec:
             - name: SMITH_REPLICA_TEMPLATE_ENV
               value: {{ .Values.core.replicaTemplate.env | toJson | quote }}
             {{- if $runtimeSecretName }}
-            - name: SMITH_GIT_PAT
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $runtimeSecretName }}
-                  key: {{ .Values.secrets.keys.gitPat }}
             - name: SMITH_GIT_PAT_SECRET_NAME
               value: {{ $runtimeSecretName | quote }}
             - name: SMITH_GIT_PAT_SECRET_KEY
               value: {{ .Values.secrets.keys.gitPat | quote }}
-            - name: SMITH_RUNTIME_CREDENTIALS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $runtimeSecretName }}
-                  key: {{ .Values.secrets.keys.runtimeCredentials }}
+            - name: SMITH_RUNTIME_SECRET_NAME
+              value: {{ $runtimeSecretName | quote }}
+            - name: SMITH_RUNTIME_CREDENTIALS_KEY
+              value: {{ .Values.secrets.keys.runtimeCredentials | quote }}
             {{- end }}
             {{- with .Values.core.env }}
             {{- toYaml . | nindent 12 }}
