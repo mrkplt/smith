@@ -9,12 +9,14 @@
 	import { buildGlobalChatContext } from '$lib/chat/context';
 	import { onMount, onDestroy } from 'svelte';
 	import { connectLayoutStreams, initLayoutState } from '$lib/streams/layout-streams';
+	import { isChatEnabled } from '$lib/feature-flags';
 
 	let { children } = $props();
 
 	let disconnectStreams: (() => void) | null = null;
 	const drawerPath = $derived(page.url.pathname + page.url.search);
 	const isFullChatRoute = $derived(page.url.pathname.startsWith('/assistant'));
+	const chatEnabled = $derived(isChatEnabled());
 	const globalChatContext = $derived(buildGlobalChatContext(page.url.pathname, $chatType, $appState));
 	const runtimeGatedPath = $derived(
 		page.url.pathname === '/' ||
@@ -32,6 +34,12 @@
 
 	onDestroy(() => {
 		disconnectStreams?.();
+	});
+
+	$effect(() => {
+		if (!chatEnabled && $chatOpen) {
+			chatOpen.set(false);
+		}
 	});
 
 	$effect(() => {
@@ -57,7 +65,7 @@
 		{@render children()}
 	</main>
 
-	    {#if $chatOpen && !isFullChatRoute}
+	    {#if chatEnabled && $chatOpen && !isFullChatRoute}
         <div class="w-96 h-screen flex-shrink-0">
             <ChatPanel
 				mode="drawer"

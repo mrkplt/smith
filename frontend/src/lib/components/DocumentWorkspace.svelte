@@ -4,7 +4,7 @@
   import DocumentPreviewPane from '$lib/components/DocumentPreviewPane.svelte';
   import PRDValidationPanel from '$lib/components/PRDValidationPanel.svelte';
   import DocumentWorkspaceHeader from '$lib/components/DocumentWorkspaceHeader.svelte';
-  import type { PRDValidationReport } from '$lib/documents/prd-validation';
+  import type { PRDValidationDiagnostic, PRDValidationReport } from '$lib/documents/prd-validation';
   import { marked } from 'marked';
 
   interface Props {
@@ -18,6 +18,8 @@
     validationReport: PRDValidationReport | null;
     validationBusy: boolean;
     validationError: string;
+    chatEnabled: boolean;
+    resolveDiagnosticEnabled: boolean;
     projects: any[];
     onEditTitle: (value: string) => void;
     onEditContent: (value: string) => void;
@@ -33,6 +35,7 @@
     onCancelEdit: () => void;
     onRefreshValidation: () => void;
     onRefineWithAI: () => void;
+    onResolveDiagnostic: (diagnostic: PRDValidationDiagnostic) => void;
     onBuildDoc: () => void;
     onCreateTask: () => void;
     onArchiveDoc: () => void;
@@ -50,6 +53,8 @@
     validationReport,
     validationBusy,
     validationError,
+    chatEnabled,
+    resolveDiagnosticEnabled,
     projects,
     onEditTitle,
     onEditContent,
@@ -61,6 +66,7 @@
     onCancelEdit,
     onRefreshValidation,
     onRefineWithAI,
+    onResolveDiagnostic,
     onBuildDoc,
     onCreateTask,
     onArchiveDoc,
@@ -110,8 +116,11 @@
         busy={validationBusy}
         errorMessage={validationError}
         format={editFormat}
+        {chatEnabled}
+        resolveDiagnosticEnabled={resolveDiagnosticEnabled}
         onRecheck={onRefreshValidation}
         onRefineWithAI={onRefineWithAI}
+        {onResolveDiagnostic}
       />
 
       <div class="editor-viewport flex-1 flex">

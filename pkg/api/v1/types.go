@@ -267,21 +267,6 @@ type CostSummary struct {
 	LastActivityAt string  `json:"last_activity_at,omitempty"`
 }
 
-type AuthStartRequest struct {
-	Actor string `json:"actor"`
-}
-
-type AuthCompleteRequest struct {
-	Actor      string `json:"actor"`
-	DeviceCode string `json:"device_code"`
-}
-
-type AuthAPIKeyRequest struct {
-	Actor     string `json:"actor"`
-	APIKey    string `json:"api_key"`
-	AccountID string `json:"account_id"`
-}
-
 type ProjectCredentialUpsertRequest struct {
 	Actor      string `json:"actor"`
 	ProjectID  string `json:"project_id"`

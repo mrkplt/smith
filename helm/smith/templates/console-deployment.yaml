@@ -56,6 +56,16 @@ spec:
                 configMapKeyRef:
                   name: {{ $consoleConfigName }}
                   key: SMITH_FEATURE_CAPABILITY_ENABLED
+            - name: SMITH_FEATURE_CHAT_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_CHAT_ENABLED
+            - name: SMITH_FEATURE_SECRETS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_SECRETS_ENABLED
             - name: SMITH_FEATURE_CAPABILITY_ACCESS
               valueFrom:
                 configMapKeyRef:
@@ -71,6 +81,11 @@ spec:
                 configMapKeyRef:
                   name: {{ $consoleConfigName }}
                   key: SMITH_FEATURE_PROVIDER_GEMINI_ENABLED
+            - name: SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED
             - name: SMITH_SHOW_COMING_SOON_PROVIDERS
               valueFrom:
                 configMapKeyRef:

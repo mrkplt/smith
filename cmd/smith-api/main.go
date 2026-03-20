@@ -106,7 +106,6 @@ type server struct {
 	cfg          config
 	store        store.StateStore
 	documents    docstore.Store
-	auth         *provider.AuthManager
 	modelCatalog provider.ModelInventoryService
 	projectCred  provider.ProjectCredentialStore
 	repoAccess   func(ctx context.Context, repoURL string, githubUser string, credential string) (bool, string, error)
@@ -123,9 +122,6 @@ type server struct {
 }
 type overrideRequest = api.OverrideRequest
 type costSummary = api.CostSummary
-type authStartRequest = api.AuthStartRequest
-type authCompleteRequest = api.AuthCompleteRequest
-type authAPIKeyRequest = api.AuthAPIKeyRequest
 type projectCredentialUpsertRequest = api.ProjectCredentialUpsertRequest
 type projectCredentialDeleteRequest = api.ProjectCredentialDeleteRequest
 type projectCredentialTestRequest = api.ProjectCredentialTestRequest
@@ -586,12 +582,6 @@ func main() {
 		log.Fatalf("smith-api secret store init failed: %v", err)
 	}
 
-	authManager := provider.NewAuthManager(
-		provider.ProviderCodex,
-		tokenStore,
-		provider.NewMockDeviceAuthClient(),
-		&auditBridge{store: es},
-	)
 	runtimePods, err := newRuntimePodReader()
 	if err != nil {
 		log.Printf("smith-api runtime pod lookup unavailable: %v", err)
@@ -610,7 +600,6 @@ func main() {
 		cfg:          cfg,
 		store:        es,
 		documents:    documentStore,
-		auth:         authManager,
 		modelCatalog: provider.NewAccountModelInventoryService(),
 		projectCred:  projectCredStore,
 		providers:    providerStore,
@@ -651,12 +640,6 @@ func main() {
 	mux.HandleFunc("/v1/documents", s.handleDocuments)
 	mux.HandleFunc("/v1/documents/stream", s.handleDocumentStream)
 	mux.HandleFunc("/v1/documents/", s.handleDocumentByID)
-	mux.HandleFunc("/v1/auth/codex/connect/start", s.handleCodexAuthStart)
-	mux.HandleFunc("/v1/auth/codex/connect/complete", s.handleCodexAuthComplete)
-	mux.HandleFunc("/v1/auth/codex/connect/api-key", s.handleCodexAuthAPIKey)
-	mux.HandleFunc("/v1/auth/codex/status", s.handleCodexAuthStatus)
-	mux.HandleFunc("/v1/auth/codex/credential", s.handleCodexAuthCredential)
-	mux.HandleFunc("/v1/auth/codex/disconnect", s.handleCodexAuthDisconnect)
 	mux.HandleFunc("/api/projects/credentials/github", s.handleProjectGitHubCredential)
 	mux.HandleFunc("/api/projects/credentials/github/test", s.handleProjectGitHubCredentialTest)
 	mux.HandleFunc("/v1/projects/credentials/github", s.handleProjectGitHubCredential)
@@ -2860,172 +2843,6 @@ func (s *server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, records)
 }
 
-func (s *server) handleCodexAuthStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req authStartRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	session, err := s.auth.StartConnect(r.Context(), strings.TrimSpace(req.Actor))
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, session)
-}
-
-func (s *server) handleCodexAuthComplete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req authCompleteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	token, err := s.auth.CompleteConnect(r.Context(), strings.TrimSpace(req.Actor), strings.TrimSpace(req.DeviceCode))
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"connected":       true,
-		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
-		"account_id":      token.AccountID,
-		"auth_method":     token.AuthMethod,
-		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
-		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
-	})
-}
-
-func (s *server) handleCodexAuthAPIKey(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	var req authAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	token, err := s.auth.ConnectAPIKey(
-		r.Context(),
-		strings.TrimSpace(req.Actor),
-		strings.TrimSpace(req.APIKey),
-		strings.TrimSpace(req.AccountID),
-	)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"connected":       true,
-		"expires_at":      token.ExpiresAt.UTC().Format(time.RFC3339),
-		"account_id":      token.AccountID,
-		"auth_method":     token.AuthMethod,
-		"connected_at":    formatRFC3339OrEmpty(token.ConnectedAt),
-		"last_refresh_at": formatRFC3339OrEmpty(token.LastRefreshAt),
-	})
-}
-
-func (s *server) handleCodexAuthStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	status, err := s.auth.Status(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out := map[string]any{
-		"connected": status.Connected,
-		"provider":  provider.ProviderCodex,
-	}
-	if status.Connected {
-		out["expires_at"] = status.ExpiresAt.UTC().Format(time.RFC3339)
-		out["account_id"] = status.AccountID
-		out["auth_method"] = status.AuthMethod
-		out["connected_at"] = formatRFC3339OrEmpty(status.ConnectedAt)
-		out["last_refresh_at"] = formatRFC3339OrEmpty(status.LastRefreshAt)
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *server) handleCodexAuthCredential(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	cred, err := s.auth.StoredCredential(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	out := map[string]any{
-		"connected": cred.Connected,
-		"provider":  provider.ProviderCodex,
-	}
-	if !cred.Connected {
-		writeJSON(w, http.StatusOK, out)
-		return
-	}
-	out["auth_method"] = cred.AuthMethod
-	out["account_id"] = cred.AccountID
-	if strings.EqualFold(cred.AuthMethod, "api_key") {
-		out["api_key_masked"] = maskCredentialValue(cred.APIKey)
-		reveal := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("reveal")), "true")
-		if reveal {
-			out["api_key"] = cred.APIKey
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *server) handleCodexAuthDisconnect(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	if !s.authorized(r) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
-	if actor == "" {
-		var req authStartRequest
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		actor = strings.TrimSpace(req.Actor)
-	}
-	if err := s.auth.Disconnect(r.Context(), actor); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"connected": false})
-}
-
 func (s *server) handleProjectGitHubCredential(w http.ResponseWriter, r *http.Request) {
 	if !s.authorized(r) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
@@ -3629,6 +3446,10 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusForbidden, fmt.Sprintf("provider_type %q is disabled by feature flag", normalized.ProviderType))
 			return
 		}
+		if err := s.ensureProviderSecretRefRequired(normalized); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if err := s.ensureSecretExists(r.Context(), normalized.SecretRef); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
@@ -3706,6 +3527,10 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.isProviderTypeEnabled(normalized.ProviderType) {
 			writeErr(w, http.StatusForbidden, fmt.Sprintf("provider_type %q is disabled by feature flag", normalized.ProviderType))
+			return
+		}
+		if err := s.ensureProviderSecretRefRequired(normalized); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if err := s.ensureSecretExists(r.Context(), normalized.SecretRef); err != nil {
@@ -3855,27 +3680,6 @@ func (s *server) resolveProviderCredentialForModelInventory(ctx context.Context,
 		}
 		return value, nil
 	}
-
-	if strings.EqualFold(strings.TrimSpace(profile.ProviderType), provider.ProviderCodex) {
-		if s.auth == nil {
-			return "", fmt.Errorf("provider profile %q has no credential source; set secret_ref or connect codex auth", profile.ID)
-		}
-		if cred, err := s.auth.StoredCredential(ctx); err == nil {
-			if cred.Connected && strings.TrimSpace(cred.APIKey) != "" {
-				return strings.TrimSpace(cred.APIKey), nil
-			}
-		}
-		token, err := s.auth.EnsureValidToken(ctx, "operator")
-		if err != nil {
-			return "", fmt.Errorf("provider profile %q is not connected: %w", profile.ID, err)
-		}
-		value := strings.TrimSpace(token.AccessToken)
-		if value == "" {
-			return "", fmt.Errorf("provider profile %q connected credential has empty access token", profile.ID)
-		}
-		return value, nil
-	}
-
 	return "", fmt.Errorf("provider profile %q requires secret_ref for model inventory", profile.ID)
 }
 
@@ -4270,6 +4074,17 @@ func (s *server) ensureSecretExists(ctx context.Context, secretRef string) error
 	}
 	if !found {
 		return fmt.Errorf("secret %q not found", secretRef)
+	}
+	return nil
+}
+
+func (s *server) ensureProviderSecretRefRequired(profile provider.ProviderProfile) error {
+	providerType := canonicalProviderType(profile.ProviderType)
+	if providerType == "" {
+		return fmt.Errorf("unsupported provider_type %q", profile.ProviderType)
+	}
+	if strings.TrimSpace(profile.SecretRef) == "" {
+		return fmt.Errorf("provider profile %q requires secret_ref", profile.ID)
 	}
 	return nil
 }

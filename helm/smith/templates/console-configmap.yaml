@@ -12,8 +12,11 @@ data:
   SMITH_OPERATOR_PERMISSIONS: {{ .Values.console.operatorPermissions | quote }}
   SMITH_FEATURE_TASKS_ENABLED: {{ .Values.console.featureFlags.tasks | quote }}
   SMITH_FEATURE_CAPABILITY_ENABLED: {{ .Values.console.featureFlags.featureCapability | quote }}
+  SMITH_FEATURE_CHAT_ENABLED: {{ .Values.console.featureFlags.chat | quote }}
+  SMITH_FEATURE_SECRETS_ENABLED: {{ .Values.console.featureFlags.secrets | quote }}
   SMITH_FEATURE_CAPABILITY_ACCESS: {{ .Values.console.featureCapabilityAccess | quote }}
   SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED: {{ .Values.console.featureFlags.providerClaude | quote }}
   SMITH_FEATURE_PROVIDER_GEMINI_ENABLED: {{ .Values.console.featureFlags.providerGemini | quote }}
+  SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED: {{ .Values.console.featureFlags.prdDiagnosticResolve | quote }}
   SMITH_SHOW_COMING_SOON_PROVIDERS: {{ .Values.console.showComingSoonProviders | quote }}
 {{- end }}

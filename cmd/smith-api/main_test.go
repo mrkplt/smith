@@ -2276,11 +2276,13 @@ func TestHandleProviderByIDSupportsAPIAliasAndAuditsConfigChanges(t *testing.T) 
 		projectStore: projectStore,
 		secrets:      provider.NewFileSecretStore(),
 	}
+	require.NoError(t, s.secrets.PutSecret(context.Background(), provider.SettingsSecret{ID: "openai-key", Value: "sk-live-test"}))
 
 	putRec := httptest.NewRecorder()
 	putReq := httptest.NewRequest(http.MethodPut, "/api/providers/openai-work", strings.NewReader(`{
 		"id":"openai-work",
 		"provider_type":"openai",
+		"secret_ref":"openai-key",
 		"default_model":"gpt-5.4"
 	}`))
 	s.handleProviderByID(putRec, putReq)
@@ -2418,7 +2420,7 @@ func TestHandleProviderByIDModelsRejectsMissingCredentialSource(t *testing.T) {
 	s.handleProviderByID(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), "no credential source")
+	assert.Contains(t, rec.Body.String(), "requires secret_ref")
 }
 
 func TestHandleProjectsSupportsAPIAliasAndAuditsConfigChanges(t *testing.T) {
@@ -2652,6 +2654,34 @@ func TestHandleProvidersRejectsUnknownSecretRef(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "secret")
+}
+
+func TestHandleProvidersRejectsMissingSecretRefForCodex(t *testing.T) {
+	s := &server{
+		providers: provider.NewFileProviderProfileStore(),
+		secrets:   provider.NewFileSecretStore(),
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(`{
+		"id":"codex-team",
+		"provider_type":"codex"
+	}`))
+	s.handleProviders(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "requires secret_ref")
+}
+
+func TestResolveProviderCredentialForModelInventoryRequiresSecretRefForCodex(t *testing.T) {
+	s := &server{secrets: provider.NewFileSecretStore()}
+	_, err := s.resolveProviderCredentialForModelInventory(context.Background(), provider.ProviderProfile{
+		ID:           "codex-default",
+		ProviderType: provider.ProviderCodex,
+		SecretRef:    "",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "requires secret_ref")
 }
 
 func TestHandleProvidersRejectsUnsupportedProviderType(t *testing.T) {

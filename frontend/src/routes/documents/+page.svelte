@@ -6,8 +6,15 @@
 	import DocumentsSidebar from '$lib/components/DocumentsSidebar.svelte';
 	import DocumentWorkspace from '$lib/components/DocumentWorkspace.svelte';
 	import DocumentsPageActions from '$lib/components/DocumentsPageActions.svelte';
+	import { isChatEnabled, isPRDDiagnosticResolveEnabled } from '$lib/feature-flags';
 	import { buildDocument, deleteDocument, saveDocumentDraft, toggleDocumentArchive } from '$lib/documents/mutations';
-	import { inferPRDFormat, validatePRDContent, type PRDFormat, type PRDValidationReport } from '$lib/documents/prd-validation';
+	import {
+		inferPRDFormat,
+		validatePRDContent,
+		type PRDFormat,
+		type PRDValidationDiagnostic,
+		type PRDValidationReport
+	} from '$lib/documents/prd-validation';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
 
@@ -34,6 +41,7 @@
 		content: string;
 		format: PRDFormat;
 		validationReport: PRDValidationReport | null;
+		targetedDiagnostic?: PRDValidationDiagnostic;
 		documentId?: string;
 		documentVersion?: string;
 		documentStatus?: string;
@@ -60,6 +68,8 @@ const docLayoutColumns = $derived(
 		? '260px minmax(0, 1fr) minmax(440px, 560px)'
 		: '260px minmax(0, 1fr)'
 );
+const diagnosticResolveEnabled = $derived(isPRDDiagnosticResolveEnabled());
+const chatFeatureEnabled = $derived(isChatEnabled());
 
 	const guidepostFocusContext = $derived.by(() => {
 		const selected = selectedDoc;
@@ -275,11 +285,16 @@ const docLayoutColumns = $derived(
 		content: string;
 		format: PRDFormat;
 		validationReport: PRDValidationReport | null;
+		targetedDiagnostic?: PRDValidationDiagnostic;
 		documentId?: string;
 		documentVersion?: string;
 		documentStatus?: string;
 		projectId?: string;
 	} | null) {
+		if (!chatFeatureEnabled) {
+			pushToast('Chat is disabled in this environment.', 'err');
+			return;
+		}
 		chatSeed = seed;
 		if (chatOpen) {
 			chatOpen = false;
@@ -289,6 +304,10 @@ const docLayoutColumns = $derived(
 	}
 
 	function refineWithAI() {
+		if (!chatFeatureEnabled) {
+			pushToast('Chat is disabled in this environment.', 'err');
+			return;
+		}
 		if (editContent.trim() === '') {
 			pushToast('Add or upload PRD content before requesting refinement.', 'err');
 			return;
@@ -300,6 +319,30 @@ const docLayoutColumns = $derived(
 			content: editContent,
 			format: editFormat,
 			validationReport,
+			documentId: selectedDoc?.id ? String(selectedDoc.id) : undefined,
+			documentVersion: selectedDoc?.updated_at ? String(selectedDoc.updated_at) : undefined,
+			documentStatus: selectedDoc?.status ? String(selectedDoc.status) : undefined,
+			projectId: resolvedProjectID === '' ? undefined : resolvedProjectID
+		});
+	}
+
+	function runDiagnosticAgentAction(diagnostic: PRDValidationDiagnostic) {
+		if (!chatFeatureEnabled) {
+			pushToast('Chat is disabled in this environment.', 'err');
+			return;
+		}
+		if (editContent.trim() === '') {
+			pushToast('Add PRD content before running AI actions.', 'err');
+			return;
+		}
+		const resolvedProjectID = String(editProjectID || selectedDoc?.project_id || '').trim();
+		pushToast(`Resolving ${diagnostic.code} with AI agent.`, 'muted');
+		void openChatWithSeed({
+			title: editTitle || 'Draft PRD',
+			content: editContent,
+			format: editFormat,
+			validationReport,
+			targetedDiagnostic: diagnostic,
 			documentId: selectedDoc?.id ? String(selectedDoc.id) : undefined,
 			documentVersion: selectedDoc?.updated_at ? String(selectedDoc.updated_at) : undefined,
 			documentStatus: selectedDoc?.status ? String(selectedDoc.status) : undefined,
@@ -386,6 +429,8 @@ const docLayoutColumns = $derived(
 		{validationReport}
 		{validationBusy}
 		validationError={validationError}
+		chatEnabled={chatFeatureEnabled}
+		resolveDiagnosticEnabled={diagnosticResolveEnabled}
 		projects={$appState.projects}
 		onEditTitle={(value) => editTitle = value}
 		onEditContent={(value) => editContent = value}
@@ -397,13 +442,14 @@ const docLayoutColumns = $derived(
 		onCancelEdit={cancelEdit}
 		onRefreshValidation={refreshValidation}
 		onRefineWithAI={refineWithAI}
+		onResolveDiagnostic={runDiagnosticAgentAction}
 		onBuildDoc={buildDoc}
 		onCreateTask={createTaskFromDocument}
 		onArchiveDoc={archiveDoc}
 		onDeleteDoc={deleteDoc}
 	/>
 
-	{#if chatOpen}
+	{#if chatFeatureEnabled && chatOpen}
 		<DocChatModal
 			open={chatOpen}
 			onClose={() => chatOpen = false}

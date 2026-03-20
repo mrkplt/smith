@@ -18,7 +18,7 @@
   import ProjectEditorDrawer from '$lib/components/ProjectEditorDrawer.svelte';
   import ProviderEditorDrawer from '$lib/components/ProviderEditorDrawer.svelte';
   import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
-  import { isProviderTypeEnabled } from '$lib/feature-flags';
+  import { isChatEnabled, isProviderTypeEnabled, isSecretsEnabled } from '$lib/feature-flags';
   import { includeSelectedModel, loadProviderModels } from '$lib/providers/models';
   import { appState, pushToast } from '$lib/stores';
   import { apiBaseUrl, chatBaseUrl, deleteJSON, fetchJSON, postJSON, requestJSON } from '$lib/api';
@@ -31,44 +31,55 @@
     description: string;
   };
 
-  const sections: SettingsNavItem[] = [
-    {
-      id: 'general',
-      label: 'General',
-      description: 'Installation context and system defaults'
-    },
-    {
-      id: 'providers',
-      label: 'Providers',
-      description: 'Reusable model and credential profiles'
-    },
-    {
-      id: 'projects',
-      label: 'Projects',
-      description: 'Repository runtime contexts for loops'
-    },
-    {
-      id: 'chat',
-      label: 'Chat',
-      description: 'Operator assistant behavior and defaults'
-    },
-    {
-      id: 'integrations',
-      label: 'Integrations',
-      description: 'External systems and repository connections'
-    },
-    {
-      id: 'secrets',
-      label: 'Secrets',
-      description: 'Credential references used by settings profiles'
+  const chatFeatureEnabled = $derived(isChatEnabled());
+  const secretsFeatureEnabled = $derived(isSecretsEnabled());
+
+  const sections = $derived.by((): SettingsNavItem[] => {
+    const base: SettingsNavItem[] = [
+      {
+        id: 'general',
+        label: 'General',
+        description: 'Installation context and system defaults'
+      },
+      {
+        id: 'providers',
+        label: 'Providers',
+        description: 'Reusable model and credential profiles'
+      },
+      {
+        id: 'projects',
+        label: 'Projects',
+        description: 'Repository runtime contexts for loops'
+      }
+    ];
+    if (chatFeatureEnabled) {
+      base.push({
+        id: 'chat',
+        label: 'Chat',
+        description: 'Operator assistant behavior and defaults'
+      });
     }
-  ];
+    base.push(
+      {
+        id: 'integrations',
+        label: 'Integrations',
+        description: 'External systems and repository connections'
+      }
+    );
+    if (secretsFeatureEnabled) {
+      base.push({
+        id: 'secrets',
+        label: 'Secrets',
+        description: 'Credential references used by settings profiles'
+      });
+    }
+    return base;
+  });
 
   let providerProfileID = $state('');
   let defaultModel = $state('');
   let modelOptions = $state<string[]>([]);
   let modelOptionsBusy = $state(false);
-  let codexCredentialStatus = $state<any>({ connected: false });
   let thinkingLevel = $state('balanced');
   let providerApiKey = $state('');
   let preferFullScreen = $state(false);
@@ -112,7 +123,6 @@
     buildLabel = String(config.build || config.version || 'local');
 
     void loadProviderProfiles().then(loadChatSettingsFromBrowser);
-    void loadCodexCredentialStatus();
     void loadSecrets();
     void refreshOnboardingState();
   });
@@ -125,36 +135,6 @@
         : [];
     } catch (err: any) {
       pushToast(err?.message || 'Failed to load provider profiles', 'err');
-    }
-  }
-
-  async function loadCodexCredentialStatus() {
-    try {
-      const response = await fetchJSON('/v1/auth/codex/credential');
-      codexCredentialStatus = response || { connected: false };
-      appState.update((state) => ({
-        ...state,
-        providerStatus: {
-          ...state.providerStatus,
-          codex: {
-            ...(state.providerStatus?.codex || {}),
-            ...(response || {}),
-            connected: !!response?.connected
-          }
-        }
-      }));
-    } catch {
-      codexCredentialStatus = { connected: false };
-      appState.update((state) => ({
-        ...state,
-        providerStatus: {
-          ...state.providerStatus,
-          codex: {
-            ...(state.providerStatus?.codex || {}),
-            connected: false
-          }
-        }
-      }));
     }
   }
 
@@ -208,7 +188,7 @@
 
   function handleProviderSaved() {
     void loadProviderProfiles();
-    void loadCodexCredentialStatus();
+    void loadSecrets();
     void refreshOnboardingState();
   }
 
@@ -303,9 +283,9 @@
   }
 
   function providerStatus(providerProfile: any): string {
-    const providerType = String(providerProfile?.provider_type || '').toLowerCase();
-    if (providerType === 'codex') {
-      return codexCredentialStatus?.connected ? 'connected' : 'needs auth';
+    const secretRef = String(providerProfile?.secret_ref || '').trim();
+    if (secretRef === '') {
+      return 'needs secret';
     }
     return 'configured';
   }
@@ -320,6 +300,12 @@
   }
 
   function parseSection(value: string | null): SettingsSection {
+    if (value === 'chat' && !chatFeatureEnabled) {
+      return 'general';
+    }
+    if (value === 'secrets' && !secretsFeatureEnabled) {
+      return 'general';
+    }
     if (value === 'providers' || value === 'projects' || value === 'chat' || value === 'general' || value === 'integrations' || value === 'secrets') {
       return value;
     }
@@ -597,7 +583,10 @@
                     <div class="w-12 h-12 bg-[#86BC25]/10 flex items-center justify-center text-[#86BC25]">
                       <BrainSolid size="lg" />
                     </div>
-                    <Badge color={providerConnection === 'connected' ? 'green' : 'gray'} class={`uppercase text-[10px] font-bold px-2 py-0.5 rounded-none ${providerConnection === 'connected' ? 'bg-[#86BC25] text-black' : 'bg-slate-800 text-gray-300'}`}>
+                    <Badge
+                      color={providerConnection === 'needs secret' ? 'red' : 'green'}
+                      class={`uppercase text-[10px] font-bold px-2 py-0.5 rounded-none ${providerConnection === 'needs secret' ? 'bg-red-900/40 text-red-200 border border-red-700/50' : 'bg-[#86BC25] text-black'}`}
+                    >
                       {providerConnection}
                     </Badge>
                   </div>

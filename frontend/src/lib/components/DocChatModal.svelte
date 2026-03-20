@@ -10,16 +10,23 @@
   import { isProviderTypeEnabled } from '$lib/feature-flags';
   import { connectPRDChat, sendPRDChatMessage, type DocumentPatchProposal, type PRDChatMessage, type PRDChatSocket } from '$lib/chat/prd-chat';
 
-  interface PRDDraftSeed {
-    title: string;
-    content: string;
-    format: 'markdown' | 'json';
-    validationReport: PRDValidationReport | null;
-    documentId?: string;
-    documentVersion?: string;
-    documentStatus?: string;
-    projectId?: string;
-  }
+	interface PRDDraftSeed {
+		title: string;
+		content: string;
+		format: 'markdown' | 'json';
+		validationReport: PRDValidationReport | null;
+		targetedDiagnostic?: {
+			code: string;
+			message: string;
+			suggestion?: string;
+			path?: string;
+			storyId?: string;
+		};
+		documentId?: string;
+		documentVersion?: string;
+		documentStatus?: string;
+		projectId?: string;
+	}
 
 	interface Props {
 		open: boolean;
@@ -236,7 +243,12 @@
 
 		return [
 			`I have an existing PRD titled "${seed.title || 'Untitled PRD'}" in ${seed.format.toUpperCase()} format.`,
-			'Help me improve it so it satisfies Smith PRD readiness validation criteria and keeps the intent intact.',
+			seed.targetedDiagnostic
+				? `Resolve this specific readiness issue with minimal, precise edits while preserving intent: [${seed.targetedDiagnostic.code}] ${seed.targetedDiagnostic.message}`
+				: 'Help me improve it so it satisfies Smith PRD readiness validation criteria and keeps the intent intact.',
+			seed.targetedDiagnostic?.suggestion
+				? `Diagnostic suggestion: ${seed.targetedDiagnostic.suggestion}`
+				: '',
 			highlighted !== ''
 				? `Current validation findings:\n${highlighted}`
 				: 'Current validation findings: none yet, but please proactively strengthen quality gates and acceptance criteria.',

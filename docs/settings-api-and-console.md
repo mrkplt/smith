@@ -41,7 +41,7 @@ Provider profile payload fields:
 - `endpoint`
 - `default_model`
 - `capabilities` (string array)
-- `secret_ref` (optional; must reference an existing secret)
+- `secret_ref` (required; must reference an existing secret)
 - `options` (string map)
 - `updated_at`
 
@@ -52,6 +52,7 @@ Provider profile payload fields:
 - If `provider_type` is omitted, it defaults to `codex`.
 - Unsupported provider types are rejected; legacy aliases normalize as: `openai -> codex`, `anthropic -> claude`, `google -> gemini`.
 - If `default_model`/`capabilities` are omitted, provider-specific defaults are applied.
+- Provider profiles require `secret_ref` for all provider types (including `codex`).
 - `DELETE /v1/providers/{id}` returns conflict when any project references the profile.
 - `codex-default` is protected and cannot be deleted.
 
@@ -174,9 +175,9 @@ The web console centralizes configuration at `/settings` with section navigation
 - `General`
 - `Providers`
 - `Projects`
-- `Chat`
+- `Chat` (feature-flagged)
 - `Integrations`
-- `Secrets`
+- `Secrets` (feature-flagged)
 
 Runtime surfaces in primary navigation:
 
@@ -212,9 +213,9 @@ Chat UX notes:
 
 Provider credential UX notes:
 
-- Provider profile editor includes a credential status panel for Codex with masked key/account metadata.
-- Operators can rotate credentials by providing a new API key and saving the provider profile.
-- Operators can revoke Codex credentials directly from the provider editor.
+- Provider profile editor captures credential label/identifier and API key directly in the provider form.
+- Save flow upserts secret value first, then writes provider profile `secret_ref` to the credential label.
+- Editing can keep existing key by leaving API key blank when credential label remains unchanged; providing a key rotates it.
 
 ## Backing stores
 

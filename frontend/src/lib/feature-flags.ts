@@ -1,8 +1,11 @@
 type RuntimeConfig = {
   featureTasksEnabled?: boolean | string;
   featureCapabilityEnabled?: boolean | string;
+  featureChatEnabled?: boolean | string;
+  featureSecretsEnabled?: boolean | string;
   featureProviderClaudeEnabled?: boolean | string;
   featureProviderGeminiEnabled?: boolean | string;
+  featurePRDDiagnosticResolveEnabled?: boolean | string;
 };
 
 /** Parses a runtime boolean-like value (boolean or string) into strict boolean/null. */
@@ -47,6 +50,16 @@ export function isFeatureCapabilityEnabled(config = getRuntimeConfig()): boolean
   return parseFlag(config.featureCapabilityEnabled, false);
 }
 
+/** Returns whether chat surfaces are enabled in the current runtime config. */
+export function isChatEnabled(config = getRuntimeConfig()): boolean {
+  return parseFlag(config.featureChatEnabled, true);
+}
+
+/** Returns whether Secrets management surface is enabled in the current runtime config. */
+export function isSecretsEnabled(config = getRuntimeConfig()): boolean {
+  return parseFlag(config.featureSecretsEnabled, false);
+}
+
 /** Returns whether a shell nav/runtime feature is visible in current config. */
 export function isFeatureVisible(featureID: string, config = getRuntimeConfig()): boolean {
   if (featureID === 'tasks') {
@@ -54,6 +67,12 @@ export function isFeatureVisible(featureID: string, config = getRuntimeConfig())
   }
   if (featureID === 'feature-capability') {
     return isFeatureCapabilityEnabled(config);
+  }
+  if (featureID === 'chat') {
+    return isChatEnabled(config);
+  }
+  if (featureID === 'secrets') {
+    return isSecretsEnabled(config);
   }
   return true;
 }
@@ -71,4 +90,9 @@ export function isProviderTypeEnabled(providerType: string, config = getRuntimeC
     return parseFlag(config.featureProviderGeminiEnabled, false);
   }
   return false;
+}
+
+/** Returns whether PRD diagnostic-level Resolve actions are enabled in Documents. */
+export function isPRDDiagnosticResolveEnabled(config = getRuntimeConfig()): boolean {
+  return parseFlag(config.featurePRDDiagnosticResolveEnabled, false);
 }

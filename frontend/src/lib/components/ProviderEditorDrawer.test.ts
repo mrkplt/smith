@@ -32,7 +32,7 @@ import ProviderEditorDrawer from './ProviderEditorDrawer.svelte';
 
 describe('ProviderEditorDrawer', () => {
 	const catalog = [
-		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
+		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
 		{ id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
 		{ id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
 	];
@@ -43,9 +43,6 @@ describe('ProviderEditorDrawer', () => {
 		vi.mocked(api.getJSON).mockImplementation(async (path: string) => {
 			if (path === '/v1/providers/catalog') {
 				return catalog;
-			}
-			if (path === '/v1/auth/codex/credential') {
-				return { connected: false };
 			}
 			return {};
 		});
@@ -108,7 +105,7 @@ describe('ProviderEditorDrawer', () => {
 		cleanup();
 	});
 
-	it('submits secret_ref in provider profile payload', async () => {
+	it('creates secret from API key and submits provider with secret_ref', async () => {
 		const onClose = vi.fn();
 		const onSaved = vi.fn();
 		const { container, getByTestId } = render(ProviderEditorDrawer, {
@@ -116,26 +113,38 @@ describe('ProviderEditorDrawer', () => {
 			onClose,
 			onSaved,
 			provider: null,
-			secretOptions: [{ id: 'openai-key', name: 'OpenAI key' }]
+			secretOptions: []
 		});
 
 		await fireEvent.input(getByTestId('provider-profile-id'), { target: { value: 'openai-work' } });
 		await fireEvent.input(getByTestId('provider-display-name'), { target: { value: 'OpenAI Work' } });
-		await fireEvent.input(getByTestId('provider-secret-ref'), { target: { value: 'openai-key' } });
+		await fireEvent.input(getByTestId('provider-credential-id'), { target: { value: 'openai-key' } });
+		await fireEvent.input(getByTestId('provider-api-key'), { target: { value: 'sk-test-123' } });
 
 		const form = container.querySelector('form');
 		expect(form).toBeTruthy();
 		await fireEvent.submit(form!);
 
-		await waitFor(() => expect(api.postJSON).toHaveBeenCalled());
-		const [path, payload] = vi.mocked(api.postJSON).mock.calls[0] || [];
-		expect(path).toBe('/v1/providers');
-		expect(payload).toMatchObject({
+		await waitFor(() => expect(api.postJSON).toHaveBeenCalledTimes(2));
+		expect(api.postJSON).toHaveBeenNthCalledWith(
+			1,
+			'/v1/secrets',
+			expect.objectContaining({
+				id: 'openai-key',
+				name: 'openai-key',
+				value: 'sk-test-123'
+			})
+		);
+		expect(api.postJSON).toHaveBeenNthCalledWith(
+			2,
+			'/v1/providers',
+			expect.objectContaining({
 			id: 'openai-work',
 			name: 'OpenAI Work',
 			provider_type: 'codex',
 			secret_ref: 'openai-key'
-		});
+			})
+		);
 		expect(stores.pushToast).toHaveBeenCalledWith('Provider profile created successfully', 'ok');
 		expect(onSaved).toHaveBeenCalled();
 		expect(onClose).toHaveBeenCalled();
@@ -143,7 +152,7 @@ describe('ProviderEditorDrawer', () => {
 		cleanup();
 	});
 
-	it('requires secret reference for providers that declare secret_ref', async () => {
+	it('requires credential label for providers that declare secret_ref', async () => {
 		(window as any).__SMITH_CONFIG__ = {
 			featureProviderClaudeEnabled: true
 		};
@@ -164,7 +173,7 @@ describe('ProviderEditorDrawer', () => {
 		await fireEvent.submit(form!);
 
 		await waitFor(() => {
-			expect(stores.pushToast).toHaveBeenCalledWith('Secret reference is required for Claude providers', 'err');
+			expect(stores.pushToast).toHaveBeenCalledWith('Credential label is required for Claude providers', 'err');
 		});
 		expect(api.requestJSON).not.toHaveBeenCalled();
 		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/providers', expect.anything());
@@ -172,7 +181,7 @@ describe('ProviderEditorDrawer', () => {
 		cleanup();
 	});
 
-	it('rejects invalid codex api key format before save', async () => {
+	it('requires credential label for codex providers', async () => {
 		const { container, getByTestId } = render(ProviderEditorDrawer, {
 			open: true,
 			onClose: vi.fn(),
@@ -182,24 +191,45 @@ describe('ProviderEditorDrawer', () => {
 		});
 
 		await fireEvent.input(getByTestId('provider-profile-id'), { target: { value: 'codex-team' } });
-		const apiKeyField = container.querySelector('input[placeholder="sk-..."]') as HTMLInputElement;
-		expect(apiKeyField).toBeTruthy();
-		await fireEvent.input(apiKeyField, { target: { value: 'invalid-key' } });
 
 		const form = container.querySelector('form');
 		expect(form).toBeTruthy();
 		await fireEvent.submit(form!);
 
 		await waitFor(() => {
-			expect(stores.pushToast).toHaveBeenCalledWith('Codex API key must start with sk-', 'err');
+			expect(stores.pushToast).toHaveBeenCalledWith('Credential label is required for Codex providers', 'err');
 		});
 		expect(api.requestJSON).not.toHaveBeenCalled();
-		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/auth/codex/connect/api-key', expect.anything());
+		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/providers', expect.anything());
 
 		cleanup();
 	});
 
-	it('treats openai provider alias as codex for credential save', async () => {
+	it('requires API key when creating a new credential label', async () => {
+		const { container, getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		await fireEvent.input(getByTestId('provider-profile-id'), { target: { value: 'codex-team' } });
+		await fireEvent.input(getByTestId('provider-credential-id'), { target: { value: 'codex-team-key' } });
+
+		const form = container.querySelector('form');
+		expect(form).toBeTruthy();
+		await fireEvent.submit(form!);
+
+		await waitFor(() => {
+			expect(stores.pushToast).toHaveBeenCalledWith('API key is required when creating a new credential label', 'err');
+		});
+		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/providers', expect.anything());
+
+		cleanup();
+	});
+
+	it('treats openai provider alias as codex and keeps existing credential label without key rotation', async () => {
 		const { container } = render(ProviderEditorDrawer, {
 			open: true,
 			onClose: vi.fn(),
@@ -208,14 +238,15 @@ describe('ProviderEditorDrawer', () => {
 				id: 'openai-work',
 				name: 'OpenAI Work',
 				provider_type: 'openai',
-				default_model: 'gpt-4.1'
+				default_model: 'gpt-4.1',
+				secret_ref: 'openai-key'
 			},
 			secretOptions: []
 		});
 
-		const apiKeyField = container.querySelector('input[placeholder="sk-..."]') as HTMLInputElement;
-		expect(apiKeyField).toBeTruthy();
-		await fireEvent.input(apiKeyField, { target: { value: 'sk-openai-123' } });
+		const secretField = container.querySelector('[data-testid="provider-credential-id"]') as HTMLInputElement;
+		expect(secretField).toBeTruthy();
+		await fireEvent.input(secretField, { target: { value: 'openai-key' } });
 
 		const form = container.querySelector('form');
 		expect(form).toBeTruthy();
@@ -225,48 +256,9 @@ describe('ProviderEditorDrawer', () => {
 		expect(api.requestJSON).toHaveBeenCalledWith(
 			'/v1/providers/openai-work',
 			'PUT',
-			expect.objectContaining({ provider_type: 'codex' })
+			expect.objectContaining({ provider_type: 'codex', secret_ref: 'openai-key' })
 		);
-		expect(api.postJSON).toHaveBeenCalledWith('/v1/auth/codex/connect/api-key', {
-			actor: 'operator',
-			api_key: 'sk-openai-123',
-			account_id: 'default'
-		});
-
-		cleanup();
-	});
-
-	it('revokes codex credential from drawer action', async () => {
-		vi.mocked(api.getJSON).mockImplementation(async (path: string) => {
-			if (path === '/v1/providers/catalog') {
-				return catalog;
-			}
-			if (path === '/v1/auth/codex/credential') {
-				return {
-					connected: true,
-					account_id: 'default',
-					api_key_masked: 'sk-***1234',
-					last_refresh_at: '2026-03-16T00:00:00Z'
-				};
-			}
-			return {};
-		});
-
-		const { getByTestId } = render(ProviderEditorDrawer, {
-			open: true,
-			onClose: vi.fn(),
-			onSaved: vi.fn(),
-			provider: null,
-			secretOptions: []
-		});
-
-		const revokeButton = await waitFor(() => getByTestId('provider-codex-revoke'));
-		await fireEvent.click(revokeButton);
-
-		await waitFor(() => {
-			expect(api.postJSON).toHaveBeenCalledWith('/v1/auth/codex/disconnect', { actor: 'operator' });
-		});
-		expect(stores.pushToast).toHaveBeenCalledWith('Codex credential revoked', 'ok');
+		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
 
 		cleanup();
 	});

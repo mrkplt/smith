@@ -523,8 +523,11 @@
           "properties": {
             "tasks": { "type": "boolean" },
             "featureCapability": { "type": "boolean" },
+            "chat": { "type": "boolean" },
+            "secrets": { "type": "boolean" },
             "providerClaude": { "type": "boolean" },
-            "providerGemini": { "type": "boolean" }
+            "providerGemini": { "type": "boolean" },
+            "prdDiagnosticResolve": { "type": "boolean" }
           },
           "required": ["tasks", "featureCapability"]
         },
