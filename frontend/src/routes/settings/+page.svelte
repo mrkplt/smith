@@ -18,7 +18,7 @@
   import ProjectEditorDrawer from '$lib/components/ProjectEditorDrawer.svelte';
   import ProviderEditorDrawer from '$lib/components/ProviderEditorDrawer.svelte';
   import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
-  import { isChatEnabled, isProviderTypeEnabled, isSecretsEnabled } from '$lib/feature-flags';
+  import { isChatEnabled, isIntegrationsEnabled, isProviderTypeEnabled, isSecretsEnabled } from '$lib/feature-flags';
   import { includeSelectedModel, loadProviderModels } from '$lib/providers/models';
   import { appState, pushToast } from '$lib/stores';
   import { apiBaseUrl, chatBaseUrl, deleteJSON, fetchJSON, postJSON, requestJSON } from '$lib/api';
@@ -32,6 +32,7 @@
   };
 
   const chatFeatureEnabled = $derived(isChatEnabled());
+  const integrationsFeatureEnabled = $derived(isIntegrationsEnabled());
   const secretsFeatureEnabled = $derived(isSecretsEnabled());
 
   const sections = $derived.by((): SettingsNavItem[] => {
@@ -59,13 +60,13 @@
         description: 'Operator assistant behavior and defaults'
       });
     }
-    base.push(
-      {
+    if (integrationsFeatureEnabled) {
+      base.push({
         id: 'integrations',
         label: 'Integrations',
         description: 'External systems and repository connections'
-      }
-    );
+      });
+    }
     if (secretsFeatureEnabled) {
       base.push({
         id: 'secrets',
@@ -123,7 +124,9 @@
     buildLabel = String(config.build || config.version || 'local');
 
     void loadProviderProfiles().then(loadChatSettingsFromBrowser);
-    void loadSecrets();
+    if (secretsFeatureEnabled) {
+      void loadSecrets();
+    }
     void refreshOnboardingState();
   });
 
@@ -164,6 +167,10 @@
   }
 
   async function loadSecrets() {
+    if (!secretsFeatureEnabled) {
+      secrets = [];
+      return;
+    }
     try {
       const records = await fetchJSON('/v1/secrets');
       secrets = Array.isArray(records) ? records : [];
@@ -188,7 +195,9 @@
 
   function handleProviderSaved() {
     void loadProviderProfiles();
-    void loadSecrets();
+    if (secretsFeatureEnabled) {
+      void loadSecrets();
+    }
     void refreshOnboardingState();
   }
 
@@ -304,6 +313,9 @@
       return 'general';
     }
     if (value === 'secrets' && !secretsFeatureEnabled) {
+      return 'general';
+    }
+    if (value === 'integrations' && !integrationsFeatureEnabled) {
       return 'general';
     }
     if (value === 'providers' || value === 'projects' || value === 'chat' || value === 'general' || value === 'integrations' || value === 'secrets') {

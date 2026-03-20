@@ -5,6 +5,19 @@ const config = (typeof window !== 'undefined' ? (window as any).__SMITH_CONFIG__
 export const apiBaseUrl = (config.apiBaseUrl || "/api").replace(/\/+$/, "");
 export const chatBaseUrl = (config.chatBaseUrl || "/chat").replace(/\/+$/, "");
 
+/** Represents a non-success HTTP response from the Smith API. */
+export class APIRequestError extends Error {
+  status: number;
+  body: any;
+
+  constructor(status: number, message: string, body: any = {}) {
+    super(message);
+    this.name = 'APIRequestError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 /** Fetches a resource and aborts when the timeout elapses. */
 export async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 20000, label?: string) {
   const controller = new AbortController();
@@ -60,7 +73,7 @@ export async function requestJSON(path: string, method: string, payload?: any) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = body.error || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new APIRequestError(res.status, msg, body);
   }
   return body;
 }

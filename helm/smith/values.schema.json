@@ -524,6 +524,7 @@
             "tasks": { "type": "boolean" },
             "featureCapability": { "type": "boolean" },
             "chat": { "type": "boolean" },
+            "integrations": { "type": "boolean" },
             "secrets": { "type": "boolean" },
             "providerClaude": { "type": "boolean" },
             "providerGemini": { "type": "boolean" },

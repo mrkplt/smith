@@ -230,7 +230,7 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  "$(SMITH_BOOTSTRAP_SCRIPT)" --env-file "$(SMITH_BOOTSTRAP_ENV_FILE)" --namespace "$(SMITH_NAMESPACE)" --release "$(SMITH_RELEASE)" --skip-garage; \
 	fi
 	$(MAKE) --no-print-directory images-local
-	helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
+	@helm upgrade --install "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  --set-string secrets.managed.gitPat="$(SMITH_LOCAL_GIT_PAT)" \

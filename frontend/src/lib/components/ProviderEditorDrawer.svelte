@@ -192,11 +192,16 @@
 					description: `${selectedProviderLabel} API key`,
 					value: normalizedAPIKey
 				};
-				const hasExistingSecret = secretOptions.some((secretRecord) => String(secretRecord?.id || '').trim() === normalizedSecretRef);
-				if (hasExistingSecret) {
-					await requestJSON(`/v1/secrets/${encodeURIComponent(normalizedSecretRef)}`, 'PUT', secretPayload);
-				} else {
-					await postJSON('/v1/secrets', secretPayload);
+				const secretPath = `/v1/secrets/${encodeURIComponent(normalizedSecretRef)}`;
+				try {
+					await requestJSON(secretPath, 'PUT', secretPayload);
+				} catch (err: any) {
+					const message = String(err?.message || '').toLowerCase();
+					if (message.includes('not found')) {
+						await postJSON('/v1/secrets', secretPayload);
+					} else {
+						throw err;
+					}
 				}
 			}
 

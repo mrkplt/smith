@@ -2,6 +2,7 @@ type RuntimeConfig = {
   featureTasksEnabled?: boolean | string;
   featureCapabilityEnabled?: boolean | string;
   featureChatEnabled?: boolean | string;
+  featureIntegrationsEnabled?: boolean | string;
   featureSecretsEnabled?: boolean | string;
   featureProviderClaudeEnabled?: boolean | string;
   featureProviderGeminiEnabled?: boolean | string;
@@ -55,6 +56,11 @@ export function isChatEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featureChatEnabled, false);
 }
 
+/** Returns whether Integrations section is enabled in Settings runtime config. */
+export function isIntegrationsEnabled(config = getRuntimeConfig()): boolean {
+  return parseFlag(config.featureIntegrationsEnabled, false);
+}
+
 /** Returns whether Secrets management surface is enabled in the current runtime config. */
 export function isSecretsEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featureSecretsEnabled, false);
@@ -70,6 +76,9 @@ export function isFeatureVisible(featureID: string, config = getRuntimeConfig())
   }
   if (featureID === 'chat') {
     return isChatEnabled(config);
+  }
+  if (featureID === 'integrations') {
+    return isIntegrationsEnabled(config);
   }
   if (featureID === 'secrets') {
     return isSecretsEnabled(config);

@@ -27,6 +27,7 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` | Shows/hides Tasks route + nav and enables route access. |
 | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` | Shows/hides Feature Capability route + nav and enables route access. |
 | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` | Shows/hides operator chat surfaces (TopBar chat button, assistant route, and settings chat section). |
+| `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` | Shows/hides Integrations section in Settings. |
 | `SMITH_FEATURE_SECRETS_ENABLED` | `console.featureFlags.secrets` | `false` | Shows/hides Secrets section in Settings while retaining backend secret-ref support. |
 | `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `false` | Shows/hides Claude provider type in console provider configuration surfaces. |
 | `SMITH_FEATURE_PROVIDER_GEMINI_ENABLED` | `console.featureFlags.providerGemini` | `false` | Shows/hides Gemini provider type in console provider configuration surfaces. |

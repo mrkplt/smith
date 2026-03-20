@@ -19,6 +19,7 @@ These values are injected into `window.__SMITH_CONFIG__` from ConfigMap `smith-<
 | Tasks route and navigation (`/tasks`) | `featureTasksEnabled` | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` |
 | Feature Capability route and navigation (`/feature-capability`) | `featureCapabilityEnabled` | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` |
 | Operator chat surfaces (`/assistant`, chat drawer, document chat entry points) | `featureChatEnabled` | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` |
+| Settings Integrations section visibility | `featureIntegrationsEnabled` | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` |
 | Settings Secrets section visibility | `featureSecretsEnabled` | `SMITH_FEATURE_SECRETS_ENABLED` | `console.featureFlags.secrets` | `false` |
 | Claude provider visibility in provider selector/editor | `featureProviderClaudeEnabled` | `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `false` |
 | Gemini provider visibility in provider selector/editor | `featureProviderGeminiEnabled` | `SMITH_FEATURE_PROVIDER_GEMINI_ENABLED` | `console.featureFlags.providerGemini` | `false` |
@@ -45,6 +46,7 @@ Each feature-flagged surface has a draft PRD with explicit value statement, roll
 | `SMITH_FEATURE_CAPABILITY_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-capability-enabled-prd.md`](prds/draft/feature-flag-smith-feature-capability-enabled-prd.md) |
 | `SMITH_FEATURE_CAPABILITY_ACCESS` | [`docs/prds/draft/feature-flag-smith-feature-capability-access-prd.md`](prds/draft/feature-flag-smith-feature-capability-access-prd.md) |
 | `SMITH_FEATURE_CHAT_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-chat-enabled-prd.md`](prds/draft/feature-flag-smith-feature-chat-enabled-prd.md) |
+| `SMITH_FEATURE_INTEGRATIONS_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-integrations-enabled-prd.md`](prds/draft/feature-flag-smith-feature-integrations-enabled-prd.md) |
 | `SMITH_FEATURE_SECRETS_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-secrets-enabled-prd.md`](prds/draft/feature-flag-smith-feature-secrets-enabled-prd.md) |
 | `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-provider-claude-enabled-prd.md`](prds/draft/feature-flag-smith-feature-provider-claude-enabled-prd.md) |
 | `SMITH_FEATURE_PROVIDER_GEMINI_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-provider-gemini-enabled-prd.md`](prds/draft/feature-flag-smith-feature-provider-gemini-enabled-prd.md) |
@@ -59,6 +61,7 @@ Each feature-flagged surface has a draft PRD with explicit value statement, roll
 - `feature-capability` nav item and route are hidden when disabled.
 - Feature Capability additionally requires access (`featureCapabilityAccess=true` or `feature_capability:access` permission) when enabled.
 - Chat entry points (TopBar button, `/assistant`, and document chat controls) are hidden when chat is disabled.
+- Settings Integrations section is hidden when integrations is disabled.
 - Settings Secrets section is hidden when secrets is disabled.
 - Claude/Gemini provider types only appear when both UI and API provider flags are enabled for that provider type.
 

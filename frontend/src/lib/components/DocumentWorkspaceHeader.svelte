@@ -15,6 +15,7 @@
     onSaveDocument: () => void;
     onCancelEdit: () => void;
     onBuildDoc: () => void;
+    tasksEnabled: boolean;
     onCreateTask: () => void;
     onArchiveDoc: () => void;
     onDeleteDoc: () => void;
@@ -33,6 +34,7 @@
     onSaveDocument,
     onCancelEdit,
     onBuildDoc,
+    tasksEnabled,
     onCreateTask,
     onArchiveDoc,
     onDeleteDoc
@@ -94,14 +96,16 @@
           <RocketOutline size="xs" class="mr-1.5" />
           BUILD
         </Button>
-        <Button color="alternative" class="border-gray-800 text-[#86BC25] hover:text-white rounded-none font-bold text-[9px] tracking-widest px-3 h-7" onclick={onCreateTask} title="Create Task Contract">
-          <FileLinesOutline size="xs" class="mr-1.5" />
-          TASK
-        </Button>
+        {#if tasksEnabled}
+          <Button color="alternative" class="border-gray-800 text-[#86BC25] hover:text-white rounded-none font-bold text-[9px] tracking-widest px-3 h-7" onclick={onCreateTask} title="Create Task Contract">
+            <FileLinesOutline size="xs" class="mr-1.5" />
+            TASK
+          </Button>
+        {/if}
         <Button color="alternative" class="border-gray-800 text-gray-400 hover:text-white rounded-none px-2 h-7" onclick={onArchiveDoc} title="Archive">
           <ArchiveOutline size="xs" />
         </Button>
-        <Button color="red" class="rounded-none border-none px-2 h-7" onclick={onDeleteDoc} title="Delete">
+        <Button color="alternative" class="border-gray-800 text-red-400 hover:text-red-300 rounded-none px-2 h-7" onclick={onDeleteDoc} title="Delete">
           <TrashBinOutline size="xs" />
         </Button>
       </div>

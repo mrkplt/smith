@@ -4,6 +4,7 @@ import {
   isChatEnabled,
   isFeatureCapabilityEnabled,
   isFeatureVisible,
+  isIntegrationsEnabled,
   isPRDDiagnosticResolveEnabled,
   isProviderTypeEnabled,
   isSecretsEnabled,
@@ -29,6 +30,7 @@ describe('feature flags', () => {
     expect(isTasksEnabled({})).toBe(false);
     expect(isFeatureCapabilityEnabled({})).toBe(false);
     expect(isChatEnabled({})).toBe(false);
+    expect(isIntegrationsEnabled({})).toBe(false);
     expect(isSecretsEnabled({})).toBe(false);
   });
 
@@ -43,8 +45,16 @@ describe('feature flags', () => {
     expect(isFeatureVisible('tasks', {})).toBe(false);
     expect(isFeatureVisible('feature-capability', {})).toBe(false);
     expect(isFeatureVisible('chat', {})).toBe(false);
+    expect(isFeatureVisible('integrations', {})).toBe(false);
     expect(isFeatureVisible('secrets', {})).toBe(false);
     expect(isFeatureVisible('pods', {})).toBe(true);
+  });
+
+  it('supports runtime overrides for integrations feature gate', () => {
+    expect(isIntegrationsEnabled({ featureIntegrationsEnabled: true })).toBe(true);
+    expect(isIntegrationsEnabled({ featureIntegrationsEnabled: '1' })).toBe(true);
+    expect(isIntegrationsEnabled({ featureIntegrationsEnabled: false })).toBe(false);
+    expect(isIntegrationsEnabled({ featureIntegrationsEnabled: 'false' })).toBe(false);
   });
 
   it('supports runtime overrides for chat feature gate', () => {

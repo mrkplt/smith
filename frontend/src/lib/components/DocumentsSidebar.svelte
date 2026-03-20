@@ -1,17 +1,31 @@
 <script lang="ts">
+  import { Button } from 'flowbite-svelte';
   import { FileLinesOutline } from 'flowbite-svelte-icons';
 
   interface Props {
     projectIDs: string[];
     projectsWithDocs: Record<string, any[]>;
     selectedDocId: string | null;
+    showAll: boolean;
+    onShowAllChange: (value: boolean) => void;
     onSelectDocument: (doc: any) => void;
   }
 
-  let { projectIDs, projectsWithDocs, selectedDocId, onSelectDocument }: Props = $props();
+  let { projectIDs, projectsWithDocs, selectedDocId, showAll, onShowAllChange, onSelectDocument }: Props = $props();
 </script>
 
 <aside class="doc-list-sidebar">
+  <div class="sidebar-controls">
+    <Button
+      color="alternative"
+      class="archive-toggle rounded-none border-gray-800 text-gray-300 hover:text-white font-bold uppercase text-[9px] tracking-widest h-7 px-3"
+      onclick={() => onShowAllChange(!showAll)}
+      title="Toggle archived documents"
+    >
+      {showAll ? 'Hide Archived' : 'Show Archived'}
+    </Button>
+  </div>
+
   {#each projectIDs as pid}
     <div class="project-group">
       <div class="project-header">
@@ -46,6 +60,10 @@
     flex-direction: column;
     gap: 24px;
     border-right: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .sidebar-controls {
+    padding: 0 24px;
   }
 
   .project-header {

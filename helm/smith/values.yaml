@@ -188,6 +188,7 @@ console:
     tasks: false
     featureCapability: false
     chat: false
+    integrations: false
     secrets: false
     providerClaude: false
     providerGemini: false

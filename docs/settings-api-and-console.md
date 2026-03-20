@@ -4,7 +4,7 @@
 
 Document the API contracts used by the Console Settings surface (`/settings`) for provider profiles, projects, and reusable secrets.
 
-> **Notice (Gated / Under Development):** Some Settings-adjacent surfaces documented here (for example Chat and Secrets sections, and provider-type expansion beyond Codex) are feature-flagged and currently disabled by default.
+> **Notice (Gated / Under Development):** Some Settings-adjacent surfaces documented here (for example Integrations, Chat, and Secrets sections, plus provider-type expansion beyond Codex) are feature-flagged and currently disabled by default.
 
 ## Authentication
 

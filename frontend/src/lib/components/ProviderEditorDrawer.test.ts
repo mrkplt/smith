@@ -105,7 +105,7 @@ describe('ProviderEditorDrawer', () => {
 		cleanup();
 	});
 
-	it('creates secret from API key and submits provider with secret_ref', async () => {
+	it('upserts secret from API key and submits provider with secret_ref', async () => {
 		const onClose = vi.fn();
 		const onSaved = vi.fn();
 		const { container, getByTestId } = render(ProviderEditorDrawer, {
@@ -125,18 +125,17 @@ describe('ProviderEditorDrawer', () => {
 		expect(form).toBeTruthy();
 		await fireEvent.submit(form!);
 
-		await waitFor(() => expect(api.postJSON).toHaveBeenCalledTimes(2));
-		expect(api.postJSON).toHaveBeenNthCalledWith(
-			1,
-			'/v1/secrets',
+		await waitFor(() => expect(api.requestJSON).toHaveBeenCalled());
+		expect(api.requestJSON).toHaveBeenCalledWith(
+			'/v1/secrets/openai-key',
+			'PUT',
 			expect.objectContaining({
 				id: 'openai-key',
 				name: 'openai-key',
 				value: 'sk-test-123'
 			})
 		);
-		expect(api.postJSON).toHaveBeenNthCalledWith(
-			2,
+		expect(api.postJSON).toHaveBeenCalledWith(
 			'/v1/providers',
 			expect.objectContaining({
 			id: 'openai-work',
@@ -145,9 +144,39 @@ describe('ProviderEditorDrawer', () => {
 			secret_ref: 'openai-key'
 			})
 		);
+		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/secrets', expect.anything());
 		expect(stores.pushToast).toHaveBeenCalledWith('Provider profile created successfully', 'ok');
 		expect(onSaved).toHaveBeenCalled();
 		expect(onClose).toHaveBeenCalled();
+
+		cleanup();
+	});
+
+	it('creates secret when secret PUT returns not found', async () => {
+		vi.mocked(api.requestJSON).mockRejectedValueOnce(new Error('not found'));
+		const { container, getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		await fireEvent.input(getByTestId('provider-profile-id'), { target: { value: 'codex-team' } });
+		await fireEvent.input(getByTestId('provider-credential-id'), { target: { value: 'codex-team-key' } });
+		await fireEvent.input(getByTestId('provider-api-key'), { target: { value: 'sk-codex-123' } });
+
+		const form = container.querySelector('form');
+		expect(form).toBeTruthy();
+		await fireEvent.submit(form!);
+
+		await waitFor(() => {
+			expect(api.postJSON).toHaveBeenCalledWith(
+				'/v1/secrets',
+				expect.objectContaining({ id: 'codex-team-key', value: 'sk-codex-123' })
+			);
+		});
+		expect(api.postJSON).toHaveBeenCalledWith('/v1/providers', expect.anything());
 
 		cleanup();
 	});

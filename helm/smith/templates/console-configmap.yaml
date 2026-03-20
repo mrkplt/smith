@@ -9,10 +9,12 @@ metadata:
 data:
   SMITH_API_BASE_URL: {{ .Values.console.apiBaseUrl | quote }}
   SMITH_CHAT_BASE_URL: {{ .Values.console.chatBaseUrl | default "/chat" | quote }}
+  SMITH_CONSOLE_BUILD_LABEL: {{ .Values.console.image.tag | quote }}
   SMITH_OPERATOR_PERMISSIONS: {{ .Values.console.operatorPermissions | quote }}
   SMITH_FEATURE_TASKS_ENABLED: {{ .Values.console.featureFlags.tasks | quote }}
   SMITH_FEATURE_CAPABILITY_ENABLED: {{ .Values.console.featureFlags.featureCapability | quote }}
   SMITH_FEATURE_CHAT_ENABLED: {{ .Values.console.featureFlags.chat | quote }}
+  SMITH_FEATURE_INTEGRATIONS_ENABLED: {{ .Values.console.featureFlags.integrations | quote }}
   SMITH_FEATURE_SECRETS_ENABLED: {{ .Values.console.featureFlags.secrets | quote }}
   SMITH_FEATURE_CAPABILITY_ACCESS: {{ .Values.console.featureCapabilityAccess | quote }}
   SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED: {{ .Values.console.featureFlags.providerClaude | quote }}

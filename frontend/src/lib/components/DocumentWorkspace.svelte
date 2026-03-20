@@ -19,6 +19,7 @@
     validationBusy: boolean;
     validationError: string;
     chatEnabled: boolean;
+    tasksEnabled: boolean;
     resolveDiagnosticEnabled: boolean;
     projects: any[];
     onEditTitle: (value: string) => void;
@@ -54,6 +55,7 @@
     validationBusy,
     validationError,
     chatEnabled,
+    tasksEnabled,
     resolveDiagnosticEnabled,
     projects,
     onEditTitle,
@@ -106,6 +108,7 @@
         {onSaveDocument}
         {onCancelEdit}
         {onBuildDoc}
+        {tasksEnabled}
         {onCreateTask}
         {onArchiveDoc}
         {onDeleteDoc}

@@ -6,7 +6,7 @@
 	import DocumentsSidebar from '$lib/components/DocumentsSidebar.svelte';
 	import DocumentWorkspace from '$lib/components/DocumentWorkspace.svelte';
 	import DocumentsPageActions from '$lib/components/DocumentsPageActions.svelte';
-	import { isChatEnabled, isPRDDiagnosticResolveEnabled } from '$lib/feature-flags';
+	import { isChatEnabled, isPRDDiagnosticResolveEnabled, isTasksEnabled } from '$lib/feature-flags';
 	import { buildDocument, deleteDocument, saveDocumentDraft, toggleDocumentArchive } from '$lib/documents/mutations';
 	import {
 		inferPRDFormat,
@@ -70,6 +70,7 @@ const docLayoutColumns = $derived(
 );
 const diagnosticResolveEnabled = $derived(isPRDDiagnosticResolveEnabled());
 const chatFeatureEnabled = $derived(isChatEnabled());
+const tasksFeatureEnabled = $derived(isTasksEnabled());
 
 	const guidepostFocusContext = $derived.by(() => {
 		const selected = selectedDoc;
@@ -123,12 +124,27 @@ const chatFeatureEnabled = $derived(isChatEnabled());
 
 	async function saveDocument() {
 		try {
-			await saveDocumentDraft(selectedDocId, {
+			const savedDoc = await saveDocumentDraft(selectedDocId, {
 				title: editTitle,
 				content: editContent,
 				projectID: editProjectID,
 				format: editFormat
 			});
+			if (savedDoc?.id) {
+				const savedID = String(savedDoc.id);
+				appState.update((state) => {
+					const nextDocuments = [...state.documents];
+					const existingIndex = nextDocuments.findIndex((doc: any) => doc.id === savedID);
+					if (existingIndex >= 0) {
+						nextDocuments[existingIndex] = { ...nextDocuments[existingIndex], ...savedDoc };
+					} else {
+						nextDocuments.unshift(savedDoc);
+					}
+					return { ...state, documents: nextDocuments };
+				});
+				selectedDocId = savedID;
+				editProjectID = String(savedDoc.project_id || editProjectID || '');
+			}
 			pushToast(selectedDocId ? "Document saved" : "Document created", "ok");
 			isEditing = false;
 		} catch (err: any) {
@@ -142,14 +158,35 @@ const chatFeatureEnabled = $derived(isChatEnabled());
 			await buildDocument(selectedDocId);
 			pushToast("Build loop started", "ok");
 		} catch (err: any) {
+			const report = err?.body?.report;
+			if (report) {
+				validationReport = report;
+				validationError = '';
+				const issueCount = Number((report?.errors || []).length) + Number((report?.warnings || []).length);
+				pushToast(`Build blocked by PRD readiness (${issueCount} issue${issueCount === 1 ? '' : 's'}).`, "err");
+				return;
+			}
 			pushToast(err.message, "err");
 		}
 	}
 
 	async function archiveDoc() {
 		if (!selectedDocId || !selectedDoc) return;
+		const docID = selectedDocId;
 		try {
 			const nextStatus = await toggleDocumentArchive(selectedDocId, selectedDoc);
+			appState.update((state) => ({
+				...state,
+				documents: state.documents.map((doc: any) =>
+					doc.id === docID
+						? { ...doc, status: nextStatus, updated_at: new Date().toISOString() }
+						: doc
+				)
+			}));
+			if (!showAll && nextStatus === 'archived') {
+				selectedDocId = null;
+				isEditing = false;
+			}
 			pushToast(`Document ${nextStatus}`, "ok");
 		} catch (err: any) {
 			pushToast(err.message, "err");
@@ -168,6 +205,10 @@ const chatFeatureEnabled = $derived(isChatEnabled());
 	}
 
 	async function createTaskFromDocument() {
+		if (!tasksFeatureEnabled) {
+			pushToast('Task contracts are currently gated and unavailable in this environment.', 'err');
+			return;
+		}
 		if (!selectedDoc) {
 			pushToast('select a document first', 'err');
 			return;
@@ -399,22 +440,20 @@ const chatFeatureEnabled = $derived(isChatEnabled());
 
 <TopBar title="Documents">
   {#snippet controls()}
-    <div></div>
+    <DocumentsPageActions
+		onCreateNew={createNew}
+		onImportPRD={handleImportPRD}
+	/>
   {/snippet}
 </TopBar>
-
-<DocumentsPageActions
-	{showAll}
-	onShowAllChange={(value) => showAll = value}
-	onCreateNew={createNew}
-	onImportPRD={handleImportPRD}
-/>
 
 <div class="doc-layout" style={`grid-template-columns: ${docLayoutColumns};`}>
 	<DocumentsSidebar
 		{projectIDs}
 		{projectsWithDocs}
 		{selectedDocId}
+		{showAll}
+		onShowAllChange={(value) => showAll = value}
 		onSelectDocument={selectDocument}
 	/>
 
@@ -430,6 +469,7 @@ const chatFeatureEnabled = $derived(isChatEnabled());
 		{validationBusy}
 		validationError={validationError}
 		chatEnabled={chatFeatureEnabled}
+		tasksEnabled={tasksFeatureEnabled}
 		resolveDiagnosticEnabled={diagnosticResolveEnabled}
 		projects={$appState.projects}
 		onEditTitle={(value) => editTitle = value}

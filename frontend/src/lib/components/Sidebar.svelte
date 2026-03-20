@@ -15,12 +15,26 @@
 	const shellNavItems = $derived([...shellRuntimeNav, ...shellConfigurationNav]);
 
 	let desktopExpanded = $state(false);
+	let buildLabel = $state('local');
 
 	onMount(() => {
 		if (typeof window === 'undefined') {
 			return;
 		}
 		desktopExpanded = window.localStorage.getItem('smith.nav.desktopExpanded') === 'true';
+		const config = (window as any).__SMITH_CONFIG__ || {};
+		buildLabel = String(config.build || config.version || 'local');
+	});
+
+	const systemTag = $derived.by(() => {
+		const normalized = String(buildLabel || 'local').trim();
+		if (normalized === '') {
+			return 'vlocal';
+		}
+		if (normalized.toLowerCase().startsWith('v')) {
+			return normalized;
+		}
+		return `v${normalized}`;
 	});
 
 	function isItemVisible(itemID: string): boolean {
@@ -88,7 +102,7 @@
 			{/each}
 		</nav>
 
-		<div class="system-tag">{desktopExpanded ? 'System v1.0.4' : 'v1.0.4'}</div>
+		<div class="system-tag">{desktopExpanded ? `System ${systemTag}` : systemTag}</div>
 	</div>
 </aside>
 
@@ -117,7 +131,7 @@
 			{/each}
 		</div>
 
-		<div class="system-tag">System v1.0.4</div>
+		<div class="system-tag">System {systemTag}</div>
 	</div>
 </Drawer>
 

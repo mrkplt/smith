@@ -5293,13 +5293,19 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		}
 
 		results := make([]ingressResult, 0, len(drafts))
+		buildRunID := fmt.Sprintf("build-%d", time.Now().UTC().UnixNano())
 		for i, draft := range drafts {
 			title := draft.Title
 			if doc.Title != "" {
 				title = fmt.Sprintf("[%s] %s", doc.Title, draft.Title)
 			}
+			idempotencyKey := strings.TrimSpace(draft.IdempotencyKey)
+			if idempotencyKey == "" {
+				idempotencyKey = fmt.Sprintf("%s#%d", strings.TrimSpace(draft.SourceRef), i)
+			}
+			idempotencyKey = fmt.Sprintf("%s|%s", idempotencyKey, buildRunID)
 			res := s.createOneLoop(r.Context(), loopCreateRequest{
-				IdempotencyKey: draft.IdempotencyKey,
+				IdempotencyKey: idempotencyKey,
 				Title:          title,
 				Description:    draft.Description,
 				SourceType:     draft.SourceType,
@@ -5327,6 +5333,9 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid json payload")
 			return
+		}
+		if strings.TrimSpace(req.ProjectID) != "" {
+			doc.ProjectID = strings.TrimSpace(req.ProjectID)
 		}
 		if req.Title != "" {
 			doc.Title = req.Title

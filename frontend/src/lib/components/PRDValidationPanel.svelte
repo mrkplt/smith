@@ -47,12 +47,22 @@
     if (!report) {
       return [];
     }
-    const errors = report.errors.map((item) => ({ ...item, severity: 'error' as const }));
-    const warnings = report.warnings.map((item) => ({ ...item, severity: 'warning' as const }));
+    const errors = (report.errors || []).map((item) => ({ ...item, severity: 'error' as const }));
+    const warnings = (report.warnings || []).map((item) => ({ ...item, severity: 'warning' as const }));
     return [...errors, ...warnings];
   });
 
   const notificationCount = $derived(notificationItems.length);
+
+  const readinessLabel = $derived.by(() => {
+    if (!report) {
+      return '';
+    }
+    if (report.readiness !== 'pass' && notificationCount > 0) {
+      return `${report.readiness} (${notificationCount})`;
+    }
+    return report.readiness;
+  });
 
   function toggleNotifications() {
     if (!report || notificationCount === 0) {
@@ -88,10 +98,9 @@
       {/if}
     </div>
     <div class="actions-wrap flex items-center gap-2">
-      {#if !busy && report}
+      {#if report}
         <button class="readiness-indicator" data-readiness={report.readiness} onclick={toggleNotifications}>
-          <Badge color={badgeColor(report.readiness)} class="rounded-none uppercase text-[9px] tracking-[0.12em]">{report.readiness}</Badge>
-          <span class="readiness-count">{notificationCount}</span>
+          <Badge color={badgeColor(report.readiness)} class="rounded-none uppercase text-[9px] tracking-[0.12em]">{readinessLabel}</Badge>
         </button>
       {/if}
       <Button color="alternative" class="rounded-none border-gray-700 text-[9px] uppercase tracking-[0.14em] px-3 h-7" onclick={() => onRecheck()}>Recheck</Button>
@@ -193,22 +202,6 @@
     letter-spacing: 0.14em;
     color: #93a1b5;
     margin-bottom: 4px;
-  }
-
-  .readiness-count {
-    min-width: 18px;
-    height: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    font-size: 0.6rem;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    color: #e6edf8;
-    background: rgba(255, 255, 255, 0.06);
   }
 
   .notification-row {
