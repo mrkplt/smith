@@ -17,6 +17,8 @@ It is intentionally focused on **important** variables (not every internal knob)
 
 These are persisted in ConfigMap `smith-<release>-console-config` and injected into the console container.
 
+> **Notice (Gated / Under Development):** Feature-flagged console surfaces listed below are currently treated as under development and default to disabled unless explicitly enabled.
+
 | Variable | Helm value | Default | Purpose |
 | --- | --- | --- | --- |
 | `SMITH_API_BASE_URL` | `console.apiBaseUrl` | `/api` | Base path for API calls from the console. |
@@ -24,8 +26,10 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_OPERATOR_PERMISSIONS` | `console.operatorPermissions` | `""` | Comma-separated permission set used by runtime capability checks. |
 | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` | Shows/hides Tasks route + nav and enables route access. |
 | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` | Shows/hides Feature Capability route + nav and enables route access. |
-| `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `true` | Shows/hides operator chat surfaces (TopBar chat button, assistant route, and settings chat section). |
+| `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` | Shows/hides operator chat surfaces (TopBar chat button, assistant route, and settings chat section). |
 | `SMITH_FEATURE_SECRETS_ENABLED` | `console.featureFlags.secrets` | `false` | Shows/hides Secrets section in Settings while retaining backend secret-ref support. |
+| `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `false` | Shows/hides Claude provider type in console provider configuration surfaces. |
+| `SMITH_FEATURE_PROVIDER_GEMINI_ENABLED` | `console.featureFlags.providerGemini` | `false` | Shows/hides Gemini provider type in console provider configuration surfaces. |
 | `SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED` | `console.featureFlags.prdDiagnosticResolve` | `false` | Enables per-diagnostic `Resolve` action in Documents PRD readiness notifications. |
 | `SMITH_FEATURE_CAPABILITY_ACCESS` | `console.featureCapabilityAccess` | `false` | Explicit override for Feature Capability access check when feature is enabled. |
 | `SMITH_SHOW_COMING_SOON_PROVIDERS` | `console.showComingSoonProviders` | `false` | Toggles provider “coming soon” UX hints. |
@@ -39,6 +43,8 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_OPERATOR_TOKEN` | empty | Bearer token required for protected operator endpoints. |
 | `SMITH_DEFAULT_ENV_PRESET` | empty | Default loop environment preset when not explicitly provided. |
 | `SMITH_RUNTIME_CONTAINER_NAME` | `replica` | Container name used for attach/command/detach operations. |
+| `SMITH_PROVIDER_CLAUDE_ENABLED` | `false` | Enables/disables Claude provider type in API provider catalog and provider validation. |
+| `SMITH_PROVIDER_GEMINI_ENABLED` | `false` | Enables/disables Gemini provider type in API provider catalog and provider validation. |
 | `SMITH_AUTH_STORE_BACKEND` | `file` | Settings credential store backend (`file` or `k8s-secret`) for provider/project credential data. |
 | `SMITH_AUTH_STORE_PATH` | `/tmp/smith-auth/tokens.json` | File path for credential/settings persistence when backend is file. |
 | `SMITH_AUTH_STORE_K8S_NAMESPACE` | `POD_NAMESPACE`/`default` | Namespace for Kubernetes-backed credential/settings store. |

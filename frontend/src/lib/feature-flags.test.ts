@@ -28,7 +28,7 @@ describe('feature flags', () => {
   it('defaults unfinished features off', () => {
     expect(isTasksEnabled({})).toBe(false);
     expect(isFeatureCapabilityEnabled({})).toBe(false);
-    expect(isChatEnabled({})).toBe(true);
+    expect(isChatEnabled({})).toBe(false);
     expect(isSecretsEnabled({})).toBe(false);
   });
 
@@ -42,7 +42,7 @@ describe('feature flags', () => {
   it('maps feature ids to visibility defaults', () => {
     expect(isFeatureVisible('tasks', {})).toBe(false);
     expect(isFeatureVisible('feature-capability', {})).toBe(false);
-    expect(isFeatureVisible('chat', {})).toBe(true);
+    expect(isFeatureVisible('chat', {})).toBe(false);
     expect(isFeatureVisible('secrets', {})).toBe(false);
     expect(isFeatureVisible('pods', {})).toBe(true);
   });

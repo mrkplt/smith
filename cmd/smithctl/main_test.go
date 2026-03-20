@@ -1586,27 +1586,43 @@ func TestHelpListsProviderAndProjectResources(t *testing.T) {
 }
 
 func TestProviderAddOutputsMachineReadableSuccess(t *testing.T) {
-	var received map[string]any
+	var secretPayload map[string]any
+	var providerPayload map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/providers" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/secrets/claude-key":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not found"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/secrets":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &secretPayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "claude-key"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/providers":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &providerPayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "claude-team", "provider_type": "claude"})
+		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		body, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(body, &received)
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "claude-team", "provider_type": "claude"})
 	}))
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "add", "--id", "claude-team", "--type", "ClAuDe", "--secret-ref", "claude-key"}, &stdout, &stderr)
+	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "add", "--id", "claude-team", "--type", "ClAuDe", "--credential-id", "claude-key", "--api-key", "sk-claude-123"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
 	}
-	if got, _ := received["provider_type"].(string); got != "claude" {
-		t.Fatalf("expected provider_type claude, got %#v", received)
+	if got, _ := providerPayload["provider_type"].(string); got != "claude" {
+		t.Fatalf("expected provider_type claude, got %#v", providerPayload)
 	}
-	if got, _ := received["secret_ref"].(string); got != "claude-key" {
-		t.Fatalf("expected secret_ref claude-key, got %#v", received)
+	if got, _ := providerPayload["secret_ref"].(string); got != "claude-key" {
+		t.Fatalf("expected secret_ref claude-key, got %#v", providerPayload)
+	}
+	if got, _ := secretPayload["id"].(string); got != "claude-key" {
+		t.Fatalf("expected secret id claude-key, got %#v", secretPayload)
+	}
+	if got, _ := secretPayload["value"].(string); got != "sk-claude-123" {
+		t.Fatalf("expected secret API key payload, got %#v", secretPayload)
 	}
 
 	var out map[string]any
@@ -1620,7 +1636,7 @@ func TestProviderAddOutputsMachineReadableSuccess(t *testing.T) {
 
 func TestProviderAddRejectsUnsupportedType(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"provider", "add", "--id", "custom-provider", "--type", "custom"}, &stdout, &stderr)
+	code := run([]string{"provider", "add", "--id", "custom-provider", "--type", "custom", "--credential-id", "custom-provider-key", "--api-key", "sk-custom-123"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("expected usage failure code 2, got %d", code)
 	}
@@ -1696,16 +1712,23 @@ func TestProjectAddAndConfigureOutputMachineReadableSuccess(t *testing.T) {
 
 func TestProviderAddOutputsMachineReadableError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/v1/providers" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/secrets/invalid-key":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"not found"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/secrets":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "invalid-key"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/providers":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"unsupported provider_type"}`))
+		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":"unsupported provider_type"}`))
 	}))
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "add", "--id", "invalid", "--type", "codex"}, &stdout, &stderr)
+	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "add", "--id", "invalid", "--type", "codex", "--credential-id", "invalid-key", "--api-key", "sk-invalid-123"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("expected command failure code 1, got %d", code)
 	}
@@ -1719,6 +1742,59 @@ func TestProviderAddOutputsMachineReadableError(t *testing.T) {
 	}
 	if !strings.Contains(fmt.Sprint(out["error"]), "unsupported provider_type") {
 		t.Fatalf("expected error message with provider type hint, got %#v", out)
+	}
+}
+
+func TestProviderConfigureUpsertsCredentialSecretWithAPIKey(t *testing.T) {
+	var secretPayload map[string]any
+	var providerPayload map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/secrets/codex-team-key":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "codex-team-key", "has_value": true})
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/secrets/codex-team-key":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &secretPayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "codex-team-key"})
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/providers/codex-default":
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &providerPayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "codex-default"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--server", srv.URL, "--output", "json", "provider", "configure", "codex-default", "--credential-id", "codex-team-key", "--api-key", "sk-rotated-123"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
+	}
+	if got, _ := secretPayload["value"].(string); got != "sk-rotated-123" {
+		t.Fatalf("expected rotated secret value payload, got %#v", secretPayload)
+	}
+	if got, _ := providerPayload["secret_ref"].(string); got != "codex-team-key" {
+		t.Fatalf("expected provider payload secret_ref update, got %#v", providerPayload)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if out["status"] != "ok" || out["operation"] != "provider.configure" {
+		t.Fatalf("expected machine-readable provider configure output, got %#v", out)
+	}
+}
+
+func TestProviderConfigureAPIKeyRequiresCredentialID(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"provider", "configure", "codex-default", "--api-key", "sk-only-123"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected usage failure code 2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "requires --credential-id") {
+		t.Fatalf("expected credential-id requirement error, got %q", stderr.String())
 	}
 }
 

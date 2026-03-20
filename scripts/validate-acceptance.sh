@@ -389,7 +389,7 @@ section "td-98b5f7 | provider-first onboarding flow in smithctl"
 expect_rg "ensureProviderFirstOnboarding" "cmd/smithctl/main.go" "smithctl enforces provider-first onboarding precheck"
 expect_rg "/v1/onboarding/readiness" "cmd/smithctl/main.go" "smithctl checks API onboarding readiness contract"
 expect_rg "provider_catalog" "cmd/smithctl/main.go" "smithctl gates project/loop workflows on provider catalog readiness"
-expect_rg "smithctl provider add --id codex-default --type codex" "cmd/smithctl/main.go" "smithctl prints actionable provider setup suggestion"
+expect_rg "smithctl provider add --id codex-default --type codex --credential-id" "cmd/smithctl/main.go" "smithctl prints actionable provider setup suggestion"
 expect_rg "TestProjectAddEnforcesProviderFirstOnboarding" "cmd/smithctl/main_test.go" "smithctl project provider-first enforcement test exists"
 expect_rg "TestLoopCreateEnforcesProviderFirstOnboarding" "cmd/smithctl/main_test.go" "smithctl loop provider-first enforcement test exists"
 

@@ -187,7 +187,7 @@ console:
   featureFlags:
     tasks: false
     featureCapability: false
-    chat: true
+    chat: false
     secrets: false
     providerClaude: false
     providerGemini: false

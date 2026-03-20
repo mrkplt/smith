@@ -52,7 +52,7 @@ export function isFeatureCapabilityEnabled(config = getRuntimeConfig()): boolean
 
 /** Returns whether chat surfaces are enabled in the current runtime config. */
 export function isChatEnabled(config = getRuntimeConfig()): boolean {
-  return parseFlag(config.featureChatEnabled, true);
+  return parseFlag(config.featureChatEnabled, false);
 }
 
 /** Returns whether Secrets management surface is enabled in the current runtime config. */

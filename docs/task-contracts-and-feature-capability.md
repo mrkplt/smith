@@ -2,6 +2,8 @@
 
 This page explains two newer runtime surfaces that landed after the initial MVP docs set:
 
+> **Notice (Gated / Under Development):** Task Contracts (`/tasks`) and Feature Capability (`/feature-capability`) are feature-flagged surfaces and are currently disabled by default.
+
 - Task Contracts (`/tasks`)
 - Feature Capability flow (`/feature-capability`)
 
