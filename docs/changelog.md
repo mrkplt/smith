@@ -21,6 +21,26 @@
 - Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
 - Pods list defaults to healthy-state filtering; destructive cleanup is policy/API-driven rather than tile-level UI actions.
 
+## v0.4.2
+
+Release date: 2026-03-20
+
+This patch release continues post-`v0.4.0` dependency maintenance by updating frontend transitive dependencies while preserving runtime behavior.
+
+### Highlights
+
+- Updated frontend transitive dependency `flatted` in `/frontend` from `3.4.1` to `3.4.2`.
+- Bumped chart/image/frontend/docs defaults to the `v0.4.2` patch line for release consistency.
+
+### Included Changes
+
+- `f49b13a` - `build(deps-dev): bump flatted from 3.4.1 to 3.4.2 in /frontend`
+- `5fe7d63` - `Merge pull request #206 from callmeradical/dependabot/npm_and_yarn/frontend/flatted-3.4.2`
+
+### Notes
+
+- `v0.4.2` is a patch release because it contains dependency maintenance and version-reference alignment only.
+
 ## v0.4.1
 
 Release date: 2026-03-20
