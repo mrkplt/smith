@@ -1,125 +1,309 @@
 <script lang="ts">
-	import { sidebarOpen, chatOpen } from '$lib/stores';
+	import { onMount } from 'svelte';
+	import { sidebarOpen } from '$lib/stores';
 	import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
 	import { isFeatureCapabilityEnabled, isTasksEnabled } from '$lib/feature-flags';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-  import { Sidebar, SidebarGroup, SidebarItem, SidebarWrapper, Drawer } from 'flowbite-svelte';
-  import { CloseOutline, MessagesOutline } from 'flowbite-svelte-icons';
-  import { sineIn } from 'svelte/easing';
-  import { shellConfigurationNav, shellRuntimeNav } from '$lib/navigation';
-  const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
-  const tasksEnabled = $derived(isTasksEnabled());
-  const featureCapabilityEnabled = $derived(isFeatureCapabilityEnabled());
+	import { Drawer } from 'flowbite-svelte';
+	import { CloseOutline } from 'flowbite-svelte-icons';
+	import { shellConfigurationNav, shellRuntimeNav } from '$lib/navigation';
 
-  let transitionParams = {
-    x: -320,
-    duration: 200,
-    easing: sineIn
-  };
+	const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
+	const tasksEnabled = $derived(isTasksEnabled());
+	const featureCapabilityEnabled = $derived(isFeatureCapabilityEnabled());
+	const currentPath = $derived(page.url.pathname);
+	const shellNavItems = $derived([...shellRuntimeNav, ...shellConfigurationNav]);
 
-  const currentPath = $derived(page.url.pathname);
+	let desktopExpanded = $state(false);
 
-  function openOperatorChat() {
-    if (typeof window !== 'undefined' && window.localStorage.getItem('smith.chat.preferFullScreen') === 'true') {
-      const returnTo = encodeURIComponent(page.url.pathname + page.url.search);
-      void goto(`/assistant?returnTo=${returnTo}`);
-      sidebarOpen.set(false);
-      return;
-    }
-    chatOpen.update(v => !v);
-    sidebarOpen.set(false);
-  }
+	onMount(() => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+		desktopExpanded = window.localStorage.getItem('smith.nav.desktopExpanded') === 'true';
+	});
+
+	function isItemVisible(itemID: string): boolean {
+		if (itemID === 'tasks' && !tasksEnabled) {
+			return false;
+		}
+		if (itemID === 'feature-capability' && (!featureCapabilityEnabled || !canAccessFeatureCapability)) {
+			return false;
+		}
+		return true;
+	}
+
+	function isItemActive(href: string): boolean {
+		return currentPath.startsWith(href);
+	}
+
+	function setDesktopExpanded(next: boolean): void {
+		desktopExpanded = next;
+		if (typeof window !== 'undefined') {
+			window.localStorage.setItem('smith.nav.desktopExpanded', String(next));
+		}
+	}
+
+	function toggleDesktopExpanded(): void {
+		setDesktopExpanded(!desktopExpanded);
+	}
+
+	function closeMobileSidebar(): void {
+		sidebarOpen.set(false);
+	}
 </script>
 
-<Drawer 
-  bind:open={$sidebarOpen} 
-  id="sidebar-drawer" 
-  width="default" 
-  class="bg-black border-r border-gray-800 p-0 z-50 w-64"
+<aside class={`hidden lg:flex nav-rail-shell ${desktopExpanded ? 'expanded' : 'collapsed'}`}>
+	<div class="nav-rail-panel">
+		<div class="rail-head">
+			<button
+				type="button"
+				class="expand-button"
+				onclick={toggleDesktopExpanded}
+				aria-label={desktopExpanded ? 'Collapse navigation' : 'Expand navigation'}
+			>
+				<span class="burger-bars" aria-hidden="true">
+					<span></span>
+					<span></span>
+					<span></span>
+				</span>
+			</button>
+		</div>
+
+		<nav class="nav-list" aria-label="Primary navigation">
+			{#each shellNavItems as item}
+				{#if isItemVisible(String(item.id))}
+					{@const active = isItemActive(item.href)}
+					<a
+						href={item.href}
+						class={`nav-item ${active ? 'active' : ''}`}
+						title={desktopExpanded ? '' : item.label}
+					>
+						<item.icon size="sm" class={`nav-icon ${active ? 'active' : ''}`} />
+						{#if desktopExpanded}
+							<span class="nav-label">{item.label}</span>
+						{/if}
+					</a>
+				{/if}
+			{/each}
+		</nav>
+
+		<div class="system-tag">{desktopExpanded ? 'System v1.0.4' : 'v1.0.4'}</div>
+	</div>
+</aside>
+
+<Drawer
+	bind:open={$sidebarOpen}
+	id="sidebar-drawer"
+	class="lg:hidden bg-black border-r border-gray-800 p-0 z-50 w-72"
 >
-  <SidebarWrapper class="bg-black h-full flex flex-col">
-    <div class="px-6 py-8 flex items-center justify-between">
-      <div class="brand-line flex items-center gap-3">
-        <span id="api-dot" class="dot w-3 h-3 rounded-full bg-[#86BC25] shadow-[0_0_10px_rgba(134,188,37,0.8)]" aria-hidden="true"></span>
-        <span class="text-2xl font-bold tracking-tighter text-white uppercase font-sans">SMITH</span>
-      </div>
-      <button 
-        class="text-gray-500 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86BC25]/70"
-        onclick={() => sidebarOpen.set(false)}
-        aria-label="Close Sidebar"
-      >
-        <CloseOutline size="md" />
-      </button>
-    </div>
-    
-    <div class="px-0 flex-1">
-      <SidebarGroup>
-        <div class="px-6 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Runtime</div>
-        {#each shellRuntimeNav as item}
-          {#if (String(item.id) !== 'tasks' || tasksEnabled) && (String(item.id) !== 'feature-capability' || (featureCapabilityEnabled && canAccessFeatureCapability))}
-          {@const active = currentPath.startsWith(item.href)}
-          <SidebarItem
-            href={item.href}
-            {active}
-            onclick={() => sidebarOpen.set(false)}
-            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86BC25]/70 {active ? 'border-[#86BC25] text-white bg-white/5' : ''}"
-          >
-            {#snippet icon()}
-              <div class="flex items-center gap-3">
-                <item.icon size="sm" class="transition duration-75 group-hover:text-[#86BC25] {active ? 'text-[#86BC25]' : ''}" />
-                <span class="font-bold uppercase tracking-tight text-sm">{item.label}</span>
-              </div>
-            {/snippet}
-          </SidebarItem>
-          {/if}
-        {/each}
+	<div class="mobile-shell">
+		<div class="mobile-head">
+			<div class="mobile-title">Navigation</div>
+			<button type="button" class="close-button" onclick={closeMobileSidebar} aria-label="Close Sidebar">
+				<CloseOutline size="md" />
+			</button>
+		</div>
 
-        <div class="px-6 pt-5 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Configuration</div>
-        {#each shellConfigurationNav as item}
-          {#if (String(item.id) !== 'tasks' || tasksEnabled) && (String(item.id) !== 'feature-capability' || (featureCapabilityEnabled && canAccessFeatureCapability))}
-          {@const active = currentPath.startsWith(item.href)}
-          <SidebarItem
-            href={item.href}
-            {active}
-            onclick={() => sidebarOpen.set(false)}
-            class="group text-gray-400 hover:text-[#86BC25] hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#86BC25]/70 {active ? 'border-[#86BC25] text-white bg-white/5' : ''}"
-          >
-            {#snippet icon()}
-              <div class="flex items-center gap-3">
-                <item.icon size="sm" class="transition duration-75 group-hover:text-[#86BC25] {active ? 'text-[#86BC25]' : ''}" />
-                <span class="font-bold uppercase tracking-tight text-sm">{item.label}</span>
-              </div>
-            {/snippet}
-          </SidebarItem>
-          {/if}
-        {/each}
+		<div class="mobile-nav-group">
+			{#each shellNavItems as item}
+				{#if isItemVisible(String(item.id))}
+					{@const active = isItemActive(item.href)}
+					<a href={item.href} class={`nav-item ${active ? 'active' : ''}`} onclick={closeMobileSidebar}>
+						<item.icon size="sm" class={`nav-icon ${active ? 'active' : ''}`} />
+						<span class="nav-label">{item.label}</span>
+					</a>
+				{/if}
+			{/each}
+		</div>
 
-        <div class="px-6 pt-5 pb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-600">Preferences</div>
-        <SidebarItem
-          onclick={openOperatorChat}
-          class="group text-gray-400 hover:text-blue-500 hover:bg-white/5 rounded-none transition-all py-4 px-6 border-l-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70"
-        >
-          {#snippet icon()}
-            <div class="flex items-center gap-3">
-              <MessagesOutline size="sm" class="transition duration-75 group-hover:text-blue-500" />
-              <span class="font-bold uppercase tracking-tight text-sm">Operator Chat</span>
-            </div>
-          {/snippet}
-        </SidebarItem>
-      </SidebarGroup>
-    </div>
-
-    <div class="mt-auto p-6 border-t border-gray-900">
-      <div class="text-[10px] font-bold text-gray-600 uppercase tracking-[0.2em]">
-        System v1.0.4
-      </div>
-    </div>
-  </SidebarWrapper>
+		<div class="system-tag">System v1.0.4</div>
+	</div>
 </Drawer>
 
 <style>
-  :global(#sidebar-drawer) {
-    background-color: #000000 !important;
-  }
+	.nav-rail-shell {
+		padding-right: 8px;
+		transition: width 220ms ease;
+	}
+
+	.nav-rail-shell.collapsed {
+		width: 74px;
+	}
+
+	.nav-rail-shell.expanded {
+		width: 232px;
+	}
+
+	.nav-rail-panel,
+	.mobile-shell {
+		display: flex;
+		flex-direction: column;
+		height: calc(100vh - 2rem);
+		background: linear-gradient(180deg, #111420 0%, #0c0f18 58%, #090b12 100%);
+		border: 1px solid #1c2230;
+		border-radius: 26px;
+		box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+		padding: 10px;
+	}
+
+	.rail-head,
+	.mobile-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 8px 6px 12px;
+	}
+
+	.mobile-title {
+		font-size: 0.78rem;
+		font-weight: 800;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: #d9deea;
+	}
+
+	.expand-button,
+	.close-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 10px;
+		border: 1px solid #2a3242;
+		background: #0d111b;
+		color: #7f8aa1;
+	}
+
+	.burger-bars {
+		display: inline-flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+
+	.burger-bars span {
+		display: block;
+		width: 12px;
+		height: 1.5px;
+		border-radius: 999px;
+		background: currentColor;
+	}
+
+	.expand-button:hover,
+	.close-button:hover {
+		color: #e7ebf5;
+		border-color: #46536c;
+	}
+
+	.nav-list,
+	.mobile-nav-group {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.nav-list {
+		flex: 1;
+		overflow-y: auto;
+		padding: 2px 4px 0;
+	}
+
+	.mobile-shell {
+		padding: 16px;
+		height: 100vh;
+		border-radius: 0;
+		border: 0;
+	}
+
+	.mobile-nav-group {
+		flex: 1;
+		overflow-y: auto;
+		padding-top: 2px;
+	}
+
+	.nav-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 9px;
+		height: 42px;
+		width: 100%;
+		padding: 0 11px;
+		border-radius: 14px;
+		border: 1px solid transparent;
+		color: #99a2b6;
+		background: transparent;
+		text-decoration: none;
+		font-size: 0.74rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		transition: all 140ms ease;
+	}
+
+	.nav-item:hover {
+		background: rgba(255, 255, 255, 0.04);
+		color: #f3f6ff;
+	}
+
+	.nav-item.active {
+		background: rgba(255, 255, 255, 0.05);
+		border-color: #253142;
+		color: #ffffff;
+		box-shadow: inset 3px 0 0 #86bc25;
+	}
+
+	.nav-rail-shell.collapsed .nav-item {
+		justify-content: center;
+		padding: 0;
+		width: 42px;
+		margin: 0 auto;
+	}
+
+	.nav-rail-shell.collapsed .expand-button {
+		margin: 0 auto;
+	}
+
+	.nav-rail-shell.collapsed .rail-head {
+		justify-content: center;
+		padding-left: 0;
+		padding-right: 0;
+	}
+
+	.nav-rail-shell.collapsed .nav-list {
+		padding-left: 0;
+		padding-right: 0;
+	}
+
+	.nav-rail-shell.collapsed .nav-item.active {
+		box-shadow: inset 0 0 0 1px rgba(134, 188, 37, 0.5);
+	}
+
+	.nav-icon {
+		color: #7d8699;
+	}
+
+	.nav-icon.active,
+	.nav-icon.chat {
+		color: #86bc25;
+	}
+
+	.nav-label {
+		white-space: nowrap;
+	}
+
+	.system-tag {
+		margin-top: auto;
+		padding: 10px;
+		font-size: 0.62rem;
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		font-weight: 700;
+		color: #62708b;
+	}
+
+	:global(#sidebar-drawer) {
+		background-color: #000000 !important;
+	}
 </style>

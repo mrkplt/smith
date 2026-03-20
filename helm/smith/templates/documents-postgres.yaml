@@ -1,0 +1,76 @@
+{{- if .Values.documentDependencies.postgres.enabled }}
+{{- $documentsCredentialsSecretName := include "smith.documentsCredentialsSecretName" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-postgres
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-postgres
+spec:
+  selector:
+    {{- include "smith.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-postgres
+  ports:
+    - name: postgres
+      port: {{ .Values.documentDependencies.postgres.service.port }}
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "smith.fullname" . }}-documents-postgres
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+    app.kubernetes.io/component: documents-postgres
+spec:
+  serviceName: {{ include "smith.fullname" . }}-documents-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "smith.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: documents-postgres
+  template:
+    metadata:
+      labels:
+        {{- include "smith.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: documents-postgres
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.documentDependencies.postgres.image.repository }}:{{ .Values.documentDependencies.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.documentDependencies.postgres.image.pullPolicy }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.documentDependencies.postgres.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.documentDependencies.postgres.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "set documentDependencies.credentials.existingSecret or enable documentDependencies.credentials.create when documentDependencies.postgres.enabled=true" $documentsCredentialsSecretName }}
+                  key: {{ .Values.documentDependencies.credentials.keys.postgresPassword }}
+          ports:
+            - name: postgres
+              containerPort: {{ .Values.documentDependencies.postgres.service.port }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            {{- toYaml .Values.documentDependencies.postgres.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.documentDependencies.postgres.persistence.storageClassName }}
+        storageClassName: {{ .Values.documentDependencies.postgres.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.documentDependencies.postgres.persistence.size | quote }}
+{{- end }}

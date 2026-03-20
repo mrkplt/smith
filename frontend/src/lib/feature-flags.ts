@@ -1,6 +1,8 @@
 type RuntimeConfig = {
   featureTasksEnabled?: boolean | string;
   featureCapabilityEnabled?: boolean | string;
+  featureProviderClaudeEnabled?: boolean | string;
+  featureProviderGeminiEnabled?: boolean | string;
 };
 
 /** Parses a runtime boolean-like value (boolean or string) into strict boolean/null. */
@@ -54,4 +56,19 @@ export function isFeatureVisible(featureID: string, config = getRuntimeConfig())
     return isFeatureCapabilityEnabled(config);
   }
   return true;
+}
+
+/** Returns whether a provider type is enabled in the current runtime config. */
+export function isProviderTypeEnabled(providerType: string, config = getRuntimeConfig()): boolean {
+  const normalized = String(providerType || '').trim().toLowerCase();
+  if (normalized === 'codex' || normalized === 'openai' || normalized === '') {
+    return true;
+  }
+  if (normalized === 'claude' || normalized === 'anthropic') {
+    return parseFlag(config.featureProviderClaudeEnabled, false);
+  }
+  if (normalized === 'gemini' || normalized === 'google') {
+    return parseFlag(config.featureProviderGeminiEnabled, false);
+  }
+  return false;
 }

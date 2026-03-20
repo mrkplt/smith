@@ -5,12 +5,23 @@
     chatMessages: PRDChatMessage[];
     busy: boolean;
     starting: boolean;
+    assistantDraft: string | null;
   }
 
-  let { chatMessages, busy, starting }: Props = $props();
+  let { chatMessages, busy, starting, assistantDraft }: Props = $props();
+  let transcriptContainer = $state<HTMLDivElement | null>(null);
+
+  $effect(() => {
+    chatMessages;
+    assistantDraft;
+    busy;
+    if (transcriptContainer) {
+      transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+    }
+  });
 </script>
 
-<div class="flex-1 overflow-y-auto p-4 space-y-4 bg-black rounded-none border border-gray-800 mb-4 relative">
+<div bind:this={transcriptContainer} class="flex-1 overflow-y-auto p-4 space-y-4 bg-black rounded-none border border-gray-800 mb-4 relative">
   {#each chatMessages as msg}
     {#if msg.type !== 'system' || (msg.text && !msg.final_prd_path)}
       <div class="flex {msg.type === 'user' ? 'justify-end' : 'justify-start'}">
@@ -32,7 +43,15 @@
     {/if}
   {/each}
 
-  {#if busy && !starting}
+  {#if assistantDraft && !starting}
+    <div class="flex justify-start">
+      <div class="max-w-[86%] px-4 py-2 rounded-none text-sm bg-slate-900 text-gray-200 border border-gray-800">
+        <div style="white-space: pre-wrap;">{assistantDraft}</div>
+      </div>
+    </div>
+  {/if}
+
+  {#if busy && !starting && !assistantDraft}
     <div class="flex justify-start">
       <div class="bg-slate-900 text-gray-400 border border-gray-800 px-4 py-2 rounded-none flex items-center gap-3">
         <div class="w-4 h-4 border-2 border-[#86BC25] border-t-transparent rounded-full animate-spin"></div>

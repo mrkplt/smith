@@ -23,7 +23,8 @@ describe('document mutations', () => {
     await saveDocumentDraft(null, {
       title: 'Draft',
       content: 'Hello',
-      projectID: 'project-1'
+      projectID: 'project-1',
+      format: 'markdown'
     });
 
     expect(apiMocks.postJSON).toHaveBeenCalledWith('/v1/documents', {
@@ -39,13 +40,15 @@ describe('document mutations', () => {
     await saveDocumentDraft('doc-1', {
       title: 'Draft',
       content: 'Updated',
-      projectID: 'project-1'
+      projectID: 'project-1',
+      format: 'json'
     });
 
     expect(apiMocks.requestJSON).toHaveBeenCalledWith('/v1/documents/doc-1', 'PUT', {
       title: 'Draft',
       content: 'Updated',
-      project_id: 'project-1'
+      project_id: 'project-1',
+      format: 'json'
     });
   });
 

@@ -39,6 +39,7 @@ describe('ProviderEditorDrawer', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		(window as any).__SMITH_CONFIG__ = {};
 		vi.mocked(api.getJSON).mockImplementation(async (path: string) => {
 			if (path === '/v1/providers/catalog') {
 				return catalog;
@@ -72,6 +73,26 @@ describe('ProviderEditorDrawer', () => {
 	});
 
 	it('restricts provider type choices to supported catalog entries', async () => {
+		const { getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		const select = getByTestId('provider-type') as HTMLSelectElement;
+		await waitFor(() => expect(select.options.length).toBe(1));
+		expect(Array.from(select.options).map((option) => option.value)).toEqual(['codex']);
+
+		cleanup();
+	});
+
+	it('shows claude and gemini types when provider flags are enabled', async () => {
+		(window as any).__SMITH_CONFIG__ = {
+			featureProviderClaudeEnabled: true,
+			featureProviderGeminiEnabled: true
+		};
 		const { getByTestId } = render(ProviderEditorDrawer, {
 			open: true,
 			onClose: vi.fn(),
@@ -123,6 +144,9 @@ describe('ProviderEditorDrawer', () => {
 	});
 
 	it('requires secret reference for providers that declare secret_ref', async () => {
+		(window as any).__SMITH_CONFIG__ = {
+			featureProviderClaudeEnabled: true
+		};
 		const { container } = render(ProviderEditorDrawer, {
 			open: true,
 			onClose: vi.fn(),
@@ -171,6 +195,43 @@ describe('ProviderEditorDrawer', () => {
 		});
 		expect(api.requestJSON).not.toHaveBeenCalled();
 		expect(api.postJSON).not.toHaveBeenCalledWith('/v1/auth/codex/connect/api-key', expect.anything());
+
+		cleanup();
+	});
+
+	it('treats openai provider alias as codex for credential save', async () => {
+		const { container } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: {
+				id: 'openai-work',
+				name: 'OpenAI Work',
+				provider_type: 'openai',
+				default_model: 'gpt-4.1'
+			},
+			secretOptions: []
+		});
+
+		const apiKeyField = container.querySelector('input[placeholder="sk-..."]') as HTMLInputElement;
+		expect(apiKeyField).toBeTruthy();
+		await fireEvent.input(apiKeyField, { target: { value: 'sk-openai-123' } });
+
+		const form = container.querySelector('form');
+		expect(form).toBeTruthy();
+		await fireEvent.submit(form!);
+
+		await waitFor(() => expect(api.requestJSON).toHaveBeenCalled());
+		expect(api.requestJSON).toHaveBeenCalledWith(
+			'/v1/providers/openai-work',
+			'PUT',
+			expect.objectContaining({ provider_type: 'codex' })
+		);
+		expect(api.postJSON).toHaveBeenCalledWith('/v1/auth/codex/connect/api-key', {
+			actor: 'operator',
+			api_key: 'sk-openai-123',
+			account_id: 'default'
+		});
 
 		cleanup();
 	});

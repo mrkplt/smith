@@ -1,15 +1,30 @@
 <script lang="ts">
   import { Button, Checkbox } from 'flowbite-svelte';
-  import { MessagesOutline, PlusOutline } from 'flowbite-svelte-icons';
+  import { CloudArrowUpOutline, PlusOutline } from 'flowbite-svelte-icons';
 
   interface Props {
     showAll: boolean;
     onShowAllChange: (value: boolean) => void;
-    onOpenChat: () => void;
     onCreateNew: () => void;
+    onImportPRD: (file: File) => void;
   }
 
-  let { showAll, onShowAllChange, onOpenChat, onCreateNew }: Props = $props();
+  let { showAll, onShowAllChange, onCreateNew, onImportPRD }: Props = $props();
+  let fileInput: HTMLInputElement | null = null;
+
+  function triggerUpload() {
+    fileInput?.click();
+  }
+
+  function handleFileSelection(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    onImportPRD(file);
+    input.value = '';
+  }
 </script>
 
 <div class="space-y-4">
@@ -24,9 +39,17 @@
   </div>
 
   <div class="flex justify-end gap-2 -mt-14 mb-8 relative z-50 px-4">
-    <Button color="alternative" class="bg-black border-gray-800 text-[#86BC25] hover:bg-white/5 rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={onOpenChat}>
-      <MessagesOutline size="xs" class="mr-1.5" />
-      Draft with AI
+    <input
+      bind:this={fileInput}
+      type="file"
+      class="hidden"
+      accept=".md,.markdown,.json,text/markdown,application/json,text/plain"
+      onchange={handleFileSelection}
+    />
+
+    <Button color="alternative" class="bg-black border-gray-800 text-[#86BC25] hover:bg-white/5 rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={triggerUpload}>
+      <CloudArrowUpOutline size="xs" class="mr-1.5" />
+      Upload PRD
     </Button>
 
     <Button color="alternative" class="bg-[#86BC25] text-black rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={onCreateNew}>

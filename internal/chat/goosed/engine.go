@@ -244,7 +244,14 @@ func firstNonEmpty(values ...string) string {
 }
 
 func gooseEnvOverrides(sessionContext map[string]string) []string {
-	provider := strings.ToLower(firstNonEmpty(sessionContext["gooseProvider"], sessionContext["provider"]))
+	provider := normalizeProviderForGoose(firstNonEmpty(
+		sessionContext["gooseProvider"],
+		sessionContext["provider"],
+		providerFromProfileID(sessionContext["providerProfileID"]),
+	))
+	if provider == "" {
+		provider = "openai"
+	}
 	model := firstNonEmpty(sessionContext["gooseModel"], sessionContext["model"])
 	apiKey := firstNonEmpty(sessionContext["providerApiKey"], sessionContext["apiKey"])
 
@@ -268,14 +275,41 @@ func gooseEnvOverrides(sessionContext map[string]string) []string {
 
 func providerKeyEnvVars(provider string) []string {
 	switch provider {
-	case "anthropic":
+	case "claude", "anthropic":
 		return []string{"ANTHROPIC_API_KEY"}
-	case "google":
+	case "gemini", "google":
 		return []string{"GOOGLE_API_KEY", "GEMINI_API_KEY"}
-	case "openai", "":
+	case "codex", "openai", "":
 		return []string{"OPENAI_API_KEY"}
 	default:
 		return []string{"OPENAI_API_KEY"}
+	}
+}
+
+func providerFromProfileID(profileID string) string {
+	normalized := strings.ToLower(strings.TrimSpace(profileID))
+	switch {
+	case strings.Contains(normalized, "claude"), strings.Contains(normalized, "anthropic"):
+		return "anthropic"
+	case strings.Contains(normalized, "gemini"), strings.Contains(normalized, "google"):
+		return "google"
+	case strings.Contains(normalized, "codex"), strings.Contains(normalized, "openai"):
+		return "openai"
+	default:
+		return ""
+	}
+}
+
+func normalizeProviderForGoose(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "codex", "openai":
+		return "openai"
+	case "claude", "anthropic":
+		return "anthropic"
+	case "gemini", "google":
+		return "google"
+	default:
+		return strings.ToLower(strings.TrimSpace(provider))
 	}
 }
 

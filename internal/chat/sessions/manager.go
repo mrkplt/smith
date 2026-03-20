@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"smith/internal/chat"
+	"strings"
 	"sync"
 	"time"
 )
@@ -62,6 +63,34 @@ func (m *Manager) AddMessage(sessionID string, msg chat.Message) error {
 	s.Messages = append(s.Messages, msg)
 	s.UpdatedAt = time.Now()
 	return nil
+}
+
+func (m *Manager) UpdateContext(sessionID string, updates map[string]string) (*chat.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.sessions[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session not found")
+	}
+	if s.Context == nil {
+		s.Context = map[string]string{}
+	}
+
+	for key, value := range updates {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		if strings.TrimSpace(value) == "" {
+			delete(s.Context, trimmedKey)
+			continue
+		}
+		s.Context[trimmedKey] = value
+	}
+
+	s.UpdatedAt = time.Now()
+	return s, nil
 }
 
 func generateID() (string, error) {

@@ -1,0 +1,35 @@
+# Overlay for local development to run document storage on in-chart Postgres + Garage.
+#
+# Usage:
+#   helm upgrade --install smith ./helm/smith \
+#     -n smith-system \
+#     -f ./helm/smith/values/local.yaml \
+#     -f ./helm/smith/values/document-storage-local.yaml
+
+api:
+  documents:
+    backend: postgres-garage
+    garage:
+      bucket: smith-documents
+
+documentDependencies:
+  postgres:
+    enabled: true
+  garage:
+    enabled: true
+    config:
+      rpcSecret: 5e67f2dfc3a23972d9f556313d6b7bf5a17ed2fac5f75dc6506f4cca7ee8a1d5
+      adminToken: smith-local-garage-admin-token
+      metricsToken: smith-local-garage-metrics-token
+      bucket: smith-documents
+    bootstrap:
+      enabled: true
+      keyName: smith-documents-key
+      zone: dc1
+      capacity: 1G
+  credentials:
+    create: true
+    managed:
+      postgresPassword: smith-dev-password
+      garageAccessKeyId: GKSMLDOCSLOCAL000000001
+      garageSecretAccessKey: 5b7108ccf3f309f8c7fbd8fca610fd17877fce39be4f2dfbc57a23ec1d8f68aa

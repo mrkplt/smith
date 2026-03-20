@@ -2,7 +2,9 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import DocumentEditorPane from '$lib/components/DocumentEditorPane.svelte';
   import DocumentPreviewPane from '$lib/components/DocumentPreviewPane.svelte';
+  import PRDValidationPanel from '$lib/components/PRDValidationPanel.svelte';
   import DocumentWorkspaceHeader from '$lib/components/DocumentWorkspaceHeader.svelte';
+  import type { PRDValidationReport } from '$lib/documents/prd-validation';
   import { marked } from 'marked';
 
   interface Props {
@@ -12,13 +14,25 @@
     editTitle: string;
     editContent: string;
     editProjectID: string;
+    editFormat: 'markdown' | 'json';
+    validationReport: PRDValidationReport | null;
+    validationBusy: boolean;
+    validationError: string;
     projects: any[];
     onEditTitle: (value: string) => void;
     onEditContent: (value: string) => void;
     onEditProjectID: (value: string) => void;
+    onEditFormat: (value: 'markdown' | 'json') => void;
+    onFocusContextChange: (focus: {
+      lineIndex: number | null;
+      sectionId: string;
+      selectionText: string;
+    }) => void;
     onStartEdit: () => void;
     onSaveDocument: () => void;
     onCancelEdit: () => void;
+    onRefreshValidation: () => void;
+    onRefineWithAI: () => void;
     onBuildDoc: () => void;
     onCreateTask: () => void;
     onArchiveDoc: () => void;
@@ -32,20 +46,40 @@
     editTitle,
     editContent,
     editProjectID,
+    editFormat,
+    validationReport,
+    validationBusy,
+    validationError,
     projects,
     onEditTitle,
     onEditContent,
     onEditProjectID,
+    onEditFormat,
+    onFocusContextChange,
     onStartEdit,
     onSaveDocument,
     onCancelEdit,
+    onRefreshValidation,
+    onRefineWithAI,
     onBuildDoc,
     onCreateTask,
     onArchiveDoc,
     onDeleteDoc
   }: Props = $props();
 
+  function escapeHTML(content: string): string {
+    return content
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
   const renderedContent = $derived.by(() => {
+    if (editFormat === 'json') {
+      return `<pre>${escapeHTML(editContent || '')}</pre>`;
+    }
     return marked.parse(editContent || '') as string;
   });
 </script>
@@ -57,9 +91,11 @@
         {isEditing}
         {editTitle}
         {editProjectID}
+        {editFormat}
         {projects}
         {onEditTitle}
         {onEditProjectID}
+        {onEditFormat}
         {onStartEdit}
         {onSaveDocument}
         {onCancelEdit}
@@ -69,12 +105,18 @@
         {onDeleteDoc}
       />
 
+      <PRDValidationPanel
+        report={validationReport}
+        busy={validationBusy}
+        errorMessage={validationError}
+        format={editFormat}
+        onRecheck={onRefreshValidation}
+        onRefineWithAI={onRefineWithAI}
+      />
+
       <div class="editor-viewport flex-1 flex">
         {#if isEditing}
-          <div class="flex w-full h-full divide-x divide-gray-900 overflow-hidden">
-            <DocumentEditorPane {editContent} {onEditContent} />
-            <DocumentPreviewPane {renderedContent} showHeader={true} />
-          </div>
+          <DocumentEditorPane {editContent} format={editFormat} {onEditContent} {onFocusContextChange} />
         {:else}
           <DocumentPreviewPane {renderedContent} />
         {/if}

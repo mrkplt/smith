@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { isFeatureCapabilityEnabled, isFeatureVisible, isTasksEnabled, parseBoolean } from '$lib/feature-flags';
+import {
+  isFeatureCapabilityEnabled,
+  isFeatureVisible,
+  isProviderTypeEnabled,
+  isTasksEnabled,
+  parseBoolean
+} from '$lib/feature-flags';
 
 describe('feature flags', () => {
   it('parses booleans consistently', () => {
@@ -32,5 +38,23 @@ describe('feature flags', () => {
     expect(isFeatureVisible('tasks', {})).toBe(false);
     expect(isFeatureVisible('feature-capability', {})).toBe(false);
     expect(isFeatureVisible('pods', {})).toBe(true);
+  });
+
+  it('defaults only codex/openai provider enabled', () => {
+    expect(isProviderTypeEnabled('codex', {})).toBe(true);
+    expect(isProviderTypeEnabled('openai', {})).toBe(true);
+    expect(isProviderTypeEnabled('claude', {})).toBe(false);
+    expect(isProviderTypeEnabled('gemini', {})).toBe(false);
+  });
+
+  it('supports runtime overrides for provider feature gates', () => {
+    const config = {
+      featureProviderClaudeEnabled: true,
+      featureProviderGeminiEnabled: '1'
+    };
+    expect(isProviderTypeEnabled('claude', config)).toBe(true);
+    expect(isProviderTypeEnabled('anthropic', config)).toBe(true);
+    expect(isProviderTypeEnabled('gemini', config)).toBe(true);
+    expect(isProviderTypeEnabled('google', config)).toBe(true);
   });
 });

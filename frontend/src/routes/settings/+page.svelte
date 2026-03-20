@@ -18,6 +18,8 @@
   import ProjectEditorDrawer from '$lib/components/ProjectEditorDrawer.svelte';
   import ProviderEditorDrawer from '$lib/components/ProviderEditorDrawer.svelte';
   import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
+  import { isProviderTypeEnabled } from '$lib/feature-flags';
+  import { includeSelectedModel, loadProviderModels } from '$lib/providers/models';
   import { appState, pushToast } from '$lib/stores';
   import { apiBaseUrl, chatBaseUrl, deleteJSON, fetchJSON, postJSON, requestJSON } from '$lib/api';
 
@@ -64,6 +66,9 @@
 
   let providerProfileID = $state('');
   let defaultModel = $state('');
+  let modelOptions = $state<string[]>([]);
+  let modelOptionsBusy = $state(false);
+  let codexCredentialStatus = $state<any>({ connected: false });
   let thinkingLevel = $state('balanced');
   let providerApiKey = $state('');
   let preferFullScreen = $state(false);
@@ -85,6 +90,7 @@
   const selectedChatProfile = $derived(
     providerProfiles.find((profile) => String(profile?.id || '') === providerProfileID) || null
   );
+  const availableModelOptions = $derived(includeSelectedModel(modelOptions, defaultModel));
 
   const generalRows = $derived([
     { label: 'Installation', value: 'smith-console' },
@@ -106,6 +112,7 @@
     buildLabel = String(config.build || config.version || 'local');
 
     void loadProviderProfiles().then(loadChatSettingsFromBrowser);
+    void loadCodexCredentialStatus();
     void loadSecrets();
     void refreshOnboardingState();
   });
@@ -113,9 +120,41 @@
   async function loadProviderProfiles() {
     try {
       const profiles = await fetchJSON('/v1/providers');
-      providerProfiles = Array.isArray(profiles) ? profiles : [];
+      providerProfiles = Array.isArray(profiles)
+        ? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+        : [];
     } catch (err: any) {
       pushToast(err?.message || 'Failed to load provider profiles', 'err');
+    }
+  }
+
+  async function loadCodexCredentialStatus() {
+    try {
+      const response = await fetchJSON('/v1/auth/codex/credential');
+      codexCredentialStatus = response || { connected: false };
+      appState.update((state) => ({
+        ...state,
+        providerStatus: {
+          ...state.providerStatus,
+          codex: {
+            ...(state.providerStatus?.codex || {}),
+            ...(response || {}),
+            connected: !!response?.connected
+          }
+        }
+      }));
+    } catch {
+      codexCredentialStatus = { connected: false };
+      appState.update((state) => ({
+        ...state,
+        providerStatus: {
+          ...state.providerStatus,
+          codex: {
+            ...(state.providerStatus?.codex || {}),
+            connected: false
+          }
+        }
+      }));
     }
   }
 
@@ -129,6 +168,19 @@
     thinkingLevel = settings.thinkingLevel;
     providerApiKey = settings.providerApiKey;
     preferFullScreen = settings.preferFullScreen;
+    void loadModelOptions(providerProfileID);
+  }
+
+  async function loadModelOptions(nextProfileID: string) {
+    const normalizedProfileID = String(nextProfileID || '').trim();
+    const profile = providerProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
+    const providerTypeHint = String(profile?.provider_type || '').trim();
+    modelOptionsBusy = true;
+    try {
+      modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+    } finally {
+      modelOptionsBusy = false;
+    }
   }
 
   async function loadSecrets() {
@@ -156,6 +208,7 @@
 
   function handleProviderSaved() {
     void loadProviderProfiles();
+    void loadCodexCredentialStatus();
     void refreshOnboardingState();
   }
 
@@ -218,6 +271,7 @@
   function selectChatProviderProfile(nextProfileID: string) {
     providerProfileID = nextProfileID;
     defaultModel = resolveDefaultModel(providerProfiles, nextProfileID, '');
+    void loadModelOptions(nextProfileID);
   }
 
   function openConfig(providerProfile: any) {
@@ -251,7 +305,7 @@
   function providerStatus(providerProfile: any): string {
     const providerType = String(providerProfile?.provider_type || '').toLowerCase();
     if (providerType === 'codex') {
-      return $appState.providerStatus?.codex?.connected ? 'connected' : 'needs auth';
+      return codexCredentialStatus?.connected ? 'connected' : 'needs auth';
     }
     return 'configured';
   }
@@ -426,13 +480,19 @@
 
           <div>
             <Label class="mb-2 text-gray-400 uppercase font-bold text-xs tracking-widest">Default Model</Label>
-            <input
-              type="text"
+            <select
               class="w-full bg-slate-900 border border-gray-800 text-white text-sm rounded-none px-3 py-2"
-              placeholder="Leave blank to use provider profile default"
               value={defaultModel}
-              oninput={(event) => defaultModel = (event.currentTarget as HTMLInputElement).value}
-            />
+              oninput={(event) => defaultModel = (event.currentTarget as HTMLSelectElement).value}
+            >
+              <option value="">Use provider profile default</option>
+              {#if modelOptionsBusy}
+                <option value={defaultModel} disabled>{defaultModel !== '' ? defaultModel : 'Loading models...'}</option>
+              {/if}
+              {#each availableModelOptions as model}
+                <option value={model}>{model}</option>
+              {/each}
+            </select>
             {#if selectedChatProfile && selectedChatProfile.default_model}
               <p class="mt-2 text-[11px] text-gray-500">
                 Profile default: `{selectedChatProfile.default_model}`

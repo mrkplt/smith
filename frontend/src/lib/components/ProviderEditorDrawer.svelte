@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getJSON, postJSON, requestJSON, deleteJSON } from '$lib/api';
+	import { isProviderTypeEnabled } from '$lib/feature-flags';
+	import { includeSelectedModel, loadProviderModels, staticModelsForProviderType } from '$lib/providers/models';
 	import { pushToast } from '$lib/stores';
 	import { Drawer, Button, Input, Label, Helper } from 'flowbite-svelte';
 	import { CheckOutline, CloseOutline, AdjustmentsHorizontalOutline, TrashBinOutline } from 'flowbite-svelte-icons';
@@ -24,14 +26,28 @@
 	let secretRef = $state('');
 	let apiKey = $state('');
 	let accountId = $state('');
+	let providerModelOptions = $state<string[]>([]);
+	let providerModelOptionsBusy = $state(false);
 	let codexCredential = $state<any>({ connected: false });
 	let codexCredentialBusy = $state(false);
 	let busy = $state(false);
-	let providerCatalog = $state<any[]>([
+	const fallbackProviderCatalog = [
 		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type'] },
 		{ id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
 		{ id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
-	]);
+	];
+
+	function filterCatalogByProviderFlags(catalog: any[]): any[] {
+		if (!Array.isArray(catalog)) {
+			return [];
+		}
+		return catalog.filter((entry) => {
+			const providerID = String(entry?.provider_type || entry?.id || '').trim().toLowerCase();
+			return isProviderTypeEnabled(providerID);
+		});
+	}
+
+	let providerCatalog = $state<any[]>(filterCatalogByProviderFlags(fallbackProviderCatalog));
 
 	let isHidden = $state(true);
 	$effect(() => {
@@ -51,6 +67,7 @@
 
 	const isEditing = $derived(!!provider?.id);
 	const isProtected = $derived(String(id).trim() === 'codex-default');
+	const normalizedProviderType = $derived(canonicalProviderType(providerType));
 	const selectedCatalogEntry = $derived(providerCatalog.find((entry) => entry.id === providerType) || null);
 	const requiredFieldsSummary = $derived(
 		selectedCatalogEntry && Array.isArray(selectedCatalogEntry.required_config_fields)
@@ -61,20 +78,39 @@
 	const requiresSecretRef = $derived(
 		!!(selectedCatalogEntry && Array.isArray(selectedCatalogEntry.required_config_fields) && selectedCatalogEntry.required_config_fields.includes('secret_ref'))
 	);
+	const availableProviderModelOptions = $derived(includeSelectedModel(providerModelOptions, defaultModel));
+
+	function canonicalProviderType(raw: string): string {
+		const normalized = String(raw || '').trim().toLowerCase();
+		if (normalized === '' || normalized === 'codex' || normalized === 'openai') {
+			return 'codex';
+		}
+		if (normalized === 'claude' || normalized === 'anthropic') {
+			return 'claude';
+		}
+		if (normalized === 'gemini' || normalized === 'google') {
+			return 'gemini';
+		}
+		return normalized;
+	}
 
 	async function loadProviderCatalog() {
 		try {
 			const response = await getJSON('/v1/providers/catalog');
-			if (Array.isArray(response) && response.length > 0) {
-				providerCatalog = response;
+			const filteredResponse = filterCatalogByProviderFlags(response);
+			if (filteredResponse.length > 0) {
+				providerCatalog = filteredResponse;
+				return;
 			}
+			providerCatalog = filterCatalogByProviderFlags(fallbackProviderCatalog);
 		} catch {
 			// Keep built-in fallback catalog for local/offline usage.
+			providerCatalog = filterCatalogByProviderFlags(fallbackProviderCatalog);
 		}
 	}
 
 	async function loadCodexCredential() {
-		if (providerType !== 'codex') {
+		if (canonicalProviderType(providerType) !== 'codex') {
 			codexCredential = { connected: false };
 			return;
 		}
@@ -86,6 +122,20 @@
 			codexCredential = { connected: false };
 		} finally {
 			codexCredentialBusy = false;
+		}
+	}
+
+	async function loadProviderModelOptions() {
+		const canonicalType = canonicalProviderType(providerType);
+		providerModelOptionsBusy = true;
+		try {
+			if (isEditing && id.trim() !== '') {
+				providerModelOptions = await loadProviderModels(id.trim(), canonicalType);
+				return;
+			}
+			providerModelOptions = staticModelsForProviderType(canonicalType);
+		} finally {
+			providerModelOptionsBusy = false;
 		}
 	}
 
@@ -110,7 +160,7 @@
 		if (provider) {
 			id = provider.id || '';
 			name = provider.name || '';
-			providerType = provider.provider_type || 'codex';
+			providerType = canonicalProviderType(provider.provider_type || 'codex');
 			endpoint = provider.endpoint || '';
 			defaultModel = provider.default_model || '';
 			capabilities = Array.isArray(provider.capabilities)
@@ -128,6 +178,7 @@
 		}
 		apiKey = '';
 		accountId = '';
+		void loadProviderModelOptions();
 		void loadCodexCredential();
 	});
 
@@ -138,6 +189,7 @@
 		if (providerType.trim() === '') {
 			return;
 		}
+		void loadProviderModelOptions();
 		void loadCodexCredential();
 	});
 
@@ -159,16 +211,17 @@
 			pushToast(`Secret reference is required for ${selectedProviderLabel} providers`, 'err');
 			return;
 		}
-		if (providerType.trim().toLowerCase() === 'codex' && apiKey.trim() !== '' && !apiKey.trim().startsWith('sk-')) {
+		if (canonicalProviderType(providerType) === 'codex' && apiKey.trim() !== '' && !apiKey.trim().startsWith('sk-')) {
 			pushToast('Codex API key must start with sk-', 'err');
 			return;
 		}
 		busy = true;
 		try {
+			const canonicalType = canonicalProviderType(providerType);
 			const payload = {
 				id: id.trim(),
 				name: name.trim(),
-				provider_type: providerType.trim().toLowerCase(),
+				provider_type: canonicalType,
 				endpoint: endpoint.trim(),
 				default_model: defaultModel.trim(),
 				capabilities: capabilities
@@ -183,7 +236,7 @@
 				await postJSON('/v1/providers', payload);
 			}
 
-			if (providerType.trim().toLowerCase() === 'codex' && apiKey.trim() !== '') {
+			if (canonicalType === 'codex' && apiKey.trim() !== '') {
 				await postJSON('/v1/auth/codex/connect/api-key', {
 					actor: 'operator',
 					api_key: apiKey.trim(),
@@ -294,14 +347,20 @@
 
 				<div>
 					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Default Model</Label>
-					<Input
-						type="text"
+					<select
+						class="w-full bg-black border border-gray-800 text-white text-sm rounded-none px-3 py-2"
 						value={defaultModel}
-						oninput={(event) => defaultModel = (event.currentTarget as HTMLInputElement).value}
+						oninput={(event) => defaultModel = (event.currentTarget as HTMLSelectElement).value}
 						disabled={busy}
-						placeholder="gpt-5.4"
-						class="bg-black border-gray-800 text-white rounded-none"
-					/>
+					>
+						<option value="">Use provider default</option>
+						{#if providerModelOptionsBusy}
+							<option value={defaultModel} disabled>{defaultModel !== '' ? defaultModel : 'Loading models...'}</option>
+						{/if}
+						{#each availableProviderModelOptions as model}
+							<option value={model}>{model}</option>
+						{/each}
+					</select>
 				</div>
 
 				<div>
@@ -347,7 +406,7 @@
 					</datalist>
 				</div>
 
-				{#if providerType === 'codex'}
+				{#if normalizedProviderType === 'codex'}
 					<div class="space-y-4 pt-4 border-t border-gray-900">
 						<div class="border border-gray-800 bg-slate-900/30 p-3 space-y-2">
 							<div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500">Credential Status</div>

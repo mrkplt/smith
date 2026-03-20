@@ -52,7 +52,8 @@ func main() {
 	}
 	defer func() { _ = etcdStore.Close() }()
 
-	bridge := smithbridge.NewEtcdBridge(etcdStore)
+	documentFetcher := smithbridge.NewAPIDocumentFetcher(cfg.apiURL, nil)
+	bridge := smithbridge.NewEtcdBridgeWithDocumentFetcher(etcdStore, documentFetcher)
 	chatHandler := httpapi.NewServerWithCommit(
 		goosed.NewEngine(),
 		sessions.NewManager(),

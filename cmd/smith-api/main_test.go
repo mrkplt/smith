@@ -424,6 +424,64 @@ func TestHandleIngressPRDRejectsInvalidCanonicalPRD(t *testing.T) {
 	}
 }
 
+func TestHandlePRDValidateMarkdownReturnsDiagnostics(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/prd/validate", strings.NewReader(`{
+		"format":"markdown",
+		"markdown":"# Validation\n\n## Overview\n\nCanonical PRD validation"
+	}`))
+	s.handlePRDValidate(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body api.PRDValidateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Format != "markdown" {
+		t.Fatalf("expected markdown format, got %q", body.Format)
+	}
+	if body.Report.Valid {
+		t.Fatalf("expected invalid report, got %+v", body.Report)
+	}
+	assertDiagnosticCodeInReport(t, body.Report.Errors, model.PRDDiagnosticMissingQualityGates)
+}
+
+func TestHandlePRDValidateJSONReturnsCanonicalMarkdown(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/prd/validate", strings.NewReader(`{
+		"format":"json",
+		"json":"{\"version\":1,\"project\":\"Validation\",\"overview\":\"Canonical PRD validation\",\"qualityGates\":[\"go test ./...\"],\"stories\":[{\"id\":\"US-001\",\"title\":\"Define validation contract\",\"status\":\"open\",\"description\":\"As a maintainer, I want shared validation.\",\"acceptanceCriteria\":[\"Validation report is shared.\"]}]}"
+	}`))
+	s.handlePRDValidate(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body api.PRDValidateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Format != "json" {
+		t.Fatalf("expected json format, got %q", body.Format)
+	}
+	if !body.Report.Valid {
+		t.Fatalf("expected valid report, got %+v", body.Report)
+	}
+	if !strings.Contains(body.CanonicalMarkdown, "# Validation") {
+		t.Fatalf("expected canonical markdown in response, got %q", body.CanonicalMarkdown)
+	}
+}
+
 func TestHandleLoopCreateRejectsInvalidWorkspacePRD(t *testing.T) {
 	ms := store.NewMemStore()
 	s := newPRDValidationTestServer(ms)
@@ -2039,8 +2097,8 @@ func TestHandleProvidersReturnsDefaultProfile(t *testing.T) {
 		ids = append(ids, profile.ID)
 	}
 	assert.Contains(t, ids, provider.DefaultProviderProfileID)
-	assert.Contains(t, ids, "claude-default")
-	assert.Contains(t, ids, "gemini-default")
+	assert.NotContains(t, ids, "claude-default")
+	assert.NotContains(t, ids, "gemini-default")
 }
 
 func TestHandleProviderCatalogReturnsSupportedProviderSet(t *testing.T) {
@@ -2053,10 +2111,25 @@ func TestHandleProviderCatalogReturnsSupportedProviderSet(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	var out []provider.CatalogEntry
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	require.Len(t, out, 1)
+	ids := []string{out[0].ID}
+	assert.Equal(t, []string{provider.ProviderCodex}, ids)
+	assert.NotEmpty(t, out[0].RequiredConfigFields)
+}
+
+func TestHandleProviderCatalogIncludesFlaggedProvidersWhenEnabled(t *testing.T) {
+	s := &server{cfg: config{providerClaudeEnabled: true, providerGeminiEnabled: true}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers/catalog", nil)
+	s.handleProviderCatalog(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out []provider.CatalogEntry
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
 	require.Len(t, out, 3)
 	ids := []string{out[0].ID, out[1].ID, out[2].ID}
 	assert.Equal(t, []string{provider.ProviderCodex, provider.ProviderClaude, provider.ProviderGemini}, ids)
-	assert.NotEmpty(t, out[0].RequiredConfigFields)
 }
 
 func TestHandleProjectsAssignsDefaultProviderProfile(t *testing.T) {
@@ -2234,6 +2307,118 @@ func TestHandleProviderByIDSupportsAPIAliasAndAuditsConfigChanges(t *testing.T) 
 	}
 	assert.True(t, actions["update-provider-profile"])
 	assert.True(t, actions["delete-provider-profile"])
+}
+
+func TestHandleProviderByIDModelsReturnsAccountScopedInventory(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("expected /v1/models path, got %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-live-test" {
+			t.Fatalf("expected bearer credential header, got %q", got)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{
+				{"id": "ada:ft-org-2025-01-01", "owned_by": "openai", "created": 1600000000},
+				{"id": "gpt-5-codex", "owned_by": "openai", "created": 1700000010},
+				{"id": "gpt-4.1", "owned_by": "openai", "created": 1700000000},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	providerStore := provider.NewFileProviderProfileStore()
+	secretStore := provider.NewFileSecretStore()
+	require.NoError(t, secretStore.PutSecret(context.Background(), provider.SettingsSecret{
+		ID:    "openai-key",
+		Name:  "OpenAI key",
+		Value: "sk-live-test",
+	}))
+	require.NoError(t, providerStore.PutProviderProfile(context.Background(), provider.ProviderProfile{
+		ID:           "openai-work",
+		ProviderType: "openai",
+		SecretRef:    "openai-key",
+		DefaultModel: "gpt-5-codex",
+		Endpoint:     upstream.URL + "/v1",
+	}))
+
+	s := &server{
+		providers:    providerStore,
+		secrets:      secretStore,
+		projectStore: &memoryProjectStore{items: map[string]provider.Project{}},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers/openai-work/models", nil)
+	s.handleProviderByID(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out api.ProviderModelsResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	assert.Equal(t, "openai-work", out.ProviderID)
+	assert.Equal(t, "codex", out.ProviderType)
+	assert.Equal(t, "account_scoped_chat", out.Source)
+	if assert.Len(t, out.Models, 2) {
+		assert.Equal(t, "gpt-4.1", out.Models[0].ID)
+		assert.Equal(t, "gpt-5-codex", out.Models[1].ID)
+	}
+}
+
+func TestHandleProviderByIDModelsSupportsIncludeAll(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"data": []map[string]any{
+				{"id": "ada:ft-org-2025-01-01", "owned_by": "openai", "created": 1600000000},
+				{"id": "gpt-5-codex", "owned_by": "openai", "created": 1700000010},
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	providerStore := provider.NewFileProviderProfileStore()
+	secretStore := provider.NewFileSecretStore()
+	require.NoError(t, secretStore.PutSecret(context.Background(), provider.SettingsSecret{ID: "openai-key", Value: "sk-live-test"}))
+	require.NoError(t, providerStore.PutProviderProfile(context.Background(), provider.ProviderProfile{
+		ID:           "openai-work",
+		ProviderType: "openai",
+		SecretRef:    "openai-key",
+		Endpoint:     upstream.URL + "/v1",
+	}))
+
+	s := &server{providers: providerStore, secrets: secretStore, projectStore: &memoryProjectStore{items: map[string]provider.Project{}}}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers/openai-work/models?include=all", nil)
+	s.handleProviderByID(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out api.ProviderModelsResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	assert.Equal(t, "account_scoped_all", out.Source)
+	if assert.Len(t, out.Models, 2) {
+		assert.Equal(t, "ada:ft-org-2025-01-01", out.Models[0].ID)
+		assert.Equal(t, "gpt-5-codex", out.Models[1].ID)
+	}
+}
+
+func TestHandleProviderByIDModelsRejectsMissingCredentialSource(t *testing.T) {
+	providerStore := provider.NewFileProviderProfileStore()
+	require.NoError(t, providerStore.PutProviderProfile(context.Background(), provider.ProviderProfile{
+		ID:           "openai-work",
+		ProviderType: "openai",
+		DefaultModel: "gpt-5-codex",
+	}))
+
+	s := &server{
+		providers:    providerStore,
+		projectStore: &memoryProjectStore{items: map[string]provider.Project{}},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/providers/openai-work/models", nil)
+	s.handleProviderByID(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "no credential source")
 }
 
 func TestHandleProjectsSupportsAPIAliasAndAuditsConfigChanges(t *testing.T) {
@@ -2484,6 +2669,25 @@ func TestHandleProvidersRejectsUnsupportedProviderType(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "unsupported provider_type")
+}
+
+func TestHandleProvidersRejectsDisabledProviderType(t *testing.T) {
+	s := &server{
+		providers: provider.NewFileProviderProfileStore(),
+		secrets:   provider.NewFileSecretStore(),
+		cfg:       config{providerClaudeEnabled: false, providerGeminiEnabled: false},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(`{
+		"id":"claude-team",
+		"provider_type":"claude",
+		"secret_ref":"claude-key"
+	}`))
+	s.handleProviders(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), "disabled by feature flag")
 }
 
 func TestHandleSecretDeleteRejectsReferencedSecret(t *testing.T) {

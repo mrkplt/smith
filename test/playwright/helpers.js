@@ -34,6 +34,18 @@ export const loopsFixture = [
   },
 ];
 
+export const documentsFixture = [
+  {
+    id: 'doc-1',
+    project_id: 'alpha',
+    title: 'Checkout PRD',
+    content: '# Checkout\n\n## Acceptance Criteria\n- add retries',
+    format: 'markdown',
+    status: 'active',
+    updated_at: '2026-03-18T12:00:00Z',
+  },
+];
+
 /**
  * Inject a mock EventSource into the page so that the Svelte layout
  * streams never hit a real backend.  Call this BEFORE page.goto().
@@ -107,6 +119,38 @@ export async function emitLoopUpdates(page, loops) {
   }, loops);
 }
 
+export async function emitDocumentUpdates(page, docs) {
+  await page.waitForFunction(
+    () => (window.__mockEventSources || []).some(s => s.url.includes('/documents/stream')),
+    null,
+    { timeout: 5000 },
+  );
+
+  await page.evaluate((items) => {
+    for (const source of (window.__mockEventSources || [])) {
+      if (!source.url.includes('/documents/stream')) continue;
+      for (const doc of items) {
+        source.emit('update', { data: JSON.stringify(doc) });
+      }
+    }
+  }, docs);
+}
+
+export async function emitChatEvent(page, sessionID, type, payload) {
+  await page.waitForFunction(
+    ({ sid }) => (window.__mockEventSources || []).some(s => s.url.includes(`/chat/v1/chat/sessions/${sid}/stream`)),
+    { sid: sessionID },
+    { timeout: 5000 },
+  );
+
+  await page.evaluate(({ sid, eventType, eventPayload }) => {
+    for (const source of (window.__mockEventSources || [])) {
+      if (!source.url.includes(`/chat/v1/chat/sessions/${sid}/stream`)) continue;
+      source.emit(eventType, { data: JSON.stringify(eventPayload) });
+    }
+  }, { sid: sessionID, eventType: type, eventPayload: payload });
+}
+
 /**
  * Set up all API route mocks the Svelte frontend uses.
  *
@@ -115,6 +159,7 @@ export async function emitLoopUpdates(page, loops) {
  */
 export async function mockApiRoutes(page, options = {}) {
   const loops = options.loops || loopsFixture;
+  const documentsState = options.documents || documentsFixture;
   const providersState = options.providers || [
     {
       id: 'codex-default',
@@ -141,6 +186,10 @@ export async function mockApiRoutes(page, options = {}) {
   const commandPayloads = [];
   const attachPayloads = [];
   const detachPayloads = [];
+  const chatMessages = [];
+  const contextUpdatePayloads = [];
+  let chatSessionCounter = 1;
+  let lastChatSessionID = '';
 
   // ── runtime config ────────────────────────────────────────────────
   await page.addInitScript(() => {
@@ -283,7 +332,101 @@ export async function mockApiRoutes(page, options = {}) {
 
   // GET /v1/documents
   await page.route(/\/v1\/documents$/, async (route) => {
-    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    const method = route.request().method();
+    if (method === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(documentsState) });
+    }
+    if (method === 'POST') {
+      const payload = route.request().postDataJSON() || {};
+      const created = {
+        id: payload.id || `doc-${documentsState.length + 1}`,
+        project_id: payload.project_id || 'alpha',
+        title: payload.title || 'Untitled Document',
+        content: payload.content || '',
+        format: payload.format || 'markdown',
+        status: payload.status || 'active',
+        updated_at: new Date().toISOString(),
+      };
+      documentsState.push(created);
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(created) });
+    }
+    return route.fallback();
+  });
+
+  await page.route(/\/v1\/documents\/[^/]+$/, async (route) => {
+    const method = route.request().method();
+    const url = new URL(route.request().url());
+    const id = decodeURIComponent(url.pathname.split('/').pop() || '');
+    const idx = documentsState.findIndex((doc) => doc.id === id);
+
+    if (method === 'PUT') {
+      if (idx < 0) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'document not found' }) });
+      }
+      const payload = route.request().postDataJSON() || {};
+      documentsState[idx] = {
+        ...documentsState[idx],
+        ...payload,
+        updated_at: new Date().toISOString(),
+      };
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(documentsState[idx]) });
+    }
+
+    if (method === 'DELETE') {
+      if (idx >= 0) {
+        documentsState.splice(idx, 1);
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+
+    return route.fallback();
+  });
+
+  await page.route(/\/v1\/prd\/validate$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const payload = route.request().postDataJSON() || {};
+    const markdown = String(payload.markdown || '');
+    const hasAcceptance = markdown.toLowerCase().includes('acceptance criteria');
+    const report = hasAcceptance
+      ? { valid: true, errors: [], warnings: [], readiness: 'pass' }
+      : {
+          valid: false,
+          readiness: 'warn',
+          errors: [{ code: 'missing_acceptance', path: '/acceptance', message: 'Acceptance criteria missing' }],
+          warnings: [],
+        };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ format: payload.format || 'markdown', report }) });
+  });
+
+  await page.route(/\/chat\/v1\/chat\/sessions$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const payload = route.request().postDataJSON() || {};
+    const sessionID = `sess_${chatSessionCounter++}`;
+    lastChatSessionID = sessionID;
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        sessionId: sessionID,
+        type: payload.type || 'prd-refinement',
+        context: payload.context || {},
+        messages: [],
+      }),
+    });
+  });
+
+  await page.route(/\/chat\/v1\/chat\/sessions\/[^/]+\/messages$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const payload = route.request().postDataJSON() || {};
+    chatMessages.push(payload);
+    return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ status: 'queued' }) });
+  });
+
+  await page.route(/\/chat\/v1\/chat\/sessions\/[^/]+\/context$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const payload = route.request().postDataJSON() || {};
+    contextUpdatePayloads.push(payload);
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'updated' }) });
   });
 
   // Auth status
@@ -346,6 +489,10 @@ export async function mockApiRoutes(page, options = {}) {
     commandPayloads,
     attachPayloads,
     detachPayloads,
+    chatMessages,
+    contextUpdatePayloads,
+    getLastChatSessionID: () => lastChatSessionID,
+    documentsState,
     projectsState,
     providersState,
     secretsState,

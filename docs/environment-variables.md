@@ -43,6 +43,22 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_AUTH_STORE_K8S_KEY` | `tokens.json` | Secret key field used for auth token JSON. |
 | `SMITH_SKILL_ALLOWED_SOURCES` | defaults from policy | Restricts allowed skill mount source prefixes. |
 | `SMITH_SKILL_ALLOW_WRITABLE` | policy default | Enables/disables writable skill mounts. |
+| `SMITH_DOCUMENT_STORE_BACKEND` | `etcd` | Document store backend selector (`etcd` or `postgres-garage`). |
+| `SMITH_DOCUMENTS_POSTGRES_DSN` | empty | PostgreSQL DSN for document metadata storage (`postgres-garage` backend). |
+| `SMITH_DOCUMENTS_POSTGRES_MAX_CONNS` | `10` | Max PostgreSQL pool connections for document metadata store. |
+| `SMITH_DOCUMENTS_GARAGE_ENDPOINT` | empty | Garage S3-compatible endpoint URL for document content blobs. |
+| `SMITH_DOCUMENTS_GARAGE_REGION` | `us-east-1` | Region value used by S3 client for Garage requests. |
+| `SMITH_DOCUMENTS_GARAGE_BUCKET` | empty | Bucket name used to store document content blobs. |
+| `SMITH_DOCUMENTS_GARAGE_ACCESS_KEY_ID` | empty | Access key for Garage S3 API auth. |
+| `SMITH_DOCUMENTS_GARAGE_SECRET_ACCESS_KEY` | empty | Secret key for Garage S3 API auth. |
+| `SMITH_DOCUMENTS_GARAGE_FORCE_PATH_STYLE` | `true` | Enables path-style S3 requests (recommended for Garage). |
+| `SMITH_DOCUMENTS_WATCH_POLL_INTERVAL` | `2s` | Poll interval for document stream watchers in `postgres-garage` mode. |
+| `SMITH_DOCUMENTS_MIGRATION_BACKFILL_ON_STARTUP` | `true` | Runs etcd-to-Postgres/Garage backfill at API startup in `postgres-garage` mode. |
+| `SMITH_DOCUMENTS_MIGRATION_READ_THROUGH_ON_MISS` | `true` | On read miss in Postgres/Garage, falls back to etcd and backfills migrated copy. |
+| `SMITH_DOCUMENTS_MIGRATION_MERGE_LIST_FALLBACK` | `true` | Merges list responses with etcd during migration window. |
+| `SMITH_DOCUMENTS_MIGRATION_DUAL_WRITE_ETCD` | `false` | Writes document mutations to etcd as fallback shadow writes. |
+
+Helm note: when `documentDependencies.postgres.enabled` and/or `documentDependencies.garage.enabled` are set, chart templates can auto-populate DSN/endpoint/region/bucket env values from `documentDependencies.*` when corresponding `api.documents.*` values are left empty. Credential values can be sourced from a Kubernetes Secret via `documentDependencies.credentials.*` and injected with `valueFrom.secretKeyRef`.
 
 ## smith-core (loop orchestrator)
 
@@ -52,7 +68,9 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_CORE_HOLDER_ID` | hostname-derived | Leader/lock holder identity for state transitions. |
 | `SMITH_REPLICA_IMAGE` | `ghcr.io/smith/replica:v0.3.1` | Runtime replica image used for loop Jobs. |
 | `SMITH_REPLICA_IMAGE_PULL_POLICY` | `IfNotPresent` | Pull policy for replica image. |
-| `SMITH_RUNTIME_CREDENTIALS` | empty | Runtime provider credentials passed to loop execution environment. |
+| `SMITH_RUNTIME_SECRET_NAME` | empty | Secret name used by core when wiring runtime credentials into replica jobs. |
+| `SMITH_RUNTIME_CREDENTIALS_KEY` | `runtime_credentials` | Secret key field used for runtime credential lookup in replica jobs. |
+| `SMITH_RUNTIME_CREDENTIALS` | empty | Legacy inline runtime credential fallback (used only when runtime secret name is unset). |
 | `SMITH_GIT_PAT_SECRET_NAME` | empty | Secret name containing git PAT for replica setup. |
 | `SMITH_GIT_PAT_SECRET_KEY` | `git_pat` | Secret key field for git PAT lookup. |
 | `SMITH_DOCKERFILE_BUILD_ENABLED` | `false` | Enables dockerfile-based execution image build path. |
@@ -103,3 +121,16 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 - `--api-url`
 
 These are set by deployment command/manifest and should be treated as the operational equivalents for chat runtime configuration.
+
+## Local make workflow controls
+
+These variables are consumed by `make deploy-local` / `make deploy-local-document-storage` in developer workflows:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SMITH_BOOTSTRAP_DOCUMENT_STORAGE` | `false` | Enables ordered document-storage bootstrap flow inside `deploy-local` (pre-secrets -> deploy -> post-bootstrap). |
+| `SMITH_BOOTSTRAP_ENV_FILE` | `~/.smith/.env` | Env file consumed by `scripts/bootstrap-document-storage.sh` when bootstrap mode is enabled. |
+| `SMITH_BOOTSTRAP_SCRIPT` | `./scripts/bootstrap-document-storage.sh` | Script path used for document-storage bootstrap orchestration. |
+| `SMITH_LOCAL_OVERLAY` | empty | Optional extra Helm values file passed to `deploy-local` (for example `helm/smith/values/local-document-storage-1password.yaml`). |
+| `SMITH_FORCE_HELM_ROLLOUT_ID` | `true` | When `true`, forces Helm rollout id mutation on each `deploy-local`; set `false` for idempotent runs. |
+| `SMITH_FORCE_ROLLOUT` | `true` | When `true`, forces `rollout-local` restarts after Helm deploy; set `false` for idempotent runs. |

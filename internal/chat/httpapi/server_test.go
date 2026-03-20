@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type stubEngine struct {
@@ -74,6 +75,85 @@ func TestCreateSession(t *testing.T) {
 	}
 	if session.Type != chat.SessionTypePRDRefinement {
 		t.Fatalf("expected session type %q, got %q", chat.SessionTypePRDRefinement, session.Type)
+	}
+}
+
+func TestUpdateSessionContext(t *testing.T) {
+	engine := &stubEngine{}
+	sessionManager := sessions.NewManager()
+	server := NewServer(engine, sessionManager, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions", strings.NewReader(`{"type":"prd-refinement","context":{"documentId":"doc-1"}}`))
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create session failed: status %d body %s", createRec.Code, createRec.Body.String())
+	}
+
+	var session chat.Session
+	if err := json.NewDecoder(createRec.Body).Decode(&session); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/context", strings.NewReader(`{"type":"ui.context.updated","focusContext":{"surface":"document_editor","sectionId":"acceptance_criteria","selectionText":"- retries are bounded","uiState":{"activePane":"Guidepost","centerTab":"document"}}}`))
+	updateRec := httptest.NewRecorder()
+	server.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update context failed: status %d body %s", updateRec.Code, updateRec.Body.String())
+	}
+
+	var updateRes api.ChatUpdateContextResponse
+	if err := json.NewDecoder(updateRec.Body).Decode(&updateRes); err != nil {
+		t.Fatalf("decode update context response: %v", err)
+	}
+	if updateRes.Status != "updated" {
+		t.Fatalf("expected updated status, got %q", updateRes.Status)
+	}
+	if updateRes.Context["focusSectionId"] != "acceptance_criteria" {
+		t.Fatalf("expected focusSectionId to be stored, got %q", updateRes.Context["focusSectionId"])
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/messages", strings.NewReader(`{"message":"refine section"}`))
+	postRec := httptest.NewRecorder()
+	server.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusAccepted {
+		t.Fatalf("post message failed: status %d body %s", postRec.Code, postRec.Body.String())
+	}
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/v1/chat/sessions/"+session.ID+"/stream", nil)
+	streamRec := httptest.NewRecorder()
+	server.ServeHTTP(streamRec, streamReq)
+	body := streamRec.Body.String()
+	if !strings.Contains(body, `event: context.loaded`) {
+		t.Fatalf("expected context.loaded event in stream body: %s", body)
+	}
+	if !strings.Contains(body, `"sectionId":"acceptance_criteria"`) {
+		t.Fatalf("expected focus payload in context.loaded event: %s", body)
+	}
+}
+
+func TestUpdateSessionContextRejectsInvalidType(t *testing.T) {
+	engine := &stubEngine{}
+	sessionManager := sessions.NewManager()
+	server := NewServer(engine, sessionManager, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions", strings.NewReader(`{"type":"prd-refinement","context":{}}`))
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create session failed: status %d body %s", createRec.Code, createRec.Body.String())
+	}
+
+	var session chat.Session
+	if err := json.NewDecoder(createRec.Body).Decode(&session); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/context", strings.NewReader(`{"type":"unknown.context.event","context":{"k":"v"}}`))
+	updateRec := httptest.NewRecorder()
+	server.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request for invalid update type, got %d", updateRec.Code)
 	}
 }
 
@@ -182,5 +262,179 @@ func TestCommitActionReturnsStatusFromCommitError(t *testing.T) {
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected status 502, got %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStreamEmitsDocumentContextEvents(t *testing.T) {
+	engine := &stubEngine{}
+	sessionManager := sessions.NewManager()
+	server := NewServer(engine, sessionManager, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions", strings.NewReader(`{"type":"prd-refinement","context":{"documentId":"doc-1","documentVersion":"2026-03-18T12:00:00Z","sessionIntent":"document_refinement","readinessStatus":"warn","readinessDiagnostics":"[{\"code\":\"missing_acceptance\",\"message\":\"acceptance criteria missing\"}]"}}`))
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create session failed: status %d body %s", createRec.Code, createRec.Body.String())
+	}
+
+	var session chat.Session
+	if err := json.NewDecoder(createRec.Body).Decode(&session); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/messages", strings.NewReader(`{"message":"refine this PRD"}`))
+	postRec := httptest.NewRecorder()
+	server.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusAccepted {
+		t.Fatalf("post message failed: status %d body %s", postRec.Code, postRec.Body.String())
+	}
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/v1/chat/sessions/"+session.ID+"/stream", nil)
+	streamRec := httptest.NewRecorder()
+	server.ServeHTTP(streamRec, streamReq)
+
+	body := streamRec.Body.String()
+	if !strings.Contains(body, "event: session.started") {
+		t.Fatalf("expected session.started event in stream body: %s", body)
+	}
+	if !strings.Contains(body, "event: context.loaded") {
+		t.Fatalf("expected context.loaded event in stream body: %s", body)
+	}
+	if !strings.Contains(body, "event: readiness.updated") {
+		t.Fatalf("expected readiness.updated event in stream body: %s", body)
+	}
+}
+
+func TestStreamEmitsDocumentPatchProposalEvent(t *testing.T) {
+	engine := &stubEngine{
+		streamFn: func(_ context.Context, _ *chat.Session, _ string, events chan<- chat.ChatEvent) error {
+			events <- chat.ChatEvent{
+				Event: chat.EventMessageDelta,
+				Data: chat.MessageDelta{
+					Delta: "```json\n{\"type\":\"document_patch_proposal\",\"operations\":[{\"op\":\"replace_document\",\"content\":\"# Revised PRD\"}]}\n```",
+				},
+			}
+			events <- chat.ChatEvent{Event: chat.EventMessageCompleted, Data: map[string]any{}}
+			return nil
+		},
+	}
+	sessionManager := sessions.NewManager()
+	server := NewServer(engine, sessionManager, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions", strings.NewReader(`{"type":"prd-refinement","context":{}}`))
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create session failed: status %d body %s", createRec.Code, createRec.Body.String())
+	}
+
+	var session chat.Session
+	if err := json.NewDecoder(createRec.Body).Decode(&session); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/messages", strings.NewReader(`{"message":"propose patch"}`))
+	postRec := httptest.NewRecorder()
+	server.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusAccepted {
+		t.Fatalf("post message failed: status %d body %s", postRec.Code, postRec.Body.String())
+	}
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/v1/chat/sessions/"+session.ID+"/stream", nil)
+	streamRec := httptest.NewRecorder()
+	server.ServeHTTP(streamRec, streamReq)
+
+	body := streamRec.Body.String()
+	if !strings.Contains(body, "event: document.patch.proposed") {
+		t.Fatalf("expected document.patch.proposed event in stream body: %s", body)
+	}
+	if !strings.Contains(body, `"type":"document_patch_proposal"`) {
+		t.Fatalf("expected patch proposal payload in stream body: %s", body)
+	}
+}
+
+func TestStreamTimesOutWhenAssistantDoesNotRespond(t *testing.T) {
+	engine := &stubEngine{
+		streamFn: func(ctx context.Context, _ *chat.Session, _ string, _ chan<- chat.ChatEvent) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	sessionManager := sessions.NewManager()
+	server := NewServer(engine, sessionManager, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions", strings.NewReader(`{"type":"prd-refinement","context":{"firstResponseTimeoutSec":"1"}}`))
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create session failed: status %d body %s", createRec.Code, createRec.Body.String())
+	}
+
+	var session chat.Session
+	if err := json.NewDecoder(createRec.Body).Decode(&session); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/messages", strings.NewReader(`{"message":"hello"}`))
+	postRec := httptest.NewRecorder()
+	server.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusAccepted {
+		t.Fatalf("post message failed: status %d body %s", postRec.Code, postRec.Body.String())
+	}
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/v1/chat/sessions/"+session.ID+"/stream", nil)
+	streamRec := httptest.NewRecorder()
+	server.ServeHTTP(streamRec, streamReq)
+
+	body := streamRec.Body.String()
+	if !strings.Contains(body, "event: error") {
+		t.Fatalf("expected error event in stream body: %s", body)
+	}
+	if !strings.Contains(body, "did not produce a response in time") {
+		t.Fatalf("expected timeout guidance in stream body: %s", body)
+	}
+}
+
+func TestStreamEmitsKeepaliveBeforeAssistantResponse(t *testing.T) {
+	engine := &stubEngine{
+		streamFn: func(_ context.Context, _ *chat.Session, _ string, events chan<- chat.ChatEvent) error {
+			time.Sleep(2100 * time.Millisecond)
+			events <- chat.ChatEvent{Event: chat.EventMessageDelta, Data: chat.MessageDelta{Delta: "hi"}}
+			events <- chat.ChatEvent{Event: chat.EventMessageCompleted, Data: map[string]any{}}
+			return nil
+		},
+	}
+	sessionManager := sessions.NewManager()
+	server := NewServer(engine, sessionManager, nil)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions", strings.NewReader(`{"type":"prd-refinement","context":{"streamHeartbeatSec":"1","firstResponseTimeoutSec":"8"}}`))
+	createRec := httptest.NewRecorder()
+	server.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create session failed: status %d body %s", createRec.Code, createRec.Body.String())
+	}
+
+	var session chat.Session
+	if err := json.NewDecoder(createRec.Body).Decode(&session); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/v1/chat/sessions/"+session.ID+"/messages", strings.NewReader(`{"message":"hello"}`))
+	postRec := httptest.NewRecorder()
+	server.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusAccepted {
+		t.Fatalf("post message failed: status %d body %s", postRec.Code, postRec.Body.String())
+	}
+
+	streamReq := httptest.NewRequest(http.MethodGet, "/v1/chat/sessions/"+session.ID+"/stream", nil)
+	streamRec := httptest.NewRecorder()
+	server.ServeHTTP(streamRec, streamReq)
+
+	body := streamRec.Body.String()
+	if !strings.Contains(body, "event: stream.keepalive") {
+		t.Fatalf("expected keepalive event in stream body: %s", body)
+	}
+	if !strings.Contains(body, "event: message.completed") {
+		t.Fatalf("expected message completion event in stream body: %s", body)
 	}
 }

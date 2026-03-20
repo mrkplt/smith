@@ -89,7 +89,92 @@ api:
     create: true
     name: ""
   resources: {}
+  featureFlags:
+    tasks: false
+    featureCapability: false
+    providerClaude: false
+    providerGemini: false
+  documents:
+    backend: etcd
+    postgres:
+      dsn: ""
+      maxConns: 10
+    garage:
+      endpoint: ""
+      region: us-east-1
+      bucket: ""
+      accessKeyId: ""
+      secretAccessKey: ""
+      forcePathStyle: true
+    watchPollInterval: 2s
+    migration:
+      backfillOnStartup: true
+      readThroughOnMiss: true
+      mergeListFallback: true
+      dualWriteEtcd: false
   env: []
+
+documentDependencies:
+  postgres:
+    enabled: false
+    image:
+      repository: postgres
+      tag: "16-alpine"
+      pullPolicy: IfNotPresent
+    service:
+      port: 5432
+    auth:
+      database: smith
+      username: smith
+    persistence:
+      storageClassName: ""
+      size: 10Gi
+    resources: {}
+  garage:
+    enabled: false
+    image:
+      repository: dxflrs/garage
+      tag: v2.2.0
+      pullPolicy: IfNotPresent
+    service:
+      s3Port: 3900
+      rpcPort: 3901
+      adminPort: 3903
+    config:
+      replicationFactor: 1
+      dbEngine: sqlite
+      rpcSecret: CHANGE_ME_WITH_OPENSSL_HEX_32
+      adminToken: CHANGE_ME_WITH_OPENSSL_BASE64_32
+      metricsToken: CHANGE_ME_WITH_OPENSSL_BASE64_32
+      region: us-east-1
+      bucket: smith-documents
+    persistence:
+      storageClassName: ""
+      size: 20Gi
+    resources: {}
+    bootstrap:
+      enabled: false
+      keyName: smith-documents-key
+      zone: dc1
+      capacity: 1G
+      waitTimeout: 300s
+      image:
+        repository: alpine/k8s
+        tag: 1.31.4
+        pullPolicy: IfNotPresent
+  credentials:
+    existingSecret: ""
+    create: false
+    managed:
+      postgresPassword: ""
+      postgresDsn: ""
+      garageAccessKeyId: ""
+      garageSecretAccessKey: ""
+    keys:
+      postgresPassword: postgres_password
+      postgresDsn: postgres_dsn
+      garageAccessKeyId: garage_access_key_id
+      garageSecretAccessKey: garage_secret_access_key
 
 console:
   replicaCount: 1
@@ -102,6 +187,8 @@ console:
   featureFlags:
     tasks: false
     featureCapability: false
+    providerClaude: false
+    providerGemini: false
   autoscaling:
     enabled: false
     minReplicas: 2

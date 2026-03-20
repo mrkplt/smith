@@ -6,5 +6,7 @@ window.__SMITH_CONFIG__ = {
   featureTasksEnabled: "${SMITH_FEATURE_TASKS_ENABLED}",
   featureCapabilityEnabled: "${SMITH_FEATURE_CAPABILITY_ENABLED}",
   featureCapabilityAccess: "${SMITH_FEATURE_CAPABILITY_ACCESS}",
+  featureProviderClaudeEnabled: "${SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED}",
+  featureProviderGeminiEnabled: "${SMITH_FEATURE_PROVIDER_GEMINI_ENABLED}",
   showComingSoonProviders: "${SMITH_SHOW_COMING_SOON_PROVIDERS}"
 };

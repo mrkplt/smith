@@ -7,6 +7,7 @@ export interface DocumentDraft {
   title: string;
   content: string;
   projectID: string;
+  format: 'markdown' | 'json';
 }
 
 /**
@@ -25,7 +26,7 @@ export async function saveDocumentDraft(selectedDocID: string | null, draft: Doc
       project_id: draft.projectID,
       title: draft.title,
       content: draft.content,
-      format: 'markdown',
+      format: draft.format,
       status: 'active'
     });
     return;
@@ -34,7 +35,8 @@ export async function saveDocumentDraft(selectedDocID: string | null, draft: Doc
   await requestJSON(`/v1/documents/${selectedDocID}`, 'PUT', {
     title: draft.title,
     content: draft.content,
-    project_id: draft.projectID
+    project_id: draft.projectID,
+    format: draft.format
   });
 }
 

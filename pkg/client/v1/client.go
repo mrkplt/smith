@@ -161,6 +161,13 @@ func (c *Client) PostChatMessage(ctx context.Context, sessionID string, req api.
 	return &res, err
 }
 
+// UpdateChatContext merges UI/focus context into an existing chat session.
+func (c *Client) UpdateChatContext(ctx context.Context, sessionID string, req api.ChatUpdateContextRequest) (*api.ChatUpdateContextResponse, error) {
+	var res api.ChatUpdateContextResponse
+	err := c.do(ctx, http.MethodPost, "/v1/chat/sessions/"+sessionID+"/context", req, &res)
+	return &res, err
+}
+
 // OpenChatStream opens an SSE stream for chat events.
 func (c *Client) OpenChatStream(ctx context.Context, sessionID string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/chat/sessions/"+sessionID+"/stream", nil)
@@ -195,6 +202,13 @@ func (c *Client) OpenChatStream(ctx context.Context, sessionID string) (*http.Re
 func (c *Client) CommitChatAction(ctx context.Context, req api.ChatCommitActionRequest) (*api.ChatCommitActionResponse, error) {
 	var res api.ChatCommitActionResponse
 	err := c.do(ctx, http.MethodPost, "/v1/chat/actions/commit", req, &res)
+	return &res, err
+}
+
+// ListProviderModels returns account-scoped model inventory for a provider profile.
+func (c *Client) ListProviderModels(ctx context.Context, providerID string) (*api.ProviderModelsResponse, error) {
+	var res api.ProviderModelsResponse
+	err := c.do(ctx, http.MethodGet, "/v1/providers/"+providerID+"/models", nil, &res)
 	return &res, err
 }
 

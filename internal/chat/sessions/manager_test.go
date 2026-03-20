@@ -104,6 +104,49 @@ func TestManager_AddMessage(t *testing.T) {
 	})
 }
 
+func TestManager_UpdateContext(t *testing.T) {
+	m := NewManager()
+
+	t.Run("session not found", func(t *testing.T) {
+		_, err := m.UpdateContext("missing", map[string]string{"focusSectionId": "overview"})
+		if err == nil {
+			t.Fatal("expected error for missing session")
+		}
+	})
+
+	t.Run("merge and delete context keys", func(t *testing.T) {
+		s, _ := m.CreateSession(chat.SessionTypePRDRefinement, map[string]string{
+			"documentId":         "doc-1",
+			"focusSectionId":     "overview",
+			"focusSelectionText": "old",
+		})
+		initialUpdatedAt := s.UpdatedAt
+		time.Sleep(1 * time.Millisecond)
+
+		updated, err := m.UpdateContext(s.ID, map[string]string{
+			"focusSectionId":     "acceptance_criteria",
+			"focusSelectionText": "",
+			"focusSurface":       "document_editor",
+		})
+		if err != nil {
+			t.Fatalf("update context failed: %v", err)
+		}
+
+		if updated.Context["focusSectionId"] != "acceptance_criteria" {
+			t.Fatalf("expected updated section id, got %q", updated.Context["focusSectionId"])
+		}
+		if _, ok := updated.Context["focusSelectionText"]; ok {
+			t.Fatal("expected empty value key to be removed")
+		}
+		if updated.Context["focusSurface"] != "document_editor" {
+			t.Fatalf("expected focusSurface set, got %q", updated.Context["focusSurface"])
+		}
+		if !updated.UpdatedAt.After(initialUpdatedAt) {
+			t.Fatal("expected updated timestamp to advance")
+		}
+	})
+}
+
 type errorReader struct{}
 
 func (e *errorReader) Read(p []byte) (n int, err error) {

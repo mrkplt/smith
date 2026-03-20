@@ -110,6 +110,7 @@
     },
     "core": { "$ref": "#/definitions/componentConfigWithLoopPolicy" },
     "api": { "$ref": "#/definitions/componentConfigWithService" },
+    "documentDependencies": { "$ref": "#/definitions/documentDependenciesConfig" },
     "console": { "$ref": "#/definitions/componentConfigWithService" },
     "chat": { "$ref": "#/definitions/componentConfigWithService" },
     "daemon": { "$ref": "#/definitions/daemonConfig" },
@@ -196,6 +197,202 @@
         "apiKeyEnvVar": { "type": "string", "minLength": 1 }
       },
       "required": ["provider", "model", "apiKeyFromRuntimeSecret", "apiKeyEnvVar"]
+    },
+    "documentsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend": { "type": "string", "minLength": 1 },
+        "postgres": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dsn": { "type": "string" },
+            "maxConns": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["dsn", "maxConns"]
+        },
+        "garage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": { "type": "string" },
+            "region": { "type": "string" },
+            "bucket": { "type": "string" },
+            "accessKeyId": { "type": "string" },
+            "secretAccessKey": { "type": "string" },
+            "forcePathStyle": { "type": "boolean" }
+          },
+          "required": ["endpoint", "region", "bucket", "accessKeyId", "secretAccessKey", "forcePathStyle"]
+        },
+        "migration": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "backfillOnStartup": { "type": "boolean" },
+            "readThroughOnMiss": { "type": "boolean" },
+            "mergeListFallback": { "type": "boolean" },
+            "dualWriteEtcd": { "type": "boolean" }
+          },
+          "required": ["backfillOnStartup", "readThroughOnMiss", "mergeListFallback", "dualWriteEtcd"]
+        },
+        "watchPollInterval": {
+          "type": "string",
+          "pattern": "^[0-9]+(ms|s|m|h)$"
+        }
+      },
+      "required": ["backend", "postgres", "garage", "migration", "watchPollInterval"]
+    },
+    "documentDependencyImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      },
+      "required": ["repository", "tag", "pullPolicy"]
+    },
+    "documentDependenciesConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "postgres": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": { "$ref": "#/definitions/documentDependencyImage" },
+            "service": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              },
+              "required": ["port"]
+            },
+            "auth": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "database": { "type": "string", "minLength": 1 },
+                "username": { "type": "string", "minLength": 1 }
+              },
+              "required": ["database", "username"]
+            },
+            "persistence": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "storageClassName": { "type": "string" },
+                "size": { "type": "string", "minLength": 1 }
+              },
+              "required": ["storageClassName", "size"]
+            },
+            "resources": { "$ref": "#/definitions/resourceRequirements" }
+          },
+          "required": ["enabled", "image", "service", "auth", "persistence", "resources"]
+        },
+        "garage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": { "$ref": "#/definitions/documentDependencyImage" },
+            "service": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "s3Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "rpcPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "adminPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+              },
+              "required": ["s3Port", "rpcPort", "adminPort"]
+            },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "replicationFactor": { "type": "integer", "minimum": 1 },
+                "dbEngine": { "type": "string", "minLength": 1 },
+                "rpcSecret": { "type": "string", "minLength": 1 },
+                "adminToken": { "type": "string", "minLength": 1 },
+                "metricsToken": { "type": "string", "minLength": 1 },
+                "region": { "type": "string", "minLength": 1 },
+                "bucket": { "type": "string", "minLength": 1 }
+              },
+              "required": [
+                "replicationFactor",
+                "dbEngine",
+                "rpcSecret",
+                "adminToken",
+                "metricsToken",
+                "region",
+                "bucket"
+              ]
+            },
+            "bootstrap": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "keyName": { "type": "string", "minLength": 1 },
+                "zone": { "type": "string", "minLength": 1 },
+                "capacity": { "type": "string", "minLength": 1 },
+                "waitTimeout": { "type": "string", "pattern": "^[0-9]+(ms|s|m|h)$" },
+                "image": { "$ref": "#/definitions/documentDependencyImage" }
+              },
+              "required": ["enabled", "keyName", "zone", "capacity", "waitTimeout", "image"]
+            },
+            "persistence": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "storageClassName": { "type": "string" },
+                "size": { "type": "string", "minLength": 1 }
+              },
+              "required": ["storageClassName", "size"]
+            },
+            "resources": { "$ref": "#/definitions/resourceRequirements" }
+          },
+          "required": ["enabled", "image", "service", "config", "bootstrap", "persistence", "resources"]
+        },
+        "credentials": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "create": { "type": "boolean" },
+            "managed": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "postgresPassword": { "type": "string" },
+                "postgresDsn": { "type": "string" },
+                "garageAccessKeyId": { "type": "string" },
+                "garageSecretAccessKey": { "type": "string" }
+              },
+              "required": ["postgresPassword", "postgresDsn", "garageAccessKeyId", "garageSecretAccessKey"]
+            },
+            "keys": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "postgresPassword": { "type": "string", "minLength": 1 },
+                "postgresDsn": { "type": "string", "minLength": 1 },
+                "garageAccessKeyId": { "type": "string", "minLength": 1 },
+                "garageSecretAccessKey": { "type": "string", "minLength": 1 }
+              },
+              "required": ["postgresPassword", "postgresDsn", "garageAccessKeyId", "garageSecretAccessKey"]
+            }
+          },
+          "required": ["existingSecret", "create", "managed", "keys"]
+        }
+      },
+      "required": ["postgres", "garage", "credentials"]
     },
     "resourceRequirements": {
       "type": "object"
@@ -325,12 +522,15 @@
           "additionalProperties": false,
           "properties": {
             "tasks": { "type": "boolean" },
-            "featureCapability": { "type": "boolean" }
+            "featureCapability": { "type": "boolean" },
+            "providerClaude": { "type": "boolean" },
+            "providerGemini": { "type": "boolean" }
           },
           "required": ["tasks", "featureCapability"]
         },
         "showComingSoonProviders": { "type": "boolean" },
         "goose": { "$ref": "#/definitions/gooseConfig" },
+        "documents": { "$ref": "#/definitions/documentsConfig" },
         "replicaCount": {
           "type": "integer",
           "minimum": 1

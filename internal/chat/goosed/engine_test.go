@@ -21,6 +21,33 @@ func TestGooseEnvOverrides(t *testing.T) {
 		assert.Contains(t, env, "OPENAI_API_KEY=sk-test")
 	})
 
+	t.Run("codex provider aliases to openai for goose", func(t *testing.T) {
+		env := gooseEnvOverrides(map[string]string{
+			"provider":       "codex",
+			"model":          "gpt-5-codex",
+			"providerApiKey": "sk-codex-key",
+		})
+
+		assert.Contains(t, env, "GOOSE_PROVIDER=openai")
+		assert.Contains(t, env, "GOOSE_MODEL=gpt-5-codex")
+		assert.Contains(t, env, "OPENAI_API_KEY=sk-codex-key")
+	})
+
+	t.Run("provider profile fallback infers provider mapping", func(t *testing.T) {
+		env := gooseEnvOverrides(map[string]string{
+			"providerProfileID": "claude-default",
+			"providerApiKey":    "anthropic-key",
+		})
+
+		assert.Contains(t, env, "GOOSE_PROVIDER=anthropic")
+		assert.Contains(t, env, "ANTHROPIC_API_KEY=anthropic-key")
+	})
+
+	t.Run("defaults provider to openai when unset", func(t *testing.T) {
+		env := gooseEnvOverrides(map[string]string{})
+		assert.Contains(t, env, "GOOSE_PROVIDER=openai")
+	})
+
 	t.Run("anthropic provider maps to anthropic api key", func(t *testing.T) {
 		env := gooseEnvOverrides(map[string]string{
 			"provider":       "anthropic",

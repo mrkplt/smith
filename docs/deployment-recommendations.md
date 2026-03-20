@@ -8,12 +8,14 @@ Preferred baseline:
 - Managed Kubernetes cluster in cloud environment.
 - Cluster autoscaling enabled (node-level scaling).
 - Horizontal Pod Autoscaling (HPA) enabled for Smith control-plane services.
+- Managed PostgreSQL + S3-compatible object storage (Garage) when running document backend in `postgres-garage` mode.
 
 ## Why
 
 - Loop demand is bursty; autoscaling avoids overprovisioning while preserving throughput.
 - Smith executes many parallel replicas; node-level elasticity is required for scale.
 - Agent Core and supporting APIs can become CPU/memory bound under high anomaly concurrency.
+- Separating document metadata/content from etcd reduces control-plane watch pressure and etcd compaction/WAL growth under heavy document editing.
 
 ## Guidance
 
@@ -57,6 +59,20 @@ Rollout policy:
 ### Reliability
 - Pair autoscaling with reconciliation and drift detection.
 - Ensure observability dashboards include scaling events, queue depth, and anomaly completion rate.
+
+### Document Storage Dependencies
+- If `api.documents.backend=postgres-garage`, choose one posture:
+  - Managed/external Postgres + Garage (recommended for staging/prod).
+  - In-chart single-node dependencies (`documentDependencies.postgres.enabled=true`, `documentDependencies.garage.enabled=true`) for local/dev.
+- Prefer Kubernetes Secret wiring for document credentials (`documentDependencies.credentials.existingSecret` or `documentDependencies.credentials.create=true`) instead of plaintext values.
+- Validate dependencies before rollout:
+  - Postgres reachable from `smith-api` with write permissions.
+  - Garage endpoint reachable with valid bucket credentials.
+  - Bucket exists or can be created by API credentials.
+- For in-chart Garage, enable bootstrap job (`documentDependencies.garage.bootstrap.enabled=true`) to automate layout/key/bucket bootstrap, or run CLI steps manually if bootstrap is disabled.
+- For local/staging operator workflows, `scripts/bootstrap-document-storage.sh` can upsert runtime/document secrets from `~/.smith/.env` and perform idempotent Garage layout/key/bucket bootstrap.
+- For migration rollouts, keep read-through/list fallback enabled until backfill verification completes.
+- Full credential-flow details and deferred hardening options are captured in `docs/secret-reference-system.md`.
 
 ### Secret Encryption at Rest
 - Enable Kubernetes API server encryption providers for `Secret` resources.

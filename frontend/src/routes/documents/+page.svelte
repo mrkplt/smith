@@ -7,7 +7,9 @@
 	import DocumentWorkspace from '$lib/components/DocumentWorkspace.svelte';
 	import DocumentsPageActions from '$lib/components/DocumentsPageActions.svelte';
 	import { buildDocument, deleteDocument, saveDocumentDraft, toggleDocumentArchive } from '$lib/documents/mutations';
+	import { inferPRDFormat, validatePRDContent, type PRDFormat, type PRDValidationReport } from '$lib/documents/prd-validation';
 	import { goto } from '$app/navigation';
+	import { tick } from 'svelte';
 
 	let showAll = $state(false);
 	let chatOpen = $state(false);
@@ -17,6 +19,26 @@
 	let editTitle = $state("");
 	let editContent = $state("");
 	let editProjectID = $state("");
+	let editFormat = $state<PRDFormat>('markdown');
+	let validationReport = $state<PRDValidationReport | null>(null);
+	let validationBusy = $state(false);
+	let validationError = $state('');
+	let validationRequestSeq = 0;
+	let editorFocus = $state<{ lineIndex: number | null; sectionId: string; selectionText: string }>({
+		lineIndex: null,
+		sectionId: '',
+		selectionText: ''
+	});
+	let chatSeed = $state<{
+		title: string;
+		content: string;
+		format: PRDFormat;
+		validationReport: PRDValidationReport | null;
+		documentId?: string;
+		documentVersion?: string;
+		documentStatus?: string;
+		projectId?: string;
+	} | null>(null);
 
 	const selectedDoc = $derived(
 		$appState.documents.find((d: any) => d.id === selectedDocId) || null
@@ -32,14 +54,52 @@
 		return grouped;
 	});
 
-	const projectIDs = $derived(Object.keys(projectsWithDocs).sort());
+const projectIDs = $derived(Object.keys(projectsWithDocs).sort());
+const docLayoutColumns = $derived(
+	chatOpen
+		? '260px minmax(0, 1fr) minmax(440px, 560px)'
+		: '260px minmax(0, 1fr)'
+);
+
+	const guidepostFocusContext = $derived.by(() => {
+		const selected = selectedDoc;
+		return {
+			surface: 'document_editor',
+			entityType: 'document',
+			entitySubtype: 'prd',
+			entityId: selected?.id ? String(selected.id) : 'draft',
+			entityVersion: selected?.updated_at ? String(selected.updated_at) : '',
+			sectionId: editorFocus.sectionId,
+			selectionText: editorFocus.selectionText,
+			lineIndex: editorFocus.lineIndex,
+			uiState: {
+				activePane: chatOpen ? 'Guidepost' : 'Editor',
+				centerTab: 'document'
+			}
+		};
+	});
+
+	function inferDocumentFormat(doc: any): PRDFormat {
+		const explicit = String(doc?.format || '').trim().toLowerCase();
+		if (explicit === 'json') {
+			return 'json';
+		}
+		if (explicit === 'markdown' || explicit === 'md') {
+			return 'markdown';
+		}
+		return inferPRDFormat(String(doc?.content || ''));
+	}
 
 	function selectDocument(doc: any) {
+		const nextFormat = inferDocumentFormat(doc);
 		selectedDocId = doc.id;
 		editTitle = doc.title;
 		editContent = doc.content;
 		editProjectID = doc.project_id;
+		editFormat = nextFormat;
 		isEditing = false;
+		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
+		void refreshValidation(doc.content, nextFormat);
 	}
 
 	function startEdit() {
@@ -48,6 +108,7 @@
 
   function cancelEdit() {
     isEditing = false;
+	editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
   }
 
 	async function saveDocument() {
@@ -55,7 +116,8 @@
 			await saveDocumentDraft(selectedDocId, {
 				title: editTitle,
 				content: editContent,
-				projectID: editProjectID
+				projectID: editProjectID,
+				format: editFormat
 			});
 			pushToast(selectedDocId ? "Document saved" : "Document created", "ok");
 			isEditing = false;
@@ -131,17 +193,165 @@
 		editTitle = "Untitled Document";
 		editContent = "";
 		editProjectID = $appState.projects[0]?.id || "";
+		editFormat = 'markdown';
 		isEditing = true;
+		validationReport = null;
+		validationError = '';
+		validationBusy = false;
+		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
 	}
 
 	function handleDraftFinalized(title: string, content: string) {
 		editTitle = title;
 		editContent = content;
 		editProjectID = $appState.projects[0]?.id || "";
+		editFormat = 'markdown';
 		selectedDocId = null;
 		isEditing = true;
 		chatOpen = false;
+		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
+		void refreshValidation(content, 'markdown');
 	}
+
+	function handleEditorFocusContext(next: { lineIndex: number | null; sectionId: string; selectionText: string }) {
+		editorFocus = next;
+	}
+
+	function titleFromFilename(filename: string): string {
+		const withoutExtension = filename.replace(/\.[^/.]+$/, '');
+		const normalized = withoutExtension.replace(/[_-]+/g, ' ').trim();
+		if (normalized === '') {
+			return 'Imported PRD';
+		}
+		return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+	}
+
+	async function handleImportPRD(file: File) {
+		try {
+			const raw = await file.text();
+			if (raw.trim() === '') {
+				pushToast('Uploaded file is empty.', 'err');
+				return;
+			}
+
+			const lowerName = file.name.toLowerCase();
+			const importedFormat: PRDFormat = lowerName.endsWith('.json') ? 'json' : inferPRDFormat(raw);
+			let nextFormat: PRDFormat = importedFormat;
+			let nextContent = raw;
+			let nextReport: PRDValidationReport | null = null;
+
+			try {
+				const validation = await validatePRDContent(raw, importedFormat);
+				nextReport = validation.report;
+				validationError = '';
+				if (importedFormat === 'json' && validation.report.valid && validation.canonical_markdown) {
+					nextFormat = 'markdown';
+					nextContent = validation.canonical_markdown;
+					pushToast('Imported JSON PRD and converted it to markdown.', 'ok');
+				} else if (!validation.report.valid) {
+					pushToast('Imported PRD has readiness issues. Follow suggestions below.', 'muted');
+				} else {
+					pushToast('PRD imported successfully.', 'ok');
+				}
+			} catch (err: any) {
+				validationError = err.message || 'Failed to validate imported PRD';
+				pushToast(validationError, 'err');
+			}
+
+			editTitle = titleFromFilename(file.name);
+			editContent = nextContent;
+			editProjectID = $appState.projects[0]?.id || editProjectID || '';
+			editFormat = nextFormat;
+			selectedDocId = null;
+			isEditing = true;
+			validationReport = nextReport;
+		} catch (err: any) {
+			pushToast(err.message || 'Failed to read uploaded file', 'err');
+		}
+	}
+
+	async function openChatWithSeed(seed: {
+		title: string;
+		content: string;
+		format: PRDFormat;
+		validationReport: PRDValidationReport | null;
+		documentId?: string;
+		documentVersion?: string;
+		documentStatus?: string;
+		projectId?: string;
+	} | null) {
+		chatSeed = seed;
+		if (chatOpen) {
+			chatOpen = false;
+			await tick();
+		}
+		chatOpen = true;
+	}
+
+	function refineWithAI() {
+		if (editContent.trim() === '') {
+			pushToast('Add or upload PRD content before requesting refinement.', 'err');
+			return;
+		}
+		const resolvedProjectID = String(editProjectID || selectedDoc?.project_id || '').trim();
+		pushToast('Opening AI refinement with your current draft and diagnostics.', 'muted');
+		void openChatWithSeed({
+			title: editTitle || 'Draft PRD',
+			content: editContent,
+			format: editFormat,
+			validationReport,
+			documentId: selectedDoc?.id ? String(selectedDoc.id) : undefined,
+			documentVersion: selectedDoc?.updated_at ? String(selectedDoc.updated_at) : undefined,
+			documentStatus: selectedDoc?.status ? String(selectedDoc.status) : undefined,
+			projectId: resolvedProjectID === '' ? undefined : resolvedProjectID
+		});
+	}
+
+	async function refreshValidation(content = editContent, format: PRDFormat = editFormat) {
+		const trimmed = content.trim();
+		if (trimmed === '') {
+			validationReport = null;
+			validationError = '';
+			validationBusy = false;
+			return;
+		}
+
+		const requestID = ++validationRequestSeq;
+		validationBusy = true;
+		try {
+			const validation = await validatePRDContent(content, format);
+			if (requestID !== validationRequestSeq) {
+				return;
+			}
+			validationReport = validation.report;
+			validationError = '';
+		} catch (err: any) {
+			if (requestID !== validationRequestSeq) {
+				return;
+			}
+			validationError = err.message || 'Validation request failed';
+			validationReport = null;
+		} finally {
+			if (requestID === validationRequestSeq) {
+				validationBusy = false;
+			}
+		}
+	}
+
+	$effect(() => {
+		const content = editContent;
+		const format = editFormat;
+		if (content.trim() === '') {
+			validationReport = null;
+			validationError = '';
+			validationBusy = false;
+			return;
+		}
+		const timer = setTimeout(() => {
+			void refreshValidation(content, format);
+		}, 450);
+		return () => clearTimeout(timer);
+	});
 </script>
 
 <TopBar title="Documents">
@@ -153,17 +363,11 @@
 <DocumentsPageActions
 	{showAll}
 	onShowAllChange={(value) => showAll = value}
-	onOpenChat={() => chatOpen = true}
 	onCreateNew={createNew}
+	onImportPRD={handleImportPRD}
 />
 
-<DocChatModal
-	open={chatOpen}
-	onClose={() => chatOpen = false}
-	onDraftFinalized={handleDraftFinalized}
-/>
-
-<div class="doc-layout">
+<div class="doc-layout" style={`grid-template-columns: ${docLayoutColumns};`}>
 	<DocumentsSidebar
 		{projectIDs}
 		{projectsWithDocs}
@@ -178,24 +382,41 @@
 		{editTitle}
 		{editContent}
 		{editProjectID}
+		{editFormat}
+		{validationReport}
+		{validationBusy}
+		validationError={validationError}
 		projects={$appState.projects}
 		onEditTitle={(value) => editTitle = value}
 		onEditContent={(value) => editContent = value}
 		onEditProjectID={(value) => editProjectID = value}
+		onEditFormat={(value) => editFormat = value}
+		onFocusContextChange={handleEditorFocusContext}
 		onStartEdit={startEdit}
 		onSaveDocument={saveDocument}
 		onCancelEdit={cancelEdit}
+		onRefreshValidation={refreshValidation}
+		onRefineWithAI={refineWithAI}
 		onBuildDoc={buildDoc}
 		onCreateTask={createTaskFromDocument}
 		onArchiveDoc={archiveDoc}
 		onDeleteDoc={deleteDoc}
 	/>
+
+	{#if chatOpen}
+		<DocChatModal
+			open={chatOpen}
+			onClose={() => chatOpen = false}
+			onDraftFinalized={handleDraftFinalized}
+			seedDraft={chatSeed}
+			focusContext={guidepostFocusContext}
+		/>
+	{/if}
 </div>
 
 <style>
 	.doc-layout {
 		display: grid;
-		grid-template-columns: 260px 1fr;
 		height: calc(100vh - 160px);
 		background: #000000;
 		overflow: hidden;

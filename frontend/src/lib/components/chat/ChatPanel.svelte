@@ -3,6 +3,8 @@
     import { goto } from '$app/navigation';
     import { fetchJSON } from '$lib/api';
     import { loadChatSettings, resolveDefaultModel, resolveProviderType } from '$lib/chat/defaults';
+    import { isProviderTypeEnabled } from '$lib/feature-flags';
+    import { includeSelectedModel, loadProviderModels } from '$lib/providers/models';
     import { chatSession } from '$lib/chat/store.svelte';
     import { buildChatPageURL, contextSignature } from '$lib/chat/context';
     import MessageList from './MessageList.svelte';
@@ -31,12 +33,15 @@
     let providerProfiles = $state<any[]>([]);
     let providerProfileID = $state('');
     let defaultModel = $state('');
+    let modelOptions = $state<string[]>([]);
+    let modelOptionsBusy = $state(false);
     let thinkingLevel = $state<ThinkingLevel>('balanced');
     let providerApiKey = $state('');
     let debugOpen = $state(false);
     let appliedContextSig = $state('');
 
     let isDrawer = $derived(mode === 'drawer');
+    let availableModelOptions = $derived(includeSelectedModel(modelOptions, defaultModel));
 
     function buildContext(): Record<string, string> {
         const nextContext: Record<string, string> = { ...(context || {}) };
@@ -123,6 +128,7 @@
                 defaultModel = settings.defaultModel;
                 thinkingLevel = settings.thinkingLevel;
                 providerApiKey = settings.providerApiKey;
+                void loadModelOptions(settings.providerProfileID);
             }
 
             if (chatSession.sessionId) {
@@ -137,15 +143,30 @@
     async function loadProviderProfiles() {
         try {
             const profiles = await fetchJSON('/v1/providers');
-            providerProfiles = Array.isArray(profiles) ? profiles : [];
+            providerProfiles = Array.isArray(profiles)
+                ? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+                : [];
         } catch {
             providerProfiles = [];
+        }
+    }
+
+    async function loadModelOptions(nextProfileID: string) {
+        const normalizedProfileID = String(nextProfileID || '').trim();
+        const profile = providerProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
+        const providerTypeHint = String(profile?.provider_type || '').trim();
+        modelOptionsBusy = true;
+        try {
+            modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+        } finally {
+            modelOptionsBusy = false;
         }
     }
 
     function selectProviderProfile(nextProfileID: string) {
         providerProfileID = nextProfileID;
         defaultModel = resolveDefaultModel(providerProfiles, nextProfileID, '');
+        void loadModelOptions(nextProfileID);
     }
 
     function resolveModelForSession(resolvedProvider: string): string {
@@ -234,13 +255,19 @@
                     {/each}
                 {/if}
             </select>
-            <input
-                type="text"
+            <select
                 class="bg-gray-900 border border-gray-800 text-gray-100 text-xs rounded px-2 py-2"
                 value={defaultModel}
-                placeholder="Model: profile default"
-                oninput={(event) => defaultModel = (event.currentTarget as HTMLInputElement).value}
-            />
+                oninput={(event) => defaultModel = (event.currentTarget as HTMLSelectElement).value}
+            >
+                <option value="">Model: profile default</option>
+                {#if modelOptionsBusy}
+                    <option value={defaultModel} disabled>{defaultModel !== '' ? `Model: ${defaultModel}` : 'Loading models...'}</option>
+                {/if}
+                {#each availableModelOptions as model}
+                    <option value={model}>Model: {model}</option>
+                {/each}
+            </select>
             <div class="flex gap-2">
                 <select
                     class="flex-1 bg-gray-900 border border-gray-800 text-gray-100 text-xs rounded px-2 py-2"

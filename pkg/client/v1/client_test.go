@@ -111,11 +111,35 @@ func TestClient_PostChatMessageAndCommit(t *testing.T) {
 				t.Errorf("expected POST, got %s", r.Method)
 			}
 			_ = json.NewEncoder(w).Encode(api.ChatPostMessageResponse{Status: "queued"})
+		case "/v1/chat/sessions/sess_1/context":
+			if r.Method != http.MethodPost {
+				t.Errorf("expected POST, got %s", r.Method)
+			}
+			var req api.ChatUpdateContextRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode context request: %v", err)
+			}
+			if req.Type != "ui.context.updated" {
+				t.Fatalf("expected ui.context.updated, got %q", req.Type)
+			}
+			_ = json.NewEncoder(w).Encode(api.ChatUpdateContextResponse{Status: "updated", Context: map[string]string{"focusSectionId": "acceptance_criteria"}})
 		case "/v1/chat/actions/commit":
 			if r.Method != http.MethodPost {
 				t.Errorf("expected POST, got %s", r.Method)
 			}
 			_ = json.NewEncoder(w).Encode(api.ChatCommitActionResponse{Status: "accepted"})
+		case "/v1/providers/codex-default/models":
+			if r.Method != http.MethodGet {
+				t.Errorf("expected GET, got %s", r.Method)
+			}
+			_ = json.NewEncoder(w).Encode(api.ProviderModelsResponse{
+				ProviderID:   "codex-default",
+				ProviderType: "codex",
+				Source:       "account_scoped",
+				Models: []api.ProviderModel{
+					{ID: "gpt-4.1"},
+				},
+			})
 		default:
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -131,12 +155,33 @@ func TestClient_PostChatMessageAndCommit(t *testing.T) {
 		t.Fatalf("expected queued status, got %s", postRes.Status)
 	}
 
+	contextRes, err := c.UpdateChatContext(context.Background(), "sess_1", api.ChatUpdateContextRequest{
+		Type: "ui.context.updated",
+		FocusContext: map[string]any{
+			"sectionId": "acceptance_criteria",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateChatContext failed: %v", err)
+	}
+	if contextRes.Status != "updated" {
+		t.Fatalf("expected updated status, got %s", contextRes.Status)
+	}
+
 	commitRes, err := c.CommitChatAction(context.Background(), api.ChatCommitActionRequest{Action: "save", Payload: map[string]any{"k": "v"}})
 	if err != nil {
 		t.Fatalf("CommitChatAction failed: %v", err)
 	}
 	if commitRes.Status != "accepted" {
 		t.Fatalf("expected accepted status, got %s", commitRes.Status)
+	}
+
+	modelRes, err := c.ListProviderModels(context.Background(), "codex-default")
+	if err != nil {
+		t.Fatalf("ListProviderModels failed: %v", err)
+	}
+	if len(modelRes.Models) != 1 || modelRes.Models[0].ID != "gpt-4.1" {
+		t.Fatalf("unexpected models payload: %+v", modelRes.Models)
 	}
 }
 
