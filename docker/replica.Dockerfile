@@ -14,7 +14,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-replica ./cmd/smith-replica && \
-    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith ./cmd/smith
+    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith ./cmd/smith && \
+    go build -trimpath -ldflags "-s -w -buildid=" -o /out/task ./cmd/task
 
 FROM debian:bookworm-slim AS codex-downloader
 ARG TARGETARCH
@@ -56,6 +57,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder /out/smith-replica /bin/smith-replica
 COPY --from=builder /out/smith /bin/smith
+COPY --from=builder /out/task /usr/local/bin/task
 COPY --from=codex-downloader /out/codex /usr/local/bin/codex
 COPY --from=goose-downloader /out/goose /usr/local/bin/goose
 WORKDIR /workspace

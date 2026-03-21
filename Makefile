@@ -132,6 +132,7 @@ build-services: ## Build all service binaries
 	$(GO) build -o $(BIN_DIR)/smith-daemon ./cmd/smith-daemon
 	$(GO) build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
 	$(GO) build -o $(BIN_DIR)/smith ./cmd/smith
+	$(GO) build -o $(BIN_DIR)/task ./cmd/task
 
 dist: ## Build cross-platform smithctl binaries
 	@mkdir -p dist

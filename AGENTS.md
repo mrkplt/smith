@@ -1,7 +1,7 @@
-## MANDATORY: Use td for Task Management
+## MANDATORY: Use task for Task Management
 
-You must run td usage --new-session at conversation start (or after /clear) to see current work.
-Use td usage -q for subsequent reads.
+You must run task usage --new-session at conversation start (or after /clear) to see current work.
+Use task usage -q for subsequent reads.
 
 ## Git Hooks Workflow
 - We use `act` to run CI jobs locally for git hooks.
