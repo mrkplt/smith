@@ -104,6 +104,9 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	if openAIEnv.SecretKeyRef.Name != "smith-runtime" || openAIEnv.SecretKeyRef.Key != "runtime_credentials" {
 		t.Fatalf("unexpected OPENAI_API_KEY secret ref %+v", openAIEnv.SecretKeyRef)
 	}
+	if _, ok := env["ANTHROPIC_API_KEY"]; ok {
+		t.Fatalf("did not expect ANTHROPIC_API_KEY without explicit Claude runtime key")
+	}
 	if env["SMITH_SKILL_MOUNT_COUNT"].Value != "2" {
 		t.Fatalf("expected SMITH_SKILL_MOUNT_COUNT=2, got %q", env["SMITH_SKILL_MOUNT_COUNT"].Value)
 	}
@@ -182,6 +185,52 @@ func TestBuildReplicaJobUsesInlineRuntimeCredentialValue(t *testing.T) {
 	}
 	if env["OPENAI_API_KEY"].Value != "sk-test-inline" || env["OPENAI_API_KEY"].SecretKeyRef != nil {
 		t.Fatalf("expected inline OPENAI_API_KEY, got %+v", env["OPENAI_API_KEY"])
+	}
+	if _, ok := env["ANTHROPIC_API_KEY"]; ok {
+		t.Fatalf("did not expect ANTHROPIC_API_KEY without explicit inline Claude credential")
+	}
+}
+
+func TestBuildReplicaJobIncludesClaudeSecretCredentialEnv(t *testing.T) {
+	req := validRequest()
+	req.ProviderID = "claude"
+	req.RuntimeCredentialsClaudeKey = "runtime_credentials_claude"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	anthropicEnv, ok := env["ANTHROPIC_API_KEY"]
+	if !ok || anthropicEnv.SecretKeyRef == nil {
+		t.Fatalf("expected ANTHROPIC_API_KEY secret key ref, got %+v", anthropicEnv)
+	}
+	if anthropicEnv.SecretKeyRef.Name != "smith-runtime" || anthropicEnv.SecretKeyRef.Key != "runtime_credentials_claude" {
+		t.Fatalf("unexpected ANTHROPIC_API_KEY secret ref %+v", anthropicEnv.SecretKeyRef)
+	}
+}
+
+func TestBuildReplicaJobUsesInlineClaudeCredentialValue(t *testing.T) {
+	req := validRequest()
+	req.ProviderID = "claude"
+	req.RuntimeSecretName = ""
+	req.RuntimeCredentialsKey = ""
+	req.RuntimeCredentialsValue = ""
+	req.RuntimeCredentialsClaudeValue = "anthropic-inline"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+	env := map[string]EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	if env["ANTHROPIC_API_KEY"].Value != "anthropic-inline" || env["ANTHROPIC_API_KEY"].SecretKeyRef != nil {
+		t.Fatalf("expected inline ANTHROPIC_API_KEY, got %+v", env["ANTHROPIC_API_KEY"])
 	}
 }
 

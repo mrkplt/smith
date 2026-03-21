@@ -115,6 +115,7 @@
   ]);
 
   const activeSection = $derived(parseSection(page.url.searchParams.get('section')));
+  const hasConfiguredProjects = $derived($appState.projects.length > 0);
 
   onMount(() => {
     if (typeof window === 'undefined') {
@@ -566,11 +567,21 @@
             <div class="p-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500">Next Step</div>
-                <div class="mt-1 text-sm text-gray-300">Provider setup is complete. Continue to project setup to unlock loop execution.</div>
+                {#if hasConfiguredProjects}
+                  <div class="mt-1 text-sm text-gray-300">Provider and project setup are complete. Open Pods to start loop execution.</div>
+                {:else}
+                  <div class="mt-1 text-sm text-gray-300">Provider setup is complete. Continue to project setup to unlock loop execution.</div>
+                {/if}
               </div>
-              <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => void selectSection('projects')}>
-                Add Project
-              </Button>
+              {#if hasConfiguredProjects}
+                <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => goto('/pods')}>
+                  Open Pods
+                </Button>
+              {:else}
+                <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => void selectSection('projects')}>
+                  Add Project
+                </Button>
+              {/if}
             </div>
           </Card>
         {/if}

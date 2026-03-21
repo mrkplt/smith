@@ -497,7 +497,9 @@ func TestLoadConfigGitPATSecretOverrides(t *testing.T) {
 func TestLoadConfigRuntimeCredentialDefaults(t *testing.T) {
 	t.Setenv("SMITH_RUNTIME_SECRET_NAME", "")
 	t.Setenv("SMITH_RUNTIME_CREDENTIALS_KEY", "")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY", "")
 	t.Setenv("SMITH_RUNTIME_CREDENTIALS", "")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE", "")
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatalf("loadConfig error: %v", err)
@@ -508,15 +510,23 @@ func TestLoadConfigRuntimeCredentialDefaults(t *testing.T) {
 	if cfg.runtimeSecretKey != "runtime_credentials" {
 		t.Fatalf("expected default runtime credentials key runtime_credentials, got %q", cfg.runtimeSecretKey)
 	}
+	if cfg.runtimeSecretClaudeKey != "runtime_credentials_claude" {
+		t.Fatalf("expected default Claude runtime credentials key runtime_credentials_claude, got %q", cfg.runtimeSecretClaudeKey)
+	}
 	if cfg.runtimeCredentials != "" {
 		t.Fatalf("expected empty inline runtime credentials fallback, got %q", cfg.runtimeCredentials)
+	}
+	if cfg.runtimeCredentialsClaude != "" {
+		t.Fatalf("expected empty inline Claude runtime credentials fallback, got %q", cfg.runtimeCredentialsClaude)
 	}
 }
 
 func TestLoadConfigRuntimeCredentialOverrides(t *testing.T) {
 	t.Setenv("SMITH_RUNTIME_SECRET_NAME", "smith-runtime")
 	t.Setenv("SMITH_RUNTIME_CREDENTIALS_KEY", "runtime_credentials_v2")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY", "runtime_credentials_claude_v2")
 	t.Setenv("SMITH_RUNTIME_CREDENTIALS", "sk-inline-fallback")
+	t.Setenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE", "anthropic-inline-fallback")
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatalf("loadConfig error: %v", err)
@@ -527,8 +537,14 @@ func TestLoadConfigRuntimeCredentialOverrides(t *testing.T) {
 	if cfg.runtimeSecretKey != "runtime_credentials_v2" {
 		t.Fatalf("expected runtime credentials key override, got %q", cfg.runtimeSecretKey)
 	}
+	if cfg.runtimeSecretClaudeKey != "runtime_credentials_claude_v2" {
+		t.Fatalf("expected Claude runtime credentials key override, got %q", cfg.runtimeSecretClaudeKey)
+	}
 	if cfg.runtimeCredentials != "sk-inline-fallback" {
 		t.Fatalf("expected inline runtime credentials fallback override, got %q", cfg.runtimeCredentials)
+	}
+	if cfg.runtimeCredentialsClaude != "anthropic-inline-fallback" {
+		t.Fatalf("expected inline Claude runtime credentials fallback override, got %q", cfg.runtimeCredentialsClaude)
 	}
 }
 

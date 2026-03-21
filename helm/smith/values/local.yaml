@@ -13,6 +13,7 @@ secrets:
   managed:
     gitPat: ""
     runtimeCredentials: ""
+    runtimeCredentialsClaude: ""
 
 core:
   replicaCount: 1

@@ -4284,7 +4284,7 @@ func loadConfig() (config, error) {
 		skillPolicy:                         skillPolicy,
 		runtimeNamespace:                    strings.TrimSpace(envString("SMITH_RUNTIME_NAMESPACE", envString("SMITH_NAMESPACE", authStoreK8sNamespace))),
 		runtimeContainerName:                strings.TrimSpace(envString("SMITH_RUNTIME_CONTAINER_NAME", "replica")),
-		providerClaudeEnabled:               envBool("SMITH_PROVIDER_CLAUDE_ENABLED", false),
+		providerClaudeEnabled:               envBool("SMITH_PROVIDER_CLAUDE_ENABLED", true),
 		providerGeminiEnabled:               envBool("SMITH_PROVIDER_GEMINI_ENABLED", false),
 		documentStoreBackend:                documentStoreBackend,
 		documentsPostgresDSN:                strings.TrimSpace(envString("SMITH_DOCUMENTS_POSTGRES_DSN", "")),

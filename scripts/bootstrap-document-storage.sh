@@ -26,6 +26,7 @@ Flags:
 Expected env vars in env-file:
   SMITH_LOCAL_GIT_PAT
   SMITH_LOCAL_RUNTIME_CREDENTIALS
+  SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE (optional)
   SMITH_DOCUMENTS_POSTGRES_PASSWORD
   SMITH_DOCUMENTS_POSTGRES_DSN
   SMITH_DOCUMENTS_GARAGE_ACCESS_KEY_ID
@@ -151,9 +152,15 @@ if ! $SKIP_SECRETS; then
   require_env SMITH_DOCUMENTS_POSTGRES_DSN
 
   info "Upserting runtime secret: $RUNTIME_SECRET_NAME"
+  runtime_secret_args=(
+    --from-literal=git_pat="$SMITH_LOCAL_GIT_PAT"
+    --from-literal=runtime_credentials="$SMITH_LOCAL_RUNTIME_CREDENTIALS"
+  )
+  if [[ -n "${SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE:-}" ]]; then
+    runtime_secret_args+=(--from-literal=runtime_credentials_claude="$SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE")
+  fi
   kubectl -n "$NAMESPACE" create secret generic "$RUNTIME_SECRET_NAME" \
-    --from-literal=git_pat="$SMITH_LOCAL_GIT_PAT" \
-    --from-literal=runtime_credentials="$SMITH_LOCAL_RUNTIME_CREDENTIALS" \
+    "${runtime_secret_args[@]}" \
     --dry-run=client -o yaml | kubectl apply -f -
 
   info "Upserting document credentials secret: $DOCUMENTS_SECRET_NAME"

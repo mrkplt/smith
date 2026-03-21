@@ -94,6 +94,7 @@ Image tag defaults:
   - `chat.goose.model: ""` (optional; injects `GOOSE_MODEL` into chat service when set)
   - `chat.goose.apiKeyFromRuntimeSecret: true` (maps `secrets.keys.runtimeCredentials` into `chat.goose.apiKeyEnvVar`)
   - `chat.goose.apiKeyEnvVar: OPENAI_API_KEY`
+  - `secrets.keys.runtimeCredentialsClaude: runtime_credentials_claude` (optional Claude API key source for `ANTHROPIC_API_KEY` injection)
 - See `docs/image-tagging-versioning.md` for semver/SHA/branch policy and rollback matrix.
 - Private registries: set `global.imagePullSecrets` and all component pods inherit it.
 
@@ -121,6 +122,7 @@ Preferred path (pre-created secret):
 - Set `secrets.create=false`.
 - Set `secrets.existingSecret=<name>`.
 - Secret must contain keys matching `secrets.keys.gitPat` and `secrets.keys.runtimeCredentials`.
+- For Claude runtime support, also include `secrets.keys.runtimeCredentialsClaude`.
 
 Optional chart-managed path:
 - Set `secrets.create=true` and keep `secrets.existingSecret=""`.
