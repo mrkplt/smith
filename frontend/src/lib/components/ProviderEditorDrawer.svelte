@@ -107,7 +107,7 @@
 
 	async function loadProviderModelOptions() {
 		const canonicalType = canonicalProviderType(providerType);
-		const hasCredentialSecret = secretRef.trim() !== '';
+		const hasCredentialSecret = String(provider?.secret_ref || '').trim() !== '';
 		providerModelOptionsBusy = true;
 		try {
 			if (isEditing && id.trim() !== '') {

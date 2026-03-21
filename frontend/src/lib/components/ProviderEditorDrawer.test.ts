@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 
 Object.defineProperty(window, 'matchMedia', {
@@ -50,6 +50,10 @@ describe('ProviderEditorDrawer', () => {
 		vi.mocked(api.requestJSON).mockResolvedValue({});
 	});
 
+	afterEach(() => {
+		cleanup();
+	});
+
 	it('renders secret reference suggestions', () => {
 		const { container } = render(ProviderEditorDrawer, {
 			open: true,
@@ -70,6 +74,10 @@ describe('ProviderEditorDrawer', () => {
 	});
 
 	it('restricts provider type choices to supported catalog entries', async () => {
+		(window as any).__SMITH_CONFIG__ = {
+			featureProviderClaudeEnabled: false,
+			featureProviderGeminiEnabled: false
+		};
 		const { getByTestId } = render(ProviderEditorDrawer, {
 			open: true,
 			onClose: vi.fn(),
