@@ -67,7 +67,7 @@ describe('Settings providers next step CTA', () => {
     expect(screen.queryByRole('button', { name: 'Open Pods' })).toBeNull();
   });
 
-  it('shows Open Pods guidance when at least one project is configured', async () => {
+  it('hides next step guidance when at least one project is configured', async () => {
     appState.update((state) => ({
       ...state,
       projects: [
@@ -82,11 +82,37 @@ describe('Settings providers next step CTA', () => {
     render(SettingsPage);
 
     await waitFor(() => {
-      expect(
-        screen.getByText('Provider and project setup are complete. Open Pods to start loop execution.')
-      ).toBeTruthy();
+      expect(screen.getByText('Codex Default')).toBeTruthy();
     });
-    expect(screen.getByRole('button', { name: 'Open Pods' })).toBeTruthy();
+    expect(screen.queryByText('Next Step')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add Project' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Pods' })).toBeNull();
+  });
+
+  it('shows only added provider profiles with credentials', async () => {
+    vi.mocked(api.fetchJSON).mockImplementation(async (path: string) => {
+      if (path === '/v1/providers') {
+        return [
+          {
+            id: 'codex-default',
+            name: 'Codex Default',
+            provider_type: 'codex',
+            default_model: 'gpt-5-codex',
+            secret_ref: ''
+          }
+        ];
+      }
+      if (path === '/v1/onboarding/readiness') {
+        return { ready: true };
+      }
+      return [];
+    });
+
+    render(SettingsPage);
+
+    await waitFor(() => {
+      expect(screen.getByText('No Provider Profiles')).toBeTruthy();
+    });
+    expect(screen.queryByText('Codex Default')).toBeNull();
   });
 });

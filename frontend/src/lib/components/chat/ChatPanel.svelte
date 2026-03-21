@@ -144,7 +144,11 @@
         try {
             const profiles = await fetchJSON('/v1/providers');
             providerProfiles = Array.isArray(profiles)
-                ? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+                ? profiles.filter((profile) => {
+                    const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
+                    const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+                    return providerTypeEnabled && isAddedProfile;
+                })
                 : [];
         } catch {
             providerProfiles = [];
@@ -155,9 +159,10 @@
         const normalizedProfileID = String(nextProfileID || '').trim();
         const profile = providerProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
         const providerTypeHint = String(profile?.provider_type || '').trim();
+        const hasCredentialSecret = String(profile?.secret_ref || '').trim() !== '';
         modelOptionsBusy = true;
         try {
-            modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+            modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint, hasCredentialSecret);
         } finally {
             modelOptionsBusy = false;
         }

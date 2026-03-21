@@ -105,13 +105,17 @@
   const availableModelOptions = $derived(includeSelectedModel(modelOptions, defaultModel));
 
   const generalRows = $derived([
-    { label: 'Installation', value: 'smith-console' },
-    { label: 'Operator Identity', value: 'operator' },
-    { label: 'Runtime Namespace', value: 'smith-system' },
-    { label: 'API Base', value: apiBaseUrl },
-    { label: 'Chat Base', value: chatBaseUrl },
-    { label: 'Host', value: typeof window !== 'undefined' ? window.location.host : 'local' },
-    { label: 'Build', value: buildLabel }
+    ...[
+      { label: 'Installation', value: 'smith-console' },
+      { label: 'Operator Identity', value: 'operator' },
+      { label: 'Runtime Namespace', value: 'smith-system' },
+      { label: 'API Base', value: apiBaseUrl }
+    ],
+    ...(chatFeatureEnabled ? [{ label: 'Chat Base', value: chatBaseUrl }] : []),
+    ...[
+      { label: 'Host', value: typeof window !== 'undefined' ? window.location.host : 'local' },
+      { label: 'Build', value: buildLabel }
+    ]
   ]);
 
   const activeSection = $derived(parseSection(page.url.searchParams.get('section')));
@@ -124,7 +128,11 @@
     const config = (window as any).__SMITH_CONFIG__ || {};
     buildLabel = String(config.build || config.version || 'local');
 
-    void loadProviderProfiles().then(loadChatSettingsFromBrowser);
+    void loadProviderProfiles().then(() => {
+      if (chatFeatureEnabled) {
+        loadChatSettingsFromBrowser();
+      }
+    });
     if (secretsFeatureEnabled) {
       void loadSecrets();
     }
@@ -135,7 +143,11 @@
     try {
       const profiles = await fetchJSON('/v1/providers');
       providerProfiles = Array.isArray(profiles)
-        ? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+        ? profiles.filter((profile) => {
+            const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
+            const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+            return providerTypeEnabled && isAddedProfile;
+          })
         : [];
     } catch (err: any) {
       pushToast(err?.message || 'Failed to load provider profiles', 'err');
@@ -159,9 +171,10 @@
     const normalizedProfileID = String(nextProfileID || '').trim();
     const profile = providerProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
     const providerTypeHint = String(profile?.provider_type || '').trim();
+    const hasCredentialSecret = String(profile?.secret_ref || '').trim() !== '';
     modelOptionsBusy = true;
     try {
-      modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+      modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint, hasCredentialSecret);
     } finally {
       modelOptionsBusy = false;
     }
@@ -562,26 +575,16 @@
           </Button>
         </div>
 
-        {#if providerProfiles.length > 0}
+        {#if providerProfiles.length > 0 && !hasConfiguredProjects}
           <Card class="mt-6 bg-black border-gray-800 rounded-none p-0">
             <div class="p-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500">Next Step</div>
-                {#if hasConfiguredProjects}
-                  <div class="mt-1 text-sm text-gray-300">Provider and project setup are complete. Open Pods to start loop execution.</div>
-                {:else}
-                  <div class="mt-1 text-sm text-gray-300">Provider setup is complete. Continue to project setup to unlock loop execution.</div>
-                {/if}
+                <div class="mt-1 text-sm text-gray-300">Provider setup is complete. Continue to project setup to unlock loop execution.</div>
               </div>
-              {#if hasConfiguredProjects}
-                <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => goto('/pods')}>
-                  Open Pods
-                </Button>
-              {:else}
-                <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => void selectSection('projects')}>
-                  Add Project
-                </Button>
-              {/if}
+              <Button color="alternative" class="rounded-none bg-[#86BC25] text-black font-bold uppercase text-[10px] tracking-widest" onclick={() => void selectSection('projects')}>
+                Add Project
+              </Button>
             </div>
           </Card>
         {/if}
