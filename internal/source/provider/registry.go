@@ -100,10 +100,6 @@ func (r *Registry) Resolve(providerID string, model string) (Selection, error) {
 	if resolvedModel == "" {
 		resolvedModel = reg.DefaultModel
 	}
-	if !slices.Contains(reg.Models, resolvedModel) {
-		return Selection{}, fmt.Errorf("%w: provider=%s model=%s", ErrUnsupportedModel, providerID, resolvedModel)
-	}
-
 	if err := reg.Adapter.ValidateConfig(Config{Model: resolvedModel}); err != nil {
 		return Selection{}, err
 	}

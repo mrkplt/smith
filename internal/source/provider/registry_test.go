@@ -29,11 +29,14 @@ func TestRegistryResolveRejectsUnknownProvider(t *testing.T) {
 	}
 }
 
-func TestRegistryResolveRejectsUnsupportedModel(t *testing.T) {
+func TestRegistryResolveAllowsCustomModel(t *testing.T) {
 	registry := NewDefaultRegistry()
-	_, err := registry.Resolve(ProviderCodex, "unknown-model")
-	if !errors.Is(err, ErrUnsupportedModel) {
-		t.Fatalf("expected ErrUnsupportedModel, got %v", err)
+	selection, err := registry.Resolve(ProviderCodex, "gpt-5.3-codex")
+	if err != nil {
+		t.Fatalf("expected custom model resolution, got %v", err)
+	}
+	if selection.Model != "gpt-5.3-codex" {
+		t.Fatalf("expected model %q, got %q", "gpt-5.3-codex", selection.Model)
 	}
 }
 

@@ -17,19 +17,24 @@ type RealGit struct {
 	UserEmail  string
 }
 
+const (
+	defaultGitCommitUserName  = "SMITH"
+	defaultGitCommitUserEmail = "smith@cromleylabs.com"
+)
+
 func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff string) (string, error) {
 	if g.PAT == "" {
 		return "", fmt.Errorf("git push failed: SMITH_GIT_PAT is not set")
 	}
 
 	// 1. Configure local git user
-	userName := g.UserName
+	userName := strings.TrimSpace(g.UserName)
 	if userName == "" {
-		userName = "smith-replica"
+		userName = defaultGitCommitUserName
 	}
-	userEmail := g.UserEmail
+	userEmail := strings.TrimSpace(g.UserEmail)
 	if userEmail == "" {
-		userEmail = "smith-replica@smith.io"
+		userEmail = defaultGitCommitUserEmail
 	}
 
 	if err := g.run(ctx, "config", "user.name", userName); err != nil {
@@ -45,7 +50,7 @@ func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff st
 	}
 
 	// 3. Commit
-	commitMsg := fmt.Sprintf("chore(loop): sync loop %s\n\nFinal Diff Summary:\n%s", loopID, finalDiff)
+	commitMsg := buildCommitMessage(loopID, finalDiff)
 	if err := g.run(ctx, "commit", "-m", commitMsg); err != nil {
 		// If there are no changes, commit might fail. We should check if it's actually an error.
 		if strings.Contains(err.Error(), "nothing to commit") {
@@ -62,6 +67,47 @@ func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff st
 	}
 
 	return g.headSHA(ctx)
+}
+
+func buildCommitMessage(loopID, finalDiff string) string {
+	summary := "autonomous implementation update"
+	details := ""
+
+	trimmed := strings.TrimSpace(finalDiff)
+	if trimmed != "" {
+		parts := strings.Split(trimmed, "\n")
+		first := strings.TrimSpace(parts[0])
+		if first != "" {
+			summary = collapseCommitLine(first, 72)
+		}
+		if len(parts) > 1 {
+			remaining := strings.TrimSpace(strings.Join(parts[1:], "\n"))
+			if remaining != "" {
+				details = remaining
+			}
+		}
+	}
+
+	message := fmt.Sprintf("feat(loop): %s\n\nLoop-ID: %s", summary, strings.TrimSpace(loopID))
+	if details != "" {
+		message += "\n\n" + details
+	}
+	return message
+}
+
+func collapseCommitLine(value string, limit int) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if value == "" {
+		return "autonomous implementation update"
+	}
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	trimmed := strings.TrimSpace(value[:limit])
+	if trimmed == "" {
+		return value[:limit]
+	}
+	return trimmed
 }
 
 func (g *RealGit) CreatePullRequest(ctx context.Context, loopID string, commitSHA string, title string, body string) (string, error) {

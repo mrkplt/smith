@@ -45,10 +45,10 @@ sequenceDiagram
 ## Detailed Walkthrough
 
 ### 1. Identity & Staging
-Before committing, Smith configures the local Git environment using either default values (`smith-replica`) or custom values provided via `SMITH_GIT_USER_NAME` and `SMITH_GIT_USER_EMAIL`. It then runs `git add -A` to capture all workspace changes, including implementation code and PRD updates.
+Before committing, Smith configures the local Git environment using either default values (`SMITH <smith@cromleylabs.com>`) or custom values provided via `SMITH_GIT_USER_NAME` and `SMITH_GIT_USER_EMAIL`. It then runs `git add -A` to capture all workspace changes, including implementation code and PRD updates.
 
 ### 2. Local Commit
-A local commit is created with a structured message: `chore(loop): sync loop <id>`. This commit serves as the atomic package of work for the iteration.
+A local commit is created with a structured and traceable message, for example: `feat(loop): US-001: Feature-gated Kanban visibility`, with body metadata that links back to loop and PRD/story context.
 
 ### 3. Remote Push (Sync)
 The replica pushes the commit to the remote branch. If the push fails (e.g., due to a conflict or permissions), the loop is returned to `unresolved` for a later retry by the controller.

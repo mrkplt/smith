@@ -98,7 +98,7 @@ Helm note: when `documentDependencies.postgres.enabled` and/or `documentDependen
 | `SMITH_CORRELATION_ID` | Correlates loop execution with ingress/task/audit records. |
 | `SMITH_WORKSPACE` | Workspace path used for git/bootstrap and agent execution. |
 | `SMITH_GIT_REPOSITORY` / `SMITH_GIT_BRANCH` / `SMITH_GIT_PAT` | Git bootstrap and completion credentials/targets. |
-| `SMITH_GIT_USER_NAME` / `SMITH_GIT_USER_EMAIL` | Commit identity for completion protocol. |
+| `SMITH_GIT_USER_NAME` / `SMITH_GIT_USER_EMAIL` | Commit identity for completion protocol (defaults: `SMITH` / `smith@cromleylabs.com`). |
 | `SMITH_GIT_CREATE_PR` | Enables PR creation during completion when branch changes exist. |
 | `SMITH_LOOP_PROVIDER` / `SMITH_LOOP_MODEL` | Selected provider/model invocation parameters. |
 | `SMITH_LOOP_INVOCATION_METHOD` | Provider invocation method for loop execution (`sdk`, `cli`, etc.). |

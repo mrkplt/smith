@@ -94,8 +94,8 @@ func (a *staticAdapter) CloseSession(context.Context, Session) error {
 
 func (a *staticAdapter) ValidateConfig(config Config) error {
 	model := normalize(config.Model)
-	if _, ok := a.models[model]; ok {
-		return nil
+	if model == "" {
+		return fmt.Errorf("model is required")
 	}
-	return fmt.Errorf("%w: provider=%s model=%s", ErrUnsupportedModel, a.providerID, model)
+	return nil
 }

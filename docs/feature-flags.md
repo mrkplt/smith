@@ -17,6 +17,7 @@ These values are injected into `window.__SMITH_CONFIG__` from ConfigMap `smith-<
 | Feature Surface | Runtime Config Key | Env Var | Helm Value | Default |
 | --- | --- | --- | --- | --- |
 | Tasks route and navigation (`/tasks`) | `featureTasksEnabled` | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` |
+| Tasks Kanban dashboard (`/tasks/kanban`) | `featureTasksKanbanEnabled` | `SMITH_FEATURE_TASKS_KANBAN_ENABLED` | `console.featureFlags.tasksKanban` | `false` |
 | Feature Capability route and navigation (`/feature-capability`) | `featureCapabilityEnabled` | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` |
 | Operator chat surfaces (`/assistant`, chat drawer, document chat entry points) | `featureChatEnabled` | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` |
 | Settings Integrations section visibility | `featureIntegrationsEnabled` | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` |
@@ -36,13 +37,14 @@ These flags gate provider types at the API contract level.
 | Claude provider support in provider catalog + validation | `SMITH_PROVIDER_CLAUDE_ENABLED` | `api.featureFlags.providerClaude` | `false` |
 | Gemini provider support in provider catalog + validation | `SMITH_PROVIDER_GEMINI_ENABLED` | `api.featureFlags.providerGemini` | `false` |
 
-## Draft PRDs by flag
+## PRDs by flag
 
-Each feature-flagged surface has a draft PRD with explicit value statement, rollout goals, and acceptance criteria.
+Each feature-flagged surface should map to a PRD with explicit value statement, rollout goals, and acceptance criteria.
 
-| Flag | Draft PRD |
+| Flag | PRD |
 | --- | --- |
 | `SMITH_FEATURE_TASKS_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-tasks-enabled-prd.md`](prds/draft/feature-flag-smith-feature-tasks-enabled-prd.md) |
+| `SMITH_FEATURE_TASKS_KANBAN_ENABLED` | [`docs/prds/approved/feature-flag-smith-feature-tasks-kanban-enabled-prd.md`](prds/approved/feature-flag-smith-feature-tasks-kanban-enabled-prd.md) |
 | `SMITH_FEATURE_CAPABILITY_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-capability-enabled-prd.md`](prds/draft/feature-flag-smith-feature-capability-enabled-prd.md) |
 | `SMITH_FEATURE_CAPABILITY_ACCESS` | [`docs/prds/draft/feature-flag-smith-feature-capability-access-prd.md`](prds/draft/feature-flag-smith-feature-capability-access-prd.md) |
 | `SMITH_FEATURE_CHAT_ENABLED` | [`docs/prds/draft/feature-flag-smith-feature-chat-enabled-prd.md`](prds/draft/feature-flag-smith-feature-chat-enabled-prd.md) |
@@ -58,6 +60,7 @@ Each feature-flagged surface has a draft PRD with explicit value statement, roll
 ## Visibility behavior
 
 - `tasks` nav item and `/tasks` route are hidden/redirected when disabled.
+- `tasks/kanban` nav entry and `/tasks/kanban` route are hidden/redirected when disabled.
 - `feature-capability` nav item and route are hidden when disabled.
 - Feature Capability additionally requires access (`featureCapabilityAccess=true` or `feature_capability:access` permission) when enabled.
 - Chat entry points (TopBar button, `/assistant`, and document chat controls) are hidden when chat is disabled.
