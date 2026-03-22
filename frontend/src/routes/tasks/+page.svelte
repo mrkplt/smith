@@ -10,7 +10,7 @@
     patchTaskContract,
     type TaskContract
   } from '$lib/api';
-  import { isTasksEnabled } from '$lib/feature-flags';
+  import { isTasksEnabled, isTasksKanbanVisible } from '$lib/feature-flags';
   import { goto } from '$app/navigation';
 
   let tasks = $state<TaskContract[]>([]);
@@ -29,6 +29,7 @@
   let sourceDocument = $state('docs/task.md');
   let objective = $state('');
   let validationCommands = $state('go test ./...');
+  const tasksKanbanVisible = $derived(isTasksKanbanVisible());
 
   onMount(async () => {
     if (!isTasksEnabled()) {
@@ -189,6 +190,11 @@
 <TopBar title="Tasks" />
 
 <section class="tasks-page px-4 pb-8">
+  {#if tasksKanbanVisible}
+    <div class="panel panel-nav">
+      <a class="ghost kanban-link" href="/tasks/kanban">Open Tasks Kanban</a>
+    </div>
+  {/if}
   <div class="panel">
     <h2>Create Task Contract</h2>
     <div class="form-grid">
@@ -300,6 +306,17 @@
     background: rgba(0, 0, 0, 0.75);
     padding: 1rem;
     border-radius: 0.5rem;
+  }
+
+  .panel-nav {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .kanban-link {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
   }
 
   h2 {

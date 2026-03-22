@@ -4,7 +4,21 @@ import { shellPrimaryNav } from '$lib/navigation';
 
 describe('shell navigation', () => {
   it('keeps runtime surfaces plus settings in primary nav', () => {
-    expect(shellPrimaryNav.map((item) => item.id)).toEqual(['pods', 'documents', 'tasks', 'feature-capability', 'settings']);
-    expect(shellPrimaryNav.map((item) => item.href)).toEqual(['/pods', '/documents', '/tasks', '/feature-capability', '/settings']);
+    expect(shellPrimaryNav.map((item) => item.id)).toEqual([
+      'pods',
+      'documents',
+      'tasks',
+      'tasks-kanban',
+      'feature-capability',
+      'settings'
+    ]);
+    expect(shellPrimaryNav.map((item) => item.href)).toEqual([
+      '/pods',
+      '/documents',
+      '/tasks',
+      '/tasks/kanban',
+      '/feature-capability',
+      '/settings'
+    ]);
   });
 });

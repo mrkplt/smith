@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  __resetFeatureFlagDiagnosticsForTests,
   isChatEnabled,
   isFeatureCapabilityEnabled,
   isFeatureVisible,
@@ -8,11 +9,25 @@ import {
   isPRDDiagnosticResolveEnabled,
   isProviderTypeEnabled,
   isSecretsEnabled,
+  isTasksKanbanEnabled,
+  isTasksKanbanVisible,
   isTasksEnabled,
   parseBoolean
 } from '$lib/feature-flags';
 
 describe('feature flags', () => {
+  it('emits a one-time non-sensitive diagnostic for tasks-kanban evaluation', () => {
+    __resetFeatureFlagDiagnosticsForTests();
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    expect(isTasksKanbanEnabled({})).toBe(false);
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: true })).toBe(true);
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    expect(infoSpy.mock.calls[0][0]).toContain('feature=tasks-kanban enabled=false source=runtime-config');
+
+    infoSpy.mockRestore();
+  });
+
   it('parses booleans consistently', () => {
     expect(parseBoolean(true)).toBe(true);
     expect(parseBoolean(false)).toBe(false);
@@ -28,6 +43,7 @@ describe('feature flags', () => {
 
   it('defaults unfinished features off', () => {
     expect(isTasksEnabled({})).toBe(false);
+    expect(isTasksKanbanEnabled({})).toBe(false);
     expect(isFeatureCapabilityEnabled({})).toBe(false);
     expect(isChatEnabled({})).toBe(false);
     expect(isIntegrationsEnabled({})).toBe(false);
@@ -37,8 +53,22 @@ describe('feature flags', () => {
   it('supports boolean and string runtime overrides', () => {
     expect(isTasksEnabled({ featureTasksEnabled: true })).toBe(true);
     expect(isTasksEnabled({ featureTasksEnabled: 'true' })).toBe(true);
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: true })).toBe(true);
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: '1' })).toBe(true);
     expect(isFeatureCapabilityEnabled({ featureCapabilityEnabled: true })).toBe(true);
     expect(isFeatureCapabilityEnabled({ featureCapabilityEnabled: '1' })).toBe(true);
+  });
+
+  it('fails closed for invalid Tasks Kanban flag values', () => {
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: 'enabled' })).toBe(false);
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: '' })).toBe(false);
+  });
+
+  it('requires both Tasks and Tasks Kanban flags for Kanban visibility', () => {
+    expect(isTasksKanbanVisible({})).toBe(false);
+    expect(isTasksKanbanVisible({ featureTasksEnabled: true, featureTasksKanbanEnabled: false })).toBe(false);
+    expect(isTasksKanbanVisible({ featureTasksEnabled: false, featureTasksKanbanEnabled: true })).toBe(false);
+    expect(isTasksKanbanVisible({ featureTasksEnabled: true, featureTasksKanbanEnabled: true })).toBe(true);
   });
 
   it('maps feature ids to visibility defaults', () => {

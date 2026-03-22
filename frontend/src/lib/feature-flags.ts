@@ -1,5 +1,6 @@
 type RuntimeConfig = {
   featureTasksEnabled?: boolean | string;
+  featureTasksKanbanEnabled?: boolean | string;
   featureCapabilityEnabled?: boolean | string;
   featureChatEnabled?: boolean | string;
   featureIntegrationsEnabled?: boolean | string;
@@ -8,6 +9,8 @@ type RuntimeConfig = {
   featureProviderGeminiEnabled?: boolean | string;
   featurePRDDiagnosticResolveEnabled?: boolean | string;
 };
+
+let hasLoggedTasksKanbanEvaluation = false;
 
 /** Parses a runtime boolean-like value (boolean or string) into strict boolean/null. */
 export function parseBoolean(value: boolean | string | undefined): boolean | null {
@@ -44,6 +47,21 @@ function parseFlag(value: boolean | string | undefined, fallback: boolean): bool
 /** Returns whether the Tasks runtime surface is enabled. */
 export function isTasksEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featureTasksEnabled, false);
+}
+
+/** Returns whether the Tasks Kanban surface is enabled. */
+export function isTasksKanbanEnabled(config = getRuntimeConfig()): boolean {
+  const enabled = parseFlag(config.featureTasksKanbanEnabled, false);
+  if (!hasLoggedTasksKanbanEvaluation && typeof window !== 'undefined') {
+    console.info(`[feature-flag] feature=tasks-kanban enabled=${enabled} source=runtime-config`);
+    hasLoggedTasksKanbanEvaluation = true;
+  }
+  return enabled;
+}
+
+/** Returns whether Tasks Kanban can be shown in UI entry points. */
+export function isTasksKanbanVisible(config = getRuntimeConfig()): boolean {
+  return isTasksEnabled(config) && isTasksKanbanEnabled(config);
 }
 
 /** Returns whether the Feature Capability runtime surface is enabled. */
@@ -104,4 +122,9 @@ export function isProviderTypeEnabled(providerType: string, config = getRuntimeC
 /** Returns whether PRD diagnostic-level Resolve actions are enabled in Documents. */
 export function isPRDDiagnosticResolveEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featurePRDDiagnosticResolveEnabled, false);
+}
+
+/** Test-only helper to isolate feature flag diagnostic assertions. */
+export function __resetFeatureFlagDiagnosticsForTests(): void {
+  hasLoggedTasksKanbanEvaluation = false;
 }

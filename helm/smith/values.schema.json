@@ -524,6 +524,7 @@
           "additionalProperties": false,
           "properties": {
             "tasks": { "type": "boolean" },
+            "tasksKanban": { "type": "boolean" },
             "featureCapability": { "type": "boolean" },
             "chat": { "type": "boolean" },
             "integrations": { "type": "boolean" },

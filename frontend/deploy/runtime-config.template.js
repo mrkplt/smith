@@ -5,6 +5,7 @@ window.__SMITH_CONFIG__ = {
   operatorToken: "${SMITH_OPERATOR_TOKEN}",
   operatorPermissions: "${SMITH_OPERATOR_PERMISSIONS}",
   featureTasksEnabled: "${SMITH_FEATURE_TASKS_ENABLED}",
+  featureTasksKanbanEnabled: "${SMITH_FEATURE_TASKS_KANBAN_ENABLED}",
   featureCapabilityEnabled: "${SMITH_FEATURE_CAPABILITY_ENABLED}",
   featureChatEnabled: "${SMITH_FEATURE_CHAT_ENABLED}",
   featureIntegrationsEnabled: "${SMITH_FEATURE_INTEGRATIONS_ENABLED}",

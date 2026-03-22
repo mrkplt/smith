@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "project": "[Feature Flag Smith Feature Tasks Kanban Enabled Prd] Feature-gated Kanban visibility",
+  "overview": "As an operator, I want the Tasks Kanban view available only when enabled so unfinished workflow UX does not appear by default.",
+  "goals": [
+    "Hide Tasks Kanban by default unless a dedicated feature flag is enabled.",
+    "Provide deterministic flag evaluation so UI behavior is consistent per environment.",
+    "Ensure operators can verify enabled versus disabled behavior through observable signals and tests."
+  ],
+  "nonGoals": [
+    "Redesigning the Tasks Kanban experience itself.",
+    "Changing task data model semantics unrelated to visibility gating.",
+    "Introducing user-level rollout targeting in this phase."
+  ],
+  "successMetrics": [
+    "When the feature flag is disabled, Tasks Kanban navigation and route are inaccessible in all operator sessions.",
+    "When the feature flag is enabled, Tasks Kanban navigation and route are available and render as expected.",
+    "Automated checks cover both enabled and disabled states with no regressions in existing task views."
+  ],
+  "rules": [
+    "Tasks Kanban visibility must be controlled exclusively by a single feature flag evaluation path.",
+    "Disabled state must prevent both navigation entry points and direct route access.",
+    "Enabled state must preserve existing authorization boundaries for task views.",
+    "Feature flag defaults to disabled unless explicitly enabled by configuration."
+  ],
+  "qualityGates": [
+    "go test ./...",
+    "npm --prefix frontend run check",
+    "npm --prefix frontend run build"
+  ],
+  "blockers": [
+    {
+      "id": "BLK-001",
+      "date": "2026-03-22",
+      "storyId": "US-001",
+      "description": "Unable to execute full quality gates in this workspace because required tooling is missing: `go` (`go test ./...`), `docker`, and `act`.",
+      "status": "open"
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Define canonical feature flag contract for Tasks Kanban",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want a clearly defined feature flag key and default behavior so Kanban visibility is predictable across environments.",
+      "acceptanceCriteria": [
+        "A single documented flag key controls Tasks Kanban visibility.",
+        "Default evaluation returns disabled when configuration is absent.",
+        "Example: with no flag configured, Kanban is hidden and no Kanban route is exposed.",
+        "Negative case: invalid flag values are handled safely and resolve to disabled."
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Gate Tasks Kanban navigation entry points behind the feature flag",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want Kanban links and controls hidden when disabled so unfinished UX does not appear by default.",
+      "acceptanceCriteria": [
+        "All UI entry points to Tasks Kanban are conditionally rendered based on the feature flag.",
+        "Example: when disabled, navigation menus do not display any Kanban option.",
+        "Example: when enabled, Kanban option is visible and selectable.",
+        "Negative case: stale cached UI state does not surface Kanban after reload when flag is disabled."
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Protect direct Tasks Kanban route access when the feature is disabled",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want direct URL access to Kanban blocked when disabled so hidden UX cannot be reached by deep links.",
+      "acceptanceCriteria": [
+        "Direct navigation to the Kanban route checks the feature flag before rendering.",
+        "Example: when disabled, direct Kanban URL redirects to a safe fallback view.",
+        "Example: when enabled, direct Kanban URL loads normally.",
+        "Negative case: browser back/forward navigation cannot bypass the disabled-state gate."
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Expose operational visibility of feature flag state",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want observable signals for Kanban flag evaluation so troubleshooting visibility behavior is fast and reliable.",
+      "acceptanceCriteria": [
+        "Flag evaluation outcome is logged or surfaced through existing diagnostics without leaking sensitive data.",
+        "Example: startup or request-level diagnostics indicate whether Kanban flag is enabled or disabled.",
+        "Negative case: missing configuration still produces a clear disabled-state diagnostic."
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Add automated coverage for enabled and disabled Kanban states",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want automated tests validating both flag states so regressions do not re-expose unfinished Kanban UX.",
+      "acceptanceCriteria": [
+        "Test coverage verifies Kanban navigation and route are hidden when the flag is disabled.",
+        "Test coverage verifies Kanban navigation and route are available when the flag is enabled.",
+        "Negative case: tests fail if Kanban renders in disabled mode or is inaccessible in enabled mode."
+      ]
+    }
+  ]
+}
