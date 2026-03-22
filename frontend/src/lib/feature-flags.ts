@@ -93,7 +93,7 @@ export function isProviderTypeEnabled(providerType: string, config = getRuntimeC
     return true;
   }
   if (normalized === 'claude' || normalized === 'anthropic') {
-    return parseFlag(config.featureProviderClaudeEnabled, false);
+    return parseFlag(config.featureProviderClaudeEnabled, true);
   }
   if (normalized === 'gemini' || normalized === 'google') {
     return parseFlag(config.featureProviderGeminiEnabled, false);

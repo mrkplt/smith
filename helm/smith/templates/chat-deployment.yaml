@@ -64,6 +64,14 @@ spec:
                   name: {{ include "smith.runtimeSecretName" . }}
                   key: {{ .Values.secrets.keys.runtimeCredentials }}
                   optional: true
+            {{- if .Values.secrets.keys.runtimeCredentialsClaude }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smith.runtimeSecretName" . }}
+                  key: {{ .Values.secrets.keys.runtimeCredentialsClaude }}
+                  optional: true
+            {{- end }}
             {{- end }}
             {{- with .Values.chat.env }}
             {{- toYaml . | nindent 12 }}
