@@ -1,5 +1,6 @@
 type RuntimeConfig = {
   featureTasksEnabled?: boolean | string;
+  featureTasksKanbanEnabled?: boolean | string;
   featureCapabilityEnabled?: boolean | string;
   featureChatEnabled?: boolean | string;
   featureIntegrationsEnabled?: boolean | string;
@@ -44,6 +45,11 @@ function parseFlag(value: boolean | string | undefined, fallback: boolean): bool
 /** Returns whether the Tasks runtime surface is enabled. */
 export function isTasksEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featureTasksEnabled, false);
+}
+
+/** Returns whether Tasks kanban lane grouping behavior is enabled. */
+export function isTasksKanbanEnabled(config = getRuntimeConfig()): boolean {
+  return parseFlag(config.featureTasksKanbanEnabled, false);
 }
 
 /** Returns whether the Feature Capability runtime surface is enabled. */

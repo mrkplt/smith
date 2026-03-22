@@ -353,7 +353,7 @@ func (o *orchestrator) syncTaskContractStatus(ctx context.Context, anomaly model
 		return
 	}
 	before := task.Status
-	task.Status = target
+	model.ApplyTaskStatusTransition(&task, target, reason, time.Now().UTC())
 	if strings.TrimSpace(task.CorrelationID) == "" {
 		task.CorrelationID = anomaly.CorrelationID
 	}

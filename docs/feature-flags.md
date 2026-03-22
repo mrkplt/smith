@@ -17,6 +17,7 @@ These values are injected into `window.__SMITH_CONFIG__` from ConfigMap `smith-<
 | Feature Surface | Runtime Config Key | Env Var | Helm Value | Default |
 | --- | --- | --- | --- | --- |
 | Tasks route and navigation (`/tasks`) | `featureTasksEnabled` | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` |
+| Tasks Kanban Finished-lane grouping | `featureTasksKanbanEnabled` | `SMITH_FEATURE_TASKS_KANBAN_ENABLED` | `console.featureFlags.tasksKanban` | `false` |
 | Feature Capability route and navigation (`/feature-capability`) | `featureCapabilityEnabled` | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` |
 | Operator chat surfaces (`/assistant`, chat drawer, document chat entry points) | `featureChatEnabled` | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` |
 | Settings Integrations section visibility | `featureIntegrationsEnabled` | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` |

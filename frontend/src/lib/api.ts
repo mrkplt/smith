@@ -89,6 +89,9 @@ export interface TaskContract {
   acceptance_criteria?: string[];
   validation?: string[];
   status: 'draft' | 'validated' | 'approved' | 'running' | 'completed' | 'blocked';
+  terminal_outcome?: '' | 'completed' | 'blocked';
+  terminal_reason?: string;
+  terminal_at?: string;
   metadata?: Record<string, string>;
   created_at?: string;
   updated_at?: string;

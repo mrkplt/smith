@@ -1103,4 +1103,13 @@ func TestSyncTaskContractStatusFromAnomaly(t *testing.T) {
 	if task.Status != model.TaskContractStatusBlocked {
 		t.Fatalf("expected blocked task status, got %s", task.Status)
 	}
+	if task.TerminalOutcome != model.TaskTerminalOutcomeBlocked {
+		t.Fatalf("expected blocked terminal outcome, got %s", task.TerminalOutcome)
+	}
+	if task.TerminalReason != "runtime-failure" {
+		t.Fatalf("expected blocked terminal reason to match sync reason, got %q", task.TerminalReason)
+	}
+	if task.TerminalAt == nil {
+		t.Fatal("expected terminal_at to be set for blocked status")
+	}
 }
