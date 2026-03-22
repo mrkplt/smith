@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import TopBar from '$lib/components/TopBar.svelte';
   import { appState, pushToast } from '$lib/stores';
   import {
@@ -11,7 +11,10 @@
     type TaskContract
   } from '$lib/api';
   import { isTasksEnabled } from '$lib/feature-flags';
+  import { groupTasksByLane, laneDefinitions } from '$lib/task-lanes';
   import { goto } from '$app/navigation';
+
+  const TASKS_POLL_MS = 5000;
 
   let tasks = $state<TaskContract[]>([]);
   let loading = $state(false);
@@ -19,6 +22,7 @@
   let saving = $state(false);
   let actionTaskID = $state('');
   let editingTaskID = $state('');
+  let expandedTaskIDs = $state<string[]>([]);
   let editObjective = $state('');
   let editValidation = $state('');
   let editSourceDocument = $state('');
@@ -29,6 +33,87 @@
   let sourceDocument = $state('docs/task.md');
   let objective = $state('');
   let validationCommands = $state('go test ./...');
+  const tasksByLane = $derived(groupTasksByLane(tasks));
+
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  function stopTasksPolling() {
+    if (!pollTimer) {
+      return;
+    }
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  function upsertTask(updated: TaskContract) {
+    const index = tasks.findIndex((task) => task.id === updated.id);
+    if (index === -1) {
+      tasks = [updated, ...tasks];
+      return;
+    }
+    const next = [...tasks];
+    next[index] = { ...next[index], ...updated };
+    tasks = next;
+  }
+
+  function markTaskRuntimeRunning(taskID: string) {
+    tasks = tasks.map((task) => {
+      if (task.id !== taskID) {
+        return task;
+      }
+      return {
+        ...task,
+        runtime_state: 'running',
+        metadata: {
+          ...(task.metadata || {}),
+          runtime_state: 'running'
+        }
+      };
+    });
+  }
+
+  async function loadTasks(options: { silent?: boolean } = {}) {
+    const { silent = false } = options;
+    if (!silent) {
+      loading = true;
+      error = '';
+    }
+    try {
+      const response = await fetchJSON('/tasks');
+      tasks = Array.isArray(response) ? response : [];
+    } catch (err: any) {
+      if (!silent) {
+        error = err.message || 'Failed to load tasks';
+      }
+    } finally {
+      if (!silent) {
+        loading = false;
+      }
+    }
+  }
+
+  function startTasksPolling() {
+    stopTasksPolling();
+    if (typeof document === 'undefined' || document.hidden) {
+      return;
+    }
+    pollTimer = setInterval(() => {
+      void loadTasks({ silent: true });
+    }, TASKS_POLL_MS);
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      stopTasksPolling();
+      return;
+    }
+    void loadTasks({ silent: true });
+    startTasksPolling();
+  }
+
+  function handleWindowFocus() {
+    void loadTasks({ silent: true });
+  }
 
   onMount(async () => {
     if (!isTasksEnabled()) {
@@ -38,20 +123,20 @@
     }
     projectID = $appState.projects[0]?.id || 'smith';
     await loadTasks();
+    startTasksPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
   });
 
-  async function loadTasks() {
-    loading = true;
-    error = '';
-    try {
-      const response = await fetchJSON('/tasks');
-      tasks = Array.isArray(response) ? response : [];
-    } catch (err: any) {
-      error = err.message || 'Failed to load tasks';
-    } finally {
-      loading = false;
+  onDestroy(() => {
+    stopTasksPolling();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
-  }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', handleWindowFocus);
+    }
+  });
 
   function parseMultiline(input: string): string[] {
     return input
@@ -72,7 +157,7 @@
     }
     saving = true;
     try {
-      await createTaskContract({
+      const created = await createTaskContract({
         project_id: projectID.trim(),
         provider_profile_id: providerProfileID.trim(),
         source_document: sourceDocument.trim(),
@@ -80,9 +165,9 @@
         validation,
         actor: 'operator'
       });
+      upsertTask(created);
       objective = '';
       pushToast('task contract created', 'ok');
-      await loadTasks();
     } catch (err: any) {
       pushToast(err.message || 'failed to create task', 'err');
     } finally {
@@ -92,9 +177,9 @@
 
   async function markValidated(task: TaskContract) {
     try {
-      await patchTaskContract(task.id, { status: 'validated', actor: 'operator' });
+      const updated = await patchTaskContract(task.id, { status: 'validated', actor: 'operator' });
+      upsertTask(updated);
       pushToast('task marked validated', 'ok');
-      await loadTasks();
     } catch (err: any) {
       pushToast(err.message || 'failed to update task', 'err');
     }
@@ -102,9 +187,9 @@
 
   async function reopenDraft(task: TaskContract) {
     try {
-      await patchTaskContract(task.id, { status: 'draft', actor: 'operator' });
+      const updated = await patchTaskContract(task.id, { status: 'draft', actor: 'operator' });
+      upsertTask(updated);
       pushToast('task moved back to draft', 'ok');
-      await loadTasks();
     } catch (err: any) {
       pushToast(err.message || 'failed to update task', 'err');
     }
@@ -112,9 +197,9 @@
 
   async function approve(task: TaskContract) {
     try {
-      await approveTaskContract(task.id, 'operator');
+      const updated = await approveTaskContract(task.id, 'operator');
+      upsertTask(updated);
       pushToast('task approved', 'ok');
-      await loadTasks();
     } catch (err: any) {
       pushToast(err.message || 'failed to approve task', 'err');
     }
@@ -130,8 +215,9 @@
         pushToast('loop created but loop_id missing in response', 'err');
         return;
       }
+      markTaskRuntimeRunning(task.id);
       pushToast(result.created ? `loop ${loopID} created` : `reusing existing loop ${loopID}`, 'ok');
-      await loadTasks();
+      void loadTasks({ silent: true });
       await goto(`/pod-view/${encodeURIComponent(loopID)}`);
     } catch (err: any) {
       pushToast(err.message || 'failed to start loop from task', 'err');
@@ -156,6 +242,31 @@
     editProviderProfileID = '';
   }
 
+  function isExpanded(taskID: string): boolean {
+    return expandedTaskIDs.includes(taskID);
+  }
+
+  function toggleExpanded(taskID: string) {
+    if (isExpanded(taskID)) {
+      expandedTaskIDs = expandedTaskIDs.filter((id) => id !== taskID);
+      return;
+    }
+    expandedTaskIDs = [...expandedTaskIDs, taskID];
+  }
+
+  function readTaskMetadata(task: TaskContract, keys: string[]): string {
+    if (!task.metadata) {
+      return '';
+    }
+    for (const key of keys) {
+      const value = task.metadata[key];
+      if (typeof value === 'string' && value.trim() !== '') {
+        return value.trim();
+      }
+    }
+    return '';
+  }
+
   async function saveEdit(taskID: string) {
     const validation = parseMultiline(editValidation);
     if (!editObjective.trim()) {
@@ -168,22 +279,23 @@
     }
     actionTaskID = taskID;
     try {
-      await patchTaskContract(taskID, {
+      const updated = await patchTaskContract(taskID, {
         objective: editObjective.trim(),
         validation,
         source_document: editSourceDocument.trim(),
         provider_profile_id: editProviderProfileID.trim(),
         actor: 'operator'
       });
+      upsertTask(updated);
       pushToast('task updated', 'ok');
       cancelEdit();
-      await loadTasks();
     } catch (err: any) {
       pushToast(err.message || 'failed to update task', 'err');
     } finally {
       actionTaskID = '';
     }
   }
+
 </script>
 
 <TopBar title="Tasks" />
@@ -221,71 +333,113 @@
   <div class="panel">
     <div class="panel-head">
       <h2>Task Contracts</h2>
-      <button class="ghost" onclick={loadTasks} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+      <button class="ghost" onclick={() => loadTasks()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
     </div>
     {#if error}
       <p class="error">{error}</p>
     {/if}
-    {#if tasks.length === 0}
-      <p class="muted">No task contracts yet.</p>
-    {:else}
-      <div class="task-list">
-        {#each tasks as task}
-          <article class="task-item">
-            <div class="task-main">
-              <div class="task-id">{task.id}</div>
-              <div class="task-objective">{task.objective}</div>
-              <div class="task-meta">{task.project_id} · {task.provider_profile_id}</div>
-              {#if editingTaskID === task.id}
-                <div class="edit-grid">
-                  <label>
-                    <span>Objective</span>
-                    <textarea rows="2" bind:value={editObjective}></textarea>
-                  </label>
-                  <label>
-                    <span>Provider Profile</span>
-                    <input bind:value={editProviderProfileID} />
-                  </label>
-                  <label>
-                    <span>Source Document</span>
-                    <input bind:value={editSourceDocument} />
-                  </label>
-                  <label>
-                    <span>Validation</span>
-                    <textarea rows="3" bind:value={editValidation}></textarea>
-                  </label>
-                </div>
-              {/if}
-            </div>
-            <div class="task-actions">
-              <span class="status">{task.status}</span>
-              {#if task.status === 'draft'}
-                <button class="ghost" onclick={() => markValidated(task)}>Validate</button>
-              {/if}
-              {#if task.status === 'validated'}
-                <button class="ghost" onclick={() => reopenDraft(task)}>Reopen Draft</button>
-                <button class="primary" onclick={() => approve(task)}>Approve</button>
-              {/if}
-              {#if task.status === 'approved'}
-                <button class="primary" onclick={() => startLoop(task)} disabled={actionTaskID === task.id}>
-                  {actionTaskID === task.id ? 'Starting…' : 'Start Loop'}
-                </button>
-              {/if}
-              {#if task.status === 'draft' || task.status === 'validated'}
-                {#if editingTaskID === task.id}
-                  <button class="ghost" onclick={cancelEdit}>Cancel Edit</button>
-                  <button class="primary" onclick={() => saveEdit(task.id)} disabled={actionTaskID === task.id}>
-                    {actionTaskID === task.id ? 'Saving…' : 'Save Edit'}
-                  </button>
-                {:else}
-                  <button class="ghost" onclick={() => startEdit(task)}>Edit</button>
-                {/if}
-              {/if}
-            </div>
-          </article>
-        {/each}
-      </div>
-    {/if}
+    <div class="kanban-board">
+      {#each laneDefinitions as lane}
+        <section class="kanban-lane">
+          <div class="lane-head">
+            <h3>{lane.label}</h3>
+            <span class="lane-count">{tasksByLane[lane.id].length}</span>
+          </div>
+          <div class="lane-body">
+            {#if tasksByLane[lane.id].length === 0}
+              <p class="muted">No tasks</p>
+            {:else}
+              <div class="task-list">
+                {#each tasksByLane[lane.id] as task}
+                  <article class="task-item">
+                    <div class="task-main">
+                      <div class="task-id">{task.id}</div>
+                      <div class="task-objective">{task.objective}</div>
+                      <div class="task-meta">{task.project_id} · {task.provider_profile_id}</div>
+                      {#if lane.id === 'scheduled'}
+                        <div class="task-planning">
+                          {#if readTaskMetadata(task, ['priority'])}
+                            <span>Priority: {readTaskMetadata(task, ['priority'])}</span>
+                          {/if}
+                          {#if readTaskMetadata(task, ['planned_launch_date', 'planned_launch_at', 'planned_launch'])}
+                            <span>
+                              Planned Launch:
+                              {readTaskMetadata(task, ['planned_launch_date', 'planned_launch_at', 'planned_launch'])}
+                            </span>
+                          {/if}
+                        </div>
+                      {/if}
+                      {#if isExpanded(task.id)}
+                        <div class="task-details">
+                          <div><strong>Status:</strong> {task.status}</div>
+                          {#if task.runtime_state}
+                            <div><strong>Runtime State:</strong> {task.runtime_state}</div>
+                          {/if}
+                          {#if task.source_document}
+                            <div><strong>Source:</strong> {task.source_document}</div>
+                          {/if}
+                          {#if (task.validation || []).length > 0}
+                            <div><strong>Validation:</strong> {(task.validation || []).join(' · ')}</div>
+                          {/if}
+                        </div>
+                      {/if}
+                      {#if editingTaskID === task.id}
+                        <div class="edit-grid">
+                          <label>
+                            <span>Objective</span>
+                            <textarea rows="2" bind:value={editObjective}></textarea>
+                          </label>
+                          <label>
+                            <span>Provider Profile</span>
+                            <input bind:value={editProviderProfileID} />
+                          </label>
+                          <label>
+                            <span>Source Document</span>
+                            <input bind:value={editSourceDocument} />
+                          </label>
+                          <label>
+                            <span>Validation</span>
+                            <textarea rows="3" bind:value={editValidation}></textarea>
+                          </label>
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="task-actions">
+                      <span class="status">{task.status}</span>
+                      <button class="ghost" onclick={() => toggleExpanded(task.id)}>
+                        {isExpanded(task.id) ? 'Hide Details' : 'View Details'}
+                      </button>
+                      {#if task.status === 'draft'}
+                        <button class="ghost" onclick={() => markValidated(task)}>Validate</button>
+                      {/if}
+                      {#if task.status === 'validated'}
+                        <button class="ghost" onclick={() => reopenDraft(task)}>Reopen Draft</button>
+                        <button class="primary" onclick={() => approve(task)}>Approve</button>
+                      {/if}
+                      {#if task.status === 'approved'}
+                        <button class="primary" onclick={() => startLoop(task)} disabled={actionTaskID === task.id}>
+                          {actionTaskID === task.id ? 'Starting…' : 'Start Loop'}
+                        </button>
+                      {/if}
+                      {#if task.status === 'draft' || task.status === 'validated'}
+                        {#if editingTaskID === task.id}
+                          <button class="ghost" onclick={cancelEdit}>Cancel Edit</button>
+                          <button class="primary" onclick={() => saveEdit(task.id)} disabled={actionTaskID === task.id}>
+                            {actionTaskID === task.id ? 'Saving…' : 'Save Edit'}
+                          </button>
+                        {:else}
+                          <button class="ghost" onclick={() => startEdit(task)}>Edit</button>
+                        {/if}
+                      {/if}
+                    </div>
+                  </article>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </section>
+      {/each}
+    </div>
   </div>
 </section>
 
@@ -355,6 +509,57 @@
     gap: 0.65rem;
   }
 
+  .kanban-board {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(280px, 1fr));
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .kanban-lane {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    background: rgba(17, 24, 39, 0.25);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 12rem;
+  }
+
+  .lane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .lane-head h3 {
+    margin: 0;
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #d1d5db;
+  }
+
+  .lane-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    background: rgba(134, 188, 37, 0.16);
+    color: #d9f99d;
+  }
+
+  .lane-body {
+    padding: 0.65rem;
+  }
+
   .task-item {
     display: flex;
     justify-content: space-between;
@@ -380,6 +585,31 @@
     color: #9ca3af;
     font-size: 0.75rem;
     margin-top: 0.25rem;
+  }
+
+  .task-planning {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.35rem;
+  }
+
+  .task-planning span {
+    color: #d9f99d;
+    background: rgba(134, 188, 37, 0.12);
+    border: 1px solid rgba(134, 188, 37, 0.25);
+    border-radius: 999px;
+    padding: 0.15rem 0.45rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
+  }
+
+  .task-details {
+    margin-top: 0.45rem;
+    display: grid;
+    gap: 0.25rem;
+    color: #d1d5db;
+    font-size: 0.76rem;
   }
 
   .edit-grid {
@@ -474,6 +704,10 @@
 
     .edit-grid {
       grid-template-columns: 1fr;
+    }
+
+    .kanban-board {
+      grid-template-columns: repeat(7, minmax(240px, 1fr));
     }
   }
 </style>

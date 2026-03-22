@@ -88,7 +88,8 @@ export interface TaskContract {
   constraints?: string[];
   acceptance_criteria?: string[];
   validation?: string[];
-  status: 'draft' | 'validated' | 'approved' | 'running' | 'completed' | 'blocked';
+  status: 'draft' | 'validated' | 'approved' | 'queued' | 'running' | 'completed' | 'blocked';
+  runtime_state?: string;
   metadata?: Record<string, string>;
   created_at?: string;
   updated_at?: string;

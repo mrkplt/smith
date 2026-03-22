@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "project": "Feature Flag Smith Feature Tasks Kanban Enabled Prd",
+  "overview": "As an operator, I want non-running queued tasks grouped in Scheduled so I can see what is ready to refine or launch.",
+  "goals": [
+    "Group non-running queued tasks into a Scheduled lane in the feature tasks Kanban view.",
+    "Keep running and completed tasks out of the Scheduled lane.",
+    "Make the Scheduled lane useful for refinement and launch planning workflows.",
+    "Ensure lane assignment behavior is deterministic and testable."
+  ],
+  "nonGoals": [
+    "Changing task execution order or scheduler behavior.",
+    "Introducing new task statuses beyond current queued/running/completed states.",
+    "Redesigning the full Kanban layout outside the Scheduled lane addition."
+  ],
+  "successMetrics": [
+    "100% of non-running queued tasks appear in Scheduled after board refresh.",
+    "0 running tasks appear in Scheduled in acceptance test scenarios.",
+    "Operators can identify refinement-ready tasks in under 10 seconds during usability checks.",
+    "Lane assignment tests pass consistently in CI."
+  ],
+  "openQuestions": [
+    "Should blocked queued tasks appear in Scheduled or a separate lane?",
+    "Should Scheduled tasks be sorted by created time, priority, or planned launch date?",
+    "Do filters and search apply before or after Scheduled lane grouping?"
+  ],
+  "stack": {
+    "backend": "Existing task API and status model",
+    "frontend": "Existing feature tasks Kanban UI",
+    "state": "Existing board/task state management"
+  },
+  "routes": [],
+  "uiNotes": [
+    "Add a Scheduled lane label that is visually consistent with existing lanes.",
+    "Show task count in the Scheduled lane header.",
+    "Keep drag-and-drop behavior aligned with current Kanban interactions.",
+    "Ensure Scheduled lane is visible and usable on standard operator viewport sizes."
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Add Scheduled lane to Kanban board",
+      "status": "done",
+      "description": "Introduce a Scheduled lane in the feature tasks Kanban view to display non-running queued tasks.",
+      "acceptanceCriteria": [
+        "Kanban renders a lane named `Scheduled`.",
+        "Lane appears on initial board load without feature flags beyond the requested one.",
+        "Scheduled lane header displays the current number of tasks in that lane."
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Map non-running queued tasks into Scheduled",
+      "status": "done",
+      "description": "Apply lane-assignment rules so queued tasks that are not running are placed in Scheduled.",
+      "acceptanceCriteria": [
+        "A task with queued status and non-running state appears in `Scheduled`.",
+        "A running task never appears in `Scheduled`.",
+        "A completed task never appears in `Scheduled`."
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Keep Scheduled lane updated on task state changes",
+      "status": "done",
+      "description": "Ensure tasks move in or out of Scheduled immediately when their state changes between queued/non-running and other states.",
+      "acceptanceCriteria": [
+        "When a Scheduled task transitions to running, it leaves `Scheduled` without page reload.",
+        "When a running task transitions back to queued non-running, it enters `Scheduled`.",
+        "Board refresh preserves correct lane placement for all transitioned tasks."
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Support operator refinement workflow in Scheduled",
+      "status": "done",
+      "description": "Allow operators to inspect and prioritize Scheduled tasks for refinement or launch readiness.",
+      "acceptanceCriteria": [
+        "Operator can open task details from `Scheduled` using existing interaction patterns.",
+        "Priority or planning metadata already available on tasks is visible from Scheduled cards.",
+        "Operator can distinguish refinement-ready tasks from other lanes using lane context alone."
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Add automated tests for Scheduled lane rules",
+      "status": "done",
+      "description": "Create unit or integration tests covering the lane-assignment logic and regression cases for Scheduled.",
+      "acceptanceCriteria": [
+        "Tests cover queued non-running, queued running, and completed task cases.",
+        "Tests validate real-time transition behavior for entering and leaving `Scheduled`.",
+        "CI fails when Scheduled mapping rules regress."
+      ]
+    }
+  ]
+}
