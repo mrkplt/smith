@@ -25,6 +25,7 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_CHAT_BASE_URL` | `console.chatBaseUrl` | `/chat` | Base path for chat service calls. |
 | `SMITH_OPERATOR_PERMISSIONS` | `console.operatorPermissions` | `""` | Comma-separated permission set used by runtime capability checks. |
 | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` | Shows/hides Tasks route + nav and enables route access. |
+| `SMITH_FEATURE_TASKS_KANBAN_ENABLED` | `console.featureFlags.tasksKanban` | `false` | Controls Tasks Kanban visibility and defaults to disabled when unset or invalid. |
 | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` | Shows/hides Feature Capability route + nav and enables route access. |
 | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` | Shows/hides operator chat surfaces (TopBar chat button, assistant route, and settings chat section). |
 | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` | Shows/hides Integrations section in Settings. |

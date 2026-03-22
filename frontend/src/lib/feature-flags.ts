@@ -52,6 +52,11 @@ export function isTasksKanbanEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featureTasksKanbanEnabled, false);
 }
 
+/** Returns whether Tasks Kanban navigation/route should be visible. */
+export function isTasksKanbanVisible(config = getRuntimeConfig()): boolean {
+  return isTasksEnabled(config) && isTasksKanbanEnabled(config);
+}
+
 /** Returns whether the Feature Capability runtime surface is enabled. */
 export function isFeatureCapabilityEnabled(config = getRuntimeConfig()): boolean {
   return parseFlag(config.featureCapabilityEnabled, false);

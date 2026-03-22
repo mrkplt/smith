@@ -189,6 +189,7 @@ console:
   showComingSoonProviders: false
   featureFlags:
     tasks: false
+    tasksKanban: false
     featureCapability: false
     chat: false
     integrations: false

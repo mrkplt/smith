@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { sidebarOpen } from '$lib/stores';
 	import { hasFeatureCapabilityAccess } from '$lib/feature-capability/access';
-	import { isFeatureCapabilityEnabled, isTasksEnabled } from '$lib/feature-flags';
+	import { isFeatureCapabilityEnabled, isTasksEnabled, isTasksKanbanVisible } from '$lib/feature-flags';
 	import { page } from '$app/state';
 	import { Drawer } from 'flowbite-svelte';
 	import { CloseOutline } from 'flowbite-svelte-icons';
@@ -10,6 +10,7 @@
 
 	const canAccessFeatureCapability = $derived(hasFeatureCapabilityAccess());
 	const tasksEnabled = $derived(isTasksEnabled());
+	const tasksKanbanVisible = $derived(isTasksKanbanVisible());
 	const featureCapabilityEnabled = $derived(isFeatureCapabilityEnabled());
 	const currentPath = $derived(page.url.pathname);
 	const shellNavItems = $derived([...shellRuntimeNav, ...shellConfigurationNav]);
@@ -39,6 +40,9 @@
 
 	function isItemVisible(itemID: string): boolean {
 		if (itemID === 'tasks' && !tasksEnabled) {
+			return false;
+		}
+		if (itemID === 'tasks-kanban' && !tasksKanbanVisible) {
 			return false;
 		}
 		if (itemID === 'feature-capability' && (!featureCapabilityEnabled || !canAccessFeatureCapability)) {
