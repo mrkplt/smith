@@ -64,6 +64,44 @@ func TestNewTaskWorkflowClientDisabledWhenBinaryMissing(t *testing.T) {
 	}
 }
 
+func TestNewTaskWorkflowClientDisabledWithoutTaskID(t *testing.T) {
+	t.Setenv("SMITH_TASK_ENABLED", "true")
+	t.Setenv("SMITH_TASK_COMMAND", "task")
+	original := lookPath
+	lookPathCalled := false
+	lookPath = func(_ string) (string, error) {
+		lookPathCalled = true
+		return "/usr/local/bin/task", nil
+	}
+	t.Cleanup(func() { lookPath = original })
+
+	client := newTaskWorkflowClient(model.Anomaly{}, "/workspace", commandRunner{})
+	if client.enabled {
+		t.Fatalf("expected task client disabled when task id is missing")
+	}
+	if lookPathCalled {
+		t.Fatalf("did not expect command lookup without task id")
+	}
+}
+
+func TestNewTaskWorkflowClientUsesTaskDefaultCommand(t *testing.T) {
+	t.Setenv("SMITH_TASK_ENABLED", "true")
+	t.Setenv("SMITH_TASK_COMMAND", "")
+	original := lookPath
+	lookPath = func(cmd string) (string, error) {
+		if cmd != "task" {
+			t.Fatalf("expected default command task, got %q", cmd)
+		}
+		return "/usr/local/bin/task", nil
+	}
+	t.Cleanup(func() { lookPath = original })
+
+	client := newTaskWorkflowClient(model.Anomaly{Metadata: map[string]string{"task_contract_id": "task-123"}}, "/workspace", commandRunner{})
+	if client.command != "task" {
+		t.Fatalf("expected default task command, got %q", client.command)
+	}
+}
+
 func TestTaskWorkflowClientCommands(t *testing.T) {
 	t.Setenv("SMITH_TASK_ENABLED", "true")
 	t.Setenv("SMITH_TASK_COMMAND", "task")
@@ -109,5 +147,31 @@ func TestTaskWorkflowClientCommandFailure(t *testing.T) {
 	client := newTaskWorkflowClient(model.Anomaly{Metadata: map[string]string{"task_contract_id": "task-123"}}, "/workspace", runner)
 	if err := client.Start(context.Background()); err == nil {
 		t.Fatal("expected start error")
+	}
+}
+
+func TestTaskWorkflowClientNoopWhenDisabled(t *testing.T) {
+	t.Setenv("SMITH_TASK_ENABLED", "false")
+	t.Setenv("SMITH_TASK_COMMAND", "task")
+	original := lookPath
+	lookPath = func(_ string) (string, error) { return "/usr/local/bin/task", nil }
+	t.Cleanup(func() { lookPath = original })
+
+	runner := &smithTDRunner{}
+	client := newTaskWorkflowClient(model.Anomaly{Metadata: map[string]string{"task_contract_id": "task-123"}}, "/workspace", runner)
+	if client.enabled {
+		t.Fatalf("expected client disabled by SMITH_TASK_ENABLED=false")
+	}
+	if err := client.Start(context.Background()); err != nil {
+		t.Fatalf("expected no-op start, got %v", err)
+	}
+	if err := client.Log(context.Background(), "ignored"); err != nil {
+		t.Fatalf("expected no-op log, got %v", err)
+	}
+	if err := client.Handoff(context.Background(), []string{"done"}, []string{"next"}); err != nil {
+		t.Fatalf("expected no-op handoff, got %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("expected no task commands for disabled client, got %+v", runner.calls)
 	}
 }

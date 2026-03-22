@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	CodexDefaultSkillMountRoot = "/smith/skills"
+	CodexDefaultSkillMountRoot  = "/workspace/.agents/skills"
+	ClaudeDefaultSkillMountRoot = "/workspace/.claude/skills"
 )
 
 var skillNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
@@ -51,7 +52,8 @@ func NormalizeLoopSkillsWithPolicy(skills []LoopSkillMount, providerID string, p
 	if provider == "" {
 		provider = DefaultProviderID
 	}
-	if provider != DefaultProviderID {
+	defaultMountRoot, supported := defaultSkillMountRoot(provider)
+	if !supported {
 		return nil, SkillNormalizationAudit{}, fmt.Errorf("loop.skills unsupported for provider %q", provider)
 	}
 	if len(skills) == 0 {
@@ -91,7 +93,7 @@ func NormalizeLoopSkillsWithPolicy(skills []LoopSkillMount, providerID string, p
 
 		mountPath := strings.TrimSpace(skill.MountPath)
 		if mountPath == "" {
-			mountPath = path.Join(CodexDefaultSkillMountRoot, canonicalName)
+			mountPath = path.Join(defaultMountRoot, canonicalName)
 		}
 		if err := validateSkillMountPath(mountPath, i); err != nil {
 			return nil, SkillNormalizationAudit{}, err
@@ -126,6 +128,17 @@ func NormalizeLoopSkillsWithPolicy(skills []LoopSkillMount, providerID string, p
 		return strings.ToLower(normalized[i].Name) < strings.ToLower(normalized[j].Name)
 	})
 	return normalized, audit, nil
+}
+
+func defaultSkillMountRoot(providerID string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(providerID)) {
+	case "codex":
+		return CodexDefaultSkillMountRoot, true
+	case "claude":
+		return ClaudeDefaultSkillMountRoot, true
+	default:
+		return "", false
+	}
 }
 
 func validateSkillMountPath(mountPath string, index int) error {

@@ -73,7 +73,23 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 		)
 		loopID := mustGetTopLevelLoopID(t, out)
 		skills := getLoopSkills(t, server.URL, loopID)
-		if got := asMap(t, skills[0], "skills[0]")["mount_path"]; got != "/smith/skills/commit" {
+		if got := asMap(t, skills[0], "skills[0]")["mount_path"]; got != "/workspace/.agents/skills/commit" {
+			t.Fatalf("expected default mount_path, got %#v", got)
+		}
+	})
+
+	t.Run("default claude mount path", func(t *testing.T) {
+		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+			"--title", "Skill claude default",
+			"--description", "Skill test",
+			"--source-type", "interactive",
+			"--source-ref", "terminal/skill-claude-default",
+			"--provider-id", "claude",
+			"--skill", "name=review,source=local://skills/review",
+		)
+		loopID := mustGetTopLevelLoopID(t, out)
+		skills := getLoopSkills(t, server.URL, loopID)
+		if got := asMap(t, skills[0], "skills[0]")["mount_path"]; got != "/workspace/.claude/skills/review" {
 			t.Fatalf("expected default mount_path, got %#v", got)
 		}
 	})
@@ -130,6 +146,15 @@ func (h *skillHarness) handleLoopCreate(t *testing.T, w http.ResponseWriter, r *
 		return
 	}
 	rawSkills, _ := req["skills"].([]any)
+	providerID, _ := req["provider_id"].(string)
+	providerID = strings.ToLower(strings.TrimSpace(providerID))
+	if providerID == "" {
+		providerID = "codex"
+	}
+	defaultMountRoot := "/workspace/.agents/skills"
+	if providerID == "claude" {
+		defaultMountRoot = "/workspace/.claude/skills"
+	}
 	skills := make([]map[string]any, 0, len(rawSkills))
 	resolvedNames := make([]string, 0, len(rawSkills))
 	for i, raw := range rawSkills {
@@ -145,7 +170,7 @@ func (h *skillHarness) handleLoopCreate(t *testing.T, w http.ResponseWriter, r *
 			return
 		}
 		if _, ok := skill["mount_path"]; !ok {
-			skill["mount_path"] = "/smith/skills/" + strings.ToLower(strings.TrimSpace(name))
+			skill["mount_path"] = defaultMountRoot + "/" + strings.ToLower(strings.TrimSpace(name))
 		}
 		skills = append(skills, skill)
 		resolvedNames = append(resolvedNames, strings.TrimSpace(name))

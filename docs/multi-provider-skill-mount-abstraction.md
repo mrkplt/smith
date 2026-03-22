@@ -7,8 +7,8 @@ Define a provider-agnostic contract for loop skill mounts so Smith can support p
 ## Current Baseline (MVP)
 
 - Canonical loop input: `loop.skills[]`.
-- Supported provider: Codex.
-- Default mount path when omitted: `/smith/skills/<name>`.
+- Supported providers: Codex and Claude.
+- Default mount path when omitted: provider-specific.
 
 This proposal preserves those defaults and adds a translation layer.
 
@@ -54,7 +54,10 @@ New core abstraction:
 
 - Codex:
   - `runtime_kind=volume`
-  - default mount `/smith/skills/<name>` if `mount_path` omitted
+  - default mount `/workspace/.agents/skills/<name>` if `mount_path` omitted
+- Claude:
+  - `runtime_kind=volume`
+  - default mount `/workspace/.claude/skills/<name>` if `mount_path` omitted
 - Provider-X (future, no volume support):
   - `runtime_kind=workspace_copy`
   - mounts become staged files under provider workspace root

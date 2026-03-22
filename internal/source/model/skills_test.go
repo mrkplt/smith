@@ -16,7 +16,26 @@ func TestNormalizeLoopSkillsAppliesCodexDefaults(t *testing.T) {
 	if len(skills) != 1 {
 		t.Fatalf("expected 1 skill, got %d", len(skills))
 	}
-	if skills[0].MountPath != "/smith/skills/commit" {
+	if skills[0].MountPath != "/workspace/.agents/skills/commit" {
+		t.Fatalf("unexpected mount path: %q", skills[0].MountPath)
+	}
+	if skills[0].ReadOnly == nil || !*skills[0].ReadOnly {
+		t.Fatalf("expected read_only=true by default")
+	}
+}
+
+func TestNormalizeLoopSkillsAppliesClaudeDefaults(t *testing.T) {
+	skills, err := NormalizeLoopSkills([]LoopSkillMount{{
+		Name:   "review",
+		Source: "local://skills/review",
+	}}, "claude")
+	if err != nil {
+		t.Fatalf("NormalizeLoopSkills error: %v", err)
+	}
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+	if skills[0].MountPath != "/workspace/.claude/skills/review" {
 		t.Fatalf("unexpected mount path: %q", skills[0].MountPath)
 	}
 	if skills[0].ReadOnly == nil || !*skills[0].ReadOnly {
@@ -52,7 +71,7 @@ func TestNormalizeLoopSkillsRejectsInvalidDefinitions(t *testing.T) {
 }
 
 func TestNormalizeLoopSkillsRejectsUnsupportedProvider(t *testing.T) {
-	_, err := NormalizeLoopSkills([]LoopSkillMount{{Name: "commit", Source: "local://x"}}, "other")
+	_, err := NormalizeLoopSkills([]LoopSkillMount{{Name: "commit", Source: "local://x"}}, "gemini")
 	if err == nil {
 		t.Fatal("expected error for unsupported provider")
 	}
