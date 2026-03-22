@@ -12,6 +12,7 @@ describe('task lane mapping', () => {
       draft: 'backlog',
       validated: 'backlog',
       approved: 'backlog',
+      queued: 'backlog',
       running: 'in_focus',
       completed: 'done',
       blocked: 'blocked'
@@ -23,7 +24,7 @@ describe('task lane mapping', () => {
   });
 
   it('never maps non-active statuses into in_focus', () => {
-    const nonActiveStatuses: TaskStatus[] = ['draft', 'validated', 'approved', 'completed', 'blocked'];
+    const nonActiveStatuses: TaskStatus[] = ['draft', 'validated', 'approved', 'queued', 'completed', 'blocked'];
     for (const status of nonActiveStatuses) {
       expect(resolveTaskLane(status)).not.toBe('in_focus');
     }

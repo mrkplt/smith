@@ -11,6 +11,7 @@ const STATUS_TO_LANE: Record<TaskStatus, TaskLane> = {
   draft: 'backlog',
   validated: 'backlog',
   approved: 'backlog',
+  queued: 'backlog',
   running: 'in_focus',
   completed: 'done',
   blocked: 'blocked'
