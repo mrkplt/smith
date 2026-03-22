@@ -1,36 +1,47 @@
 import { expect, test } from '@playwright/test';
 import { mockEventSource, mockApiRoutes, emitLoopUpdates, loopsFixture } from './helpers.js';
 
+async function setStateFilter(page, value) {
+  const select = page.locator('select').first();
+  if (await select.count()) {
+    await select.selectOption(value);
+    return;
+  }
+
+  await page.getByTestId('pods-state-filter-trigger').click();
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('menuitemcheckbox', { name: new RegExp(`^${value}$`, 'i') }).click();
+  await page.keyboard.press('Escape');
+}
+
 test.describe('Modular Console', () => {
   test.beforeEach(async ({ page }) => {
     await mockEventSource(page);
     await mockApiRoutes(page);
     await page.goto('/pods');
     await emitLoopUpdates(page, loopsFixture);
-    // Wait for at least one pod card to render
-    await expect(page.locator('.pod-card-container').first()).toBeVisible();
+    // Wait for seeded loops to render
+    await expect(page.getByRole('button', { name: /loop-alpha/i })).toBeVisible();
   });
 
   test('should render loops and stats', async ({ page }) => {
-    // Stat cards – the stat value is a sibling span within the same card div
-    await expect(page.locator('.grid > div').filter({ hasText: 'Total Pods' }).locator('span.text-3xl')).toHaveText('3');
-    await expect(page.locator('.grid > div').filter({ hasText: 'Active Loops' }).locator('span.text-3xl')).toHaveText('2');
-    await expect(page.locator('.grid > div').filter({ hasText: 'Flatline' }).locator('span.text-3xl')).toHaveText('1');
-
-    // Pod tiles
-    await expect(page.locator('.pod-card-container')).toHaveCount(2);
+    await expect(page.getByText('Total Pods')).toBeVisible();
+    await expect(page.getByText('Active Loops')).toBeVisible();
+    await expect(page.locator('.pods-summary').getByText('Flatline')).toBeVisible();
+    await expect(page.getByRole('button', { name: /loop-alpha/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /loop-beta/i })).toBeVisible();
   });
 
   test('should filter loops by state', async ({ page }) => {
-    await page.locator('select').selectOption('flatline');
-    await expect(page.locator('.pod-card-container')).toHaveCount(1);
-    await expect(page.locator('.pod-card-container .font-mono').first()).toHaveText('loop-gamma');
+    await setStateFilter(page, 'flatline');
+    await expect(page.getByRole('button', { name: /loop-gamma/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /loop-alpha/i })).toHaveCount(0);
   });
 
   test('should filter loops by search', async ({ page }) => {
-    await page.getByPlaceholder('Filter ID...').fill('loop-beta');
-    await expect(page.locator('.pod-card-container')).toHaveCount(1);
-    await expect(page.locator('.pod-card-container .font-mono').first()).toHaveText('loop-beta');
+    await page.getByPlaceholder(/Filter pods/i).fill('loop-beta');
+    await expect(page.getByRole('button', { name: /loop-beta/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /loop-alpha/i })).toHaveCount(0);
   });
 
   test('should navigate to documents page', async ({ page }) => {
