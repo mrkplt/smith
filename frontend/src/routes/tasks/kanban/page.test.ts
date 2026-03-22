@@ -148,7 +148,7 @@ describe('Tasks Kanban route', () => {
     const detail = within(detailPanel);
 
     expect(detail.getByText('Ship kanban detail panel')).toBeTruthy();
-    expect(detail.getByText('doc-123')).toBeTruthy();
+    expect(detail.getByText(/doc-123/)).toBeTruthy();
     expect(detail.getByText('loop-99')).toBeTruthy();
     expect(detail.getByText('story-a, story-b')).toBeTruthy();
     expect(detail.getByText('Card click opens panel')).toBeTruthy();
@@ -208,5 +208,56 @@ describe('Tasks Kanban route', () => {
       expect(screen.queryAllByTestId('task-card-blocked')).toHaveLength(0);
       expect(screen.getByTestId('lane-empty-blocked')).toBeTruthy();
     });
+  });
+
+  it('links known documents from task detail', async () => {
+    (window as any).__SMITH_CONFIG__ = {
+      featureTasksKanbanEnabled: true
+    };
+
+    vi.mocked(api.fetchJSON).mockImplementation(async (path: string) => {
+      if (path === '/v1/tasks') {
+        return [
+          {
+            kind: 'task',
+            id: 'task-running-4',
+            project_id: 'smith',
+            provider_profile_id: 'codex-default',
+            objective: 'Link back to source document',
+            status: 'running',
+            source_document: 'doc-123'
+          }
+        ];
+      }
+      if (path === '/v1/documents') {
+        return [
+          {
+            id: 'doc-123',
+            source_ref: 'doc:doc-123',
+            title: 'Known doc'
+          }
+        ];
+      }
+      return [];
+    });
+
+    const { container } = render(TasksKanbanPage);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('task-card-in_focus')).toBeTruthy();
+    });
+
+    const card = container.querySelector('[data-testid="task-card-in_focus"]') as HTMLButtonElement;
+    card.click();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy();
+    });
+
+    const detailPanel = screen.getByTestId('task-detail-panel');
+    const detail = within(detailPanel);
+    const docLink = detail.getByRole('link', { name: 'doc-123' }) as HTMLAnchorElement;
+
+    expect(docLink.getAttribute('href')).toBe('/documents?doc=doc-123');
   });
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { appState } from '$lib/stores';
 	import type { Snippet } from 'svelte';
 	import { appendJournalEntry, openJournalStream, renderJournalText } from '$lib/journal/stream';
@@ -25,6 +25,11 @@
 	function renderJournal() {
 		if (!terminalEl) return;
 		terminalEl.textContent = renderJournalText($appState.journalEntries);
+		terminalEl.scrollTop = terminalEl.scrollHeight;
+	}
+
+	function scrollJournalToBottom() {
+		if (!terminalEl) return;
 		terminalEl.scrollTop = terminalEl.scrollHeight;
 	}
 
@@ -56,6 +61,10 @@
 	onDestroy(() => {
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 		if (source) source.close();
+	});
+
+	onMount(() => {
+		setTimeout(scrollJournalToBottom, 0);
 	});
 </script>
 

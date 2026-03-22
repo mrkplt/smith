@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Input, Select } from 'flowbite-svelte';
-  import { ArchiveOutline, CloseOutline, CloudArrowUpOutline, EditOutline, FileLinesOutline, RocketOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+  import { CloseOutline, CloudArrowUpOutline, EditOutline, FileLinesOutline } from 'flowbite-svelte-icons';
 
   interface Props {
     isEditing: boolean;
@@ -14,11 +14,6 @@
     onStartEdit: () => void;
     onSaveDocument: () => void;
     onCancelEdit: () => void;
-    onBuildDoc: () => void;
-    tasksEnabled: boolean;
-    onCreateTask: () => void;
-    onArchiveDoc: () => void;
-    onDeleteDoc: () => void;
   }
 
   let {
@@ -32,16 +27,11 @@
     onEditFormat,
     onStartEdit,
     onSaveDocument,
-    onCancelEdit,
-    onBuildDoc,
-    tasksEnabled,
-    onCreateTask,
-    onArchiveDoc,
-    onDeleteDoc
+    onCancelEdit
   }: Props = $props();
 </script>
 
-<div class="editor-top-bar px-8 py-6">
+<div class="editor-top-bar px-6 py-4">
   {#if isEditing}
     <div class="flex items-center justify-between w-full gap-4">
       <div class="flex items-center gap-4 flex-1">
@@ -82,33 +72,18 @@
       </div>
     </div>
   {:else}
-    <div class="flex items-center justify-between w-full">
+    <div class="title-shell">
       <div class="flex flex-col">
         <h1 class="title-display uppercase">{editTitle}</h1>
         <div class="title-meta">{editProjectID} • {editFormat}</div>
       </div>
-      <div class="flex gap-2">
-        <Button color="alternative" class="smith-btn" onclick={onStartEdit} title="Edit">
-          <EditOutline size="xs" class="mr-1.5" />
-          EDIT
-        </Button>
-        <Button color="alternative" class="smith-btn smith-btn-primary" onclick={onBuildDoc} title="Build">
-          <RocketOutline size="xs" class="mr-1.5" />
-          BUILD
-        </Button>
-        {#if tasksEnabled}
-          <Button color="alternative" class="smith-btn smith-btn-accent" onclick={onCreateTask} title="Create Task Contract">
-            <FileLinesOutline size="xs" class="mr-1.5" />
-            TASK
-          </Button>
-        {/if}
-        <Button color="alternative" class="smith-btn smith-btn-icon" onclick={onArchiveDoc} title="Archive">
-          <ArchiveOutline size="xs" />
-        </Button>
-        <Button color="alternative" class="smith-btn smith-btn-icon smith-btn-danger" onclick={onDeleteDoc} title="Delete">
-          <TrashBinOutline size="xs" />
-        </Button>
-      </div>
+
+      <Button color="alternative" class="smith-btn smith-btn-icon" style="align-self:flex-start" onclick={onStartEdit} title="Edit document">
+        <span class="doc-edit-glyph">
+          <FileLinesOutline size="xs" />
+          <EditOutline size="xs" class="doc-edit-pencil" />
+        </span>
+      </Button>
     </div>
   {/if}
 </div>
@@ -116,18 +91,18 @@
 <style>
   .title-display {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 800;
     color: #0f172a;
     letter-spacing: -0.02em;
   }
 
   .title-meta {
-    margin-top: 0.3rem;
+    margin-top: 0.22rem;
     color: #64748b;
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 700;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
   }
 
@@ -135,6 +110,30 @@
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-2);
     box-shadow: var(--elevation-1), var(--inner-highlight);
+  }
+
+  .title-shell {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.6rem;
+  }
+
+  .doc-edit-glyph {
+    position: relative;
+    width: 0.9rem;
+    height: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :global(.doc-edit-pencil) {
+    position: absolute;
+    right: -0.28rem;
+    bottom: -0.22rem;
+    transform: scale(0.62);
   }
 
   :global(.doc-title-input),

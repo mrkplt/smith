@@ -37,10 +37,6 @@
     onRefreshValidation: () => void;
     onRefineWithAI: () => void;
     onResolveDiagnostic: (diagnostic: PRDValidationDiagnostic) => void;
-    onBuildDoc: () => void;
-    onCreateTask: () => void;
-    onArchiveDoc: () => void;
-    onDeleteDoc: () => void;
   }
 
   let {
@@ -68,11 +64,7 @@
     onCancelEdit,
     onRefreshValidation,
     onRefineWithAI,
-    onResolveDiagnostic,
-    onBuildDoc,
-    onCreateTask,
-    onArchiveDoc,
-    onDeleteDoc
+    onResolveDiagnostic
   }: Props = $props();
 
   function escapeHTML(content: string): string {
@@ -107,11 +99,6 @@
         {onStartEdit}
         {onSaveDocument}
         {onCancelEdit}
-        {onBuildDoc}
-        {tasksEnabled}
-        {onCreateTask}
-        {onArchiveDoc}
-        {onDeleteDoc}
       />
 
       <PRDValidationPanel

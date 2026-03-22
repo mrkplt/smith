@@ -859,6 +859,8 @@
     background: var(--surface-1);
     border-color: var(--border-subtle);
     box-shadow: var(--elevation-1), var(--inner-highlight);
+    border-radius: 10px;
+    overflow: hidden;
   }
 
   .settings-nav {

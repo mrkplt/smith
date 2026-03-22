@@ -144,6 +144,8 @@
 
   .pods-select-wrap {
     width: 14rem;
+    position: relative;
+    z-index: 92;
   }
 
   .pods-input-wrap {
@@ -180,7 +182,7 @@
   .overlay-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 40;
+    z-index: 90;
     background: transparent;
     border: 0;
     padding: 0;
@@ -193,7 +195,7 @@
     width: min(20rem, calc(100vw - 3rem));
     border: 1px solid rgba(148, 163, 184, 0.4);
     background: rgba(255, 255, 255, 0.98);
-    z-index: 50;
+    z-index: 91;
     padding: 0.5rem;
     display: grid;
     gap: 0.2rem;

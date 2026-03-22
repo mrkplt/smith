@@ -66,6 +66,9 @@
     background: var(--surface-2, rgba(2, 6, 23, 0.9));
     backdrop-filter: blur(8px);
     box-shadow: var(--elevation-1);
+    border-radius: 10px;
+    overflow: visible;
+    margin-inline: 1rem;
   }
 
   .topbar-row {

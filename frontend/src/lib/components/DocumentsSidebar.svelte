@@ -8,17 +8,37 @@
     selectedDocId: string | null;
     showAll: boolean;
     searchQuery: string;
+    tasksEnabled: boolean;
     onShowAllChange: (value: boolean) => void;
     onSearchQueryChange: (value: string) => void;
     onSelectDocument: (doc: any) => void;
+    onBuildDocument: (doc: any) => void;
+    onCreateTaskFromDocument: (doc: any) => void;
+    onArchiveDocument: (doc: any) => void;
+    onDeleteDocument: (doc: any) => void;
   }
 
-  let { projectIDs, projectsWithDocs, selectedDocId, showAll, searchQuery, onShowAllChange, onSearchQueryChange, onSelectDocument }: Props = $props();
+  let {
+    projectIDs,
+    projectsWithDocs,
+    selectedDocId,
+    showAll,
+    searchQuery,
+    tasksEnabled,
+    onShowAllChange,
+    onSearchQueryChange,
+    onSelectDocument,
+    onBuildDocument,
+    onCreateTaskFromDocument,
+    onArchiveDocument,
+    onDeleteDocument
+  }: Props = $props();
 
   let collapsedProjects = $state<Record<string, boolean>>({});
   let collapsedLineages = $state<Record<string, boolean>>({});
   let optionsOpen = $state(false);
   let optionsWrapEl: HTMLDivElement | null = null;
+  let activeDocMenuID = $state<string | null>(null);
 
   const projectTrees = $derived.by(() => {
     const out: Array<{ projectID: string; lineages: Array<{ key: string; root: any; children: any[] }> }> = [];
@@ -127,12 +147,46 @@
     if (!optionsWrapEl.contains(target)) {
       optionsOpen = false;
     }
+
+    if (activeDocMenuID) {
+      const host = target instanceof Element ? target.closest(`[data-doc-menu-host="${activeDocMenuID}"]`) : null;
+      if (!host) {
+        activeDocMenuID = null;
+      }
+    }
   }
 
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       optionsOpen = false;
+      activeDocMenuID = null;
     }
+  }
+
+  function selectDocumentFromSidebar(doc: any) {
+    activeDocMenuID = null;
+    onSelectDocument(doc);
+  }
+
+  function toggleDocMenu(docID: string) {
+    activeDocMenuID = activeDocMenuID === docID ? null : docID;
+  }
+
+  function runDocAction(action: 'build' | 'task' | 'archive' | 'delete', doc: any) {
+    activeDocMenuID = null;
+    if (action === 'build') {
+      onBuildDocument(doc);
+      return;
+    }
+    if (action === 'task') {
+      onCreateTaskFromDocument(doc);
+      return;
+    }
+    if (action === 'archive') {
+      onArchiveDocument(doc);
+      return;
+    }
+    onDeleteDocument(doc);
   }
 
   onDestroy(() => {
@@ -219,6 +273,11 @@
     }
     return `(${loopID.slice(0, 12)})`;
   }
+
+  function displayProjectLabel(projectID: string): string {
+    const normalized = String(projectID || '').trim();
+    return normalized === '' ? 'Archived' : normalized;
+  }
 </script>
 
 <svelte:window onmousedown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />
@@ -251,7 +310,7 @@
     <div class="project-group">
       <button class="project-header" onclick={() => toggleProject(projectTree.projectID)}>
         <ChevronRightOutline class={`fold-chevron ${!collapsedProjects[projectTree.projectID] ? 'expanded' : ''}`} size="sm" />
-        <span>{projectTree.projectID}</span>
+        <span>{displayProjectLabel(projectTree.projectID)}</span>
       </button>
       {#if !collapsedProjects[projectTree.projectID]}
         <div class="project-docs">
@@ -263,30 +322,80 @@
                     <ChevronRightOutline class={`fold-chevron lineage-chevron ${!collapsedLineages[lineage.key] ? 'expanded' : ''}`} size="xs" />
                   </button>
                 {/if}
-                <button
-                  class="doc-item root-doc"
-                  class:active={selectedDocId === lineage.root.id}
-                  onclick={() => onSelectDocument(lineage.root)}
-                >
-                  <span class="doc-label">{displayTitle(lineage.root)}</span>
-                  {#if docMetaSuffix(lineage.root)}
-                    <span class="doc-meta">{docMetaSuffix(lineage.root)}</span>
+                <div class="doc-entry" data-doc-menu-host={lineage.root.id}>
+                  <button
+                    class="doc-item root-doc"
+                    class:active={selectedDocId === lineage.root.id}
+                    onclick={() => selectDocumentFromSidebar(lineage.root)}
+                  >
+                    <span class="doc-label">{displayTitle(lineage.root)}</span>
+                    {#if docMetaSuffix(lineage.root)}
+                      <span class="doc-meta">{docMetaSuffix(lineage.root)}</span>
+                    {/if}
+                  </button>
+
+                  <button
+                    class="doc-menu-trigger"
+                    class:visible={activeDocMenuID === lineage.root.id}
+                    aria-label="Document actions"
+                    onclick={(event) => {
+                      event.stopPropagation();
+                      toggleDocMenu(lineage.root.id);
+                    }}
+                  >
+                    ⋮
+                  </button>
+
+                  {#if activeDocMenuID === lineage.root.id}
+                    <div class="doc-action-menu">
+                      <button class="doc-action-item" onclick={() => runDocAction('build', lineage.root)}>Build</button>
+                      {#if tasksEnabled}
+                        <button class="doc-action-item" onclick={() => runDocAction('task', lineage.root)}>Task</button>
+                      {/if}
+                      <button class="doc-action-item" onclick={() => runDocAction('archive', lineage.root)}>Archive</button>
+                      <button class="doc-action-item danger" onclick={() => runDocAction('delete', lineage.root)}>Delete</button>
+                    </div>
                   {/if}
-                </button>
+                </div>
               </div>
               {#if lineage.children.length > 0 && !collapsedLineages[lineage.key]}
                 <div class="lineage-children">
                   {#each lineage.children as child}
-                    <button
-                      class="doc-item child-doc"
-                      class:active={selectedDocId === child.id}
-                      onclick={() => onSelectDocument(child)}
-                    >
-                      <span class="doc-label">{displayTitle(child)}</span>
-                      {#if docMetaSuffix(child)}
-                        <span class="doc-meta">{docMetaSuffix(child)}</span>
+                    <div class="doc-entry" data-doc-menu-host={child.id}>
+                      <button
+                        class="doc-item child-doc"
+                        class:active={selectedDocId === child.id}
+                        onclick={() => selectDocumentFromSidebar(child)}
+                      >
+                        <span class="doc-label">{displayTitle(child)}</span>
+                        {#if docMetaSuffix(child)}
+                          <span class="doc-meta">{docMetaSuffix(child)}</span>
+                        {/if}
+                      </button>
+
+                      <button
+                        class="doc-menu-trigger"
+                        class:visible={activeDocMenuID === child.id}
+                        aria-label="Document actions"
+                        onclick={(event) => {
+                          event.stopPropagation();
+                          toggleDocMenu(child.id);
+                        }}
+                      >
+                        ⋮
+                      </button>
+
+                      {#if activeDocMenuID === child.id}
+                        <div class="doc-action-menu">
+                          <button class="doc-action-item" onclick={() => runDocAction('build', child)}>Build</button>
+                          {#if tasksEnabled}
+                            <button class="doc-action-item" onclick={() => runDocAction('task', child)}>Task</button>
+                          {/if}
+                          <button class="doc-action-item" onclick={() => runDocAction('archive', child)}>Archive</button>
+                          <button class="doc-action-item danger" onclick={() => runDocAction('delete', child)}>Delete</button>
+                        </div>
                       {/if}
-                    </button>
+                    </div>
                   {/each}
                 </div>
               {/if}
@@ -436,6 +545,13 @@
     padding-left: 12px;
   }
 
+  .doc-entry {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
   .lineage-fold {
     background: transparent;
     border: none;
@@ -480,12 +596,84 @@
   .root-doc {
     flex: 1;
     padding-left: 6px;
+    padding-right: 30px;
   }
 
   .child-doc {
     padding-left: 12px;
+    padding-right: 30px;
     border-left: 1px dashed var(--border-subtle);
     font-size: 0.69rem;
+    width: 100%;
+  }
+
+  .doc-menu-trigger {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.2rem;
+    height: 1.2rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #64748b;
+    border-radius: 0.3rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 3;
+  }
+
+  .doc-menu-trigger.visible,
+  .doc-entry:hover .doc-menu-trigger {
+    opacity: 1;
+  }
+
+  .doc-menu-trigger:hover {
+    background: rgba(148, 163, 184, 0.18);
+    border-color: var(--border-subtle);
+    color: #0f172a;
+  }
+
+  .doc-action-menu {
+    position: absolute;
+    right: 6px;
+    top: calc(100% + 2px);
+    min-width: 7.2rem;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-3);
+    border-radius: 0.4rem;
+    padding: 0.25rem;
+    display: grid;
+    gap: 0.1rem;
+    box-shadow: var(--elevation-2), var(--inner-highlight);
+    z-index: 11;
+  }
+
+  .doc-action-item {
+    border: 0;
+    background: transparent;
+    color: #334155;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-align: left;
+    padding: 0.32rem 0.4rem;
+    border-radius: 0.3rem;
+    cursor: pointer;
+  }
+
+  .doc-action-item:hover {
+    background: rgba(148, 163, 184, 0.16);
+  }
+
+  .doc-action-item.danger {
+    color: #b91c1c;
   }
 
   .doc-meta {
@@ -540,5 +728,21 @@
   :global(.dark .doc-item.active) {
     background: rgba(134, 188, 37, 0.07);
     color: #a3e635;
+  }
+
+  :global(.dark .doc-menu-trigger) {
+    color: #94a3b8;
+  }
+
+  :global(.dark .doc-menu-trigger:hover) {
+    color: #f8fafc;
+  }
+
+  :global(.dark .doc-action-item) {
+    color: #d1d5db;
+  }
+
+  :global(.dark .doc-action-item.danger) {
+    color: #fca5a5;
   }
 </style>

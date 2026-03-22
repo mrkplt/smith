@@ -86,12 +86,12 @@
   });
 </script>
 
-<section class="prd-validation border-b border-gray-900 px-8 py-4 relative">
+<section class="prd-validation border-b border-gray-900 px-6 py-3 relative">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-2">
-      <h2 class="text-[11px] uppercase font-bold tracking-[0.16em] text-gray-400">PRD Readiness</h2>
+      <h2 class="text-[10px] uppercase font-bold tracking-[0.15em] text-gray-400">PRD Readiness</h2>
       {#if busy}
-        <span class="text-[10px] uppercase tracking-[0.14em] text-gray-500">Checking...</span>
+        <span class="text-[9px] uppercase tracking-[0.12em] text-gray-500">Checking...</span>
       {/if}
     </div>
     <div class="actions-wrap flex items-center gap-2">
@@ -134,9 +134,9 @@
   </div>
 
   {#if errorMessage}
-    <p class="mt-3 text-xs text-red-300">{errorMessage}</p>
+    <p class="mt-2 text-[11px] text-red-300">{errorMessage}</p>
   {:else if report}
-    <p class="mt-3 text-xs text-gray-500">
+    <p class="mt-2 text-[11px] text-gray-500">
       {#if notificationCount > 0}
         {notificationCount} readiness notification{notificationCount === 1 ? '' : 's'} hidden. Click the readiness badge to open.
       {:else}
@@ -144,7 +144,7 @@
       {/if}
     </p>
   {:else}
-    <p class="mt-3 text-xs text-gray-500">Start editing to see readiness diagnostics and concrete suggestions.</p>
+    <p class="mt-2 text-[11px] text-gray-500">Start editing to see readiness diagnostics and concrete suggestions.</p>
   {/if}
 </section>
 

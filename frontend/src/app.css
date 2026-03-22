@@ -229,16 +229,25 @@ body {
 
 /* Scrollbar refinement */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 7px;
+  height: 7px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #000;
+  background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: rgba(100, 116, 139, 0.58);
+  border-radius: 999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #86BC25;
+  background: rgba(134, 188, 37, 0.82);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.72);
 }
 
 /* Shared filter/input control treatment for shell toolbars */

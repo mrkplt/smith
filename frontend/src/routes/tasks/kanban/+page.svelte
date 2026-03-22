@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import TopBar from '$lib/components/TopBar.svelte';
   import { fetchJSON, type TaskContract } from '$lib/api';
@@ -42,6 +42,9 @@
   let selectedCardID = $state('');
   let laneFilter = $state<'all' | TaskLane>('all');
   let searchQuery = $state('');
+  let detailPanelEl = $state<HTMLElement | null>(null);
+  let detailOriginRect = $state<DOMRect | null>(null);
+  let knownDocumentRefs = $state<Set<string> | null>(null);
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   const cards = $derived.by<KanbanCard[]>(() => {
@@ -118,6 +121,7 @@
 
     accessValidated = true;
     await loadTasks('initial');
+    void loadKnownDocuments();
     pollTimer = setInterval(() => {
       void loadTasks('poll');
     }, REFRESH_INTERVAL_MS);
@@ -140,6 +144,31 @@
       if (reason === 'initial') {
         pushToast(error, 'err');
       }
+    }
+  }
+
+  async function loadKnownDocuments(): Promise<void> {
+    try {
+      const payload = await fetchJSON('/v1/documents');
+      if (!Array.isArray(payload)) {
+        knownDocumentRefs = new Set<string>();
+        return;
+      }
+      const refs = new Set<string>();
+      for (const doc of payload as any[]) {
+        const id = String(doc?.id || '').trim();
+        const sourceRef = String(doc?.source_ref || '').trim();
+        if (id) {
+          refs.add(id);
+          refs.add(`doc:${id}`);
+        }
+        if (sourceRef) {
+          refs.add(sourceRef);
+        }
+      }
+      knownDocumentRefs = refs;
+    } catch {
+      knownDocumentRefs = new Set<string>();
     }
   }
 
@@ -234,6 +263,25 @@
     return String(task?.source_document || task?.metadata?.document_id || '').trim();
   }
 
+  function documentHrefForCard(card: KanbanCard): string {
+    const ref = documentRefForCard(card);
+    if (!ref) {
+      return '/documents';
+    }
+    return `/documents?doc=${encodeURIComponent(ref)}`;
+  }
+
+  function documentStateForCard(card: KanbanCard): 'known' | 'missing' | 'unknown' {
+    const ref = documentRefForCard(card);
+    if (!ref) {
+      return 'missing';
+    }
+    if (knownDocumentRefs === null) {
+      return 'unknown';
+    }
+    return knownDocumentRefs.has(ref) ? 'known' : 'missing';
+  }
+
   function acceptanceCriteriaFor(card: KanbanCard): string[] {
     return card.task?.acceptance_criteria || [];
   }
@@ -242,7 +290,81 @@
     return card.task?.validation || [];
   }
 
+  async function openDetailPanel(cardID: string, event: MouseEvent): Promise<void> {
+    const trigger = event.currentTarget;
+    if (trigger instanceof HTMLElement) {
+      detailOriginRect = trigger.getBoundingClientRect();
+    } else {
+      detailOriginRect = null;
+    }
+    selectedCardID = cardID;
+    await tick();
+    animateDetailOpen();
+  }
+
+  async function closeDetailPanel(): Promise<void> {
+    const panel = detailPanelEl;
+    const origin = detailOriginRect;
+    if (panel && origin) {
+      const to = panel.getBoundingClientRect();
+      const scaleX = Math.max(0.36, Math.min(1, origin.width / Math.max(1, to.width)));
+      const scaleY = Math.max(0.28, Math.min(1, origin.height / Math.max(1, to.height)));
+      const deltaX = origin.left - to.left;
+      const deltaY = origin.top - to.top;
+      const anim = panel.animate(
+        [
+          { transformOrigin: 'top left', transform: 'translate(0, 0) scale(1, 1)', opacity: 1 },
+          {
+            transformOrigin: 'top left',
+            transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`,
+            opacity: 0.82
+          }
+        ],
+        { duration: 210, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }
+      );
+      try {
+        await anim.finished;
+      } catch {
+        // no-op
+      }
+    }
+    selectedCardID = '';
+    detailPanelEl = null;
+  }
+
+  function animateDetailOpen(): void {
+    const panel = detailPanelEl;
+    const origin = detailOriginRect;
+    if (!panel || !origin) {
+      return;
+    }
+    const to = panel.getBoundingClientRect();
+    const scaleX = Math.max(0.36, Math.min(1, origin.width / Math.max(1, to.width)));
+    const scaleY = Math.max(0.28, Math.min(1, origin.height / Math.max(1, to.height)));
+    const deltaX = origin.left - to.left;
+    const deltaY = origin.top - to.top;
+    panel.animate(
+      [
+        {
+          transformOrigin: 'top left',
+          transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`,
+          opacity: 0.82
+        },
+        { transformOrigin: 'top left', transform: 'translate(0, 0) scale(1, 1)', opacity: 1 }
+      ],
+      { duration: 230, easing: 'cubic-bezier(0.2, 0.9, 0.22, 1)' }
+    );
+  }
+
 </script>
+
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key === 'Escape' && selectedCardID) {
+      void closeDetailPanel();
+    }
+  }}
+/>
 
 <TopBar title="Tasks">
   {#snippet controls()}
@@ -276,7 +398,7 @@
   {/snippet}
 </TopBar>
 
-<section class="tasks-kanban-page px-4 pb-8">
+<section class="tasks-kanban-page px-4 pb-0">
   {#if accessValidated}
     {#if error}
       <p class="error">{error}</p>
@@ -300,7 +422,7 @@
                   class="task-card"
                   class:selected={selectedCardID === card.id}
                   data-testid={`task-card-${lane.id}`}
-                  onclick={() => (selectedCardID = card.id)}
+                  onclick={(event) => void openDetailPanel(card.id, event)}
                 >
                   <div class="task-top">
                     <div class="task-id">{card.id}</div>
@@ -324,10 +446,17 @@
     </div>
 
     {#if selectedCard}
-      <section class="task-detail" data-testid="task-detail-panel">
+      <button
+        type="button"
+        class="task-detail-backdrop"
+        onclick={() => void closeDetailPanel()}
+        aria-label="Close task detail panel"
+      ></button>
+
+      <section bind:this={detailPanelEl} class="task-detail task-detail-sheet" data-testid="task-detail-panel">
         <div class="detail-head">
           <h3 class="detail-title">{selectedCard.objective}</h3>
-          <button type="button" class="detail-close" onclick={() => (selectedCardID = '')}>Close</button>
+          <button type="button" class="detail-close" onclick={() => void closeDetailPanel()}>Close</button>
         </div>
 
         <div class="detail-grid">
@@ -337,7 +466,18 @@
           <div class="detail-item"><span class="detail-label">Project</span><span class="detail-value">{selectedCard.projectID}</span></div>
           <div class="detail-item"><span class="detail-label">Provider</span><span class="detail-value">{selectedCard.providerProfileID}</span></div>
           <div class="detail-item"><span class="detail-label">Loop</span><span class="detail-value">{loopIDForCard(selectedCard) || 'Unbound'}</span></div>
-          <div class="detail-item detail-item-wide"><span class="detail-label">Document</span><span class="detail-value">{documentRefForCard(selectedCard) || 'Unavailable'}</span></div>
+          <div class="detail-item detail-item-wide">
+            <span class="detail-label">Document</span>
+            {#if documentRefForCard(selectedCard)}
+              {#if documentStateForCard(selectedCard) === 'missing'}
+                <span class="detail-value document-missing">{documentRefForCard(selectedCard)} (not found)</span>
+              {:else}
+                <a class="detail-value document-link" href={documentHrefForCard(selectedCard)}>{documentRefForCard(selectedCard)}</a>
+              {/if}
+            {:else}
+              <span class="detail-value">Unavailable</span>
+            {/if}
+          </div>
           <div class="detail-item"><span class="detail-label">Updated</span><span class="detail-value">{formatTimestamp(selectedCard.updatedAt)}</span></div>
           <div class="detail-item"><span class="detail-label">Created</span><span class="detail-value">{formatTimestamp(selectedCard.createdAt)}</span></div>
           <div class="detail-item detail-item-wide"><span class="detail-label">Dependencies</span><span class="detail-value">{dependenciesFor(selectedCard).length > 0 ? dependenciesFor(selectedCard).join(', ') : 'None'}</span></div>
@@ -380,6 +520,8 @@
     display: grid;
     gap: 1rem;
     padding-top: 0.45rem;
+    height: calc(100vh - 7.6rem);
+    overflow: hidden;
   }
 
   .tasks-filters {
@@ -413,6 +555,8 @@
     display: grid;
     gap: 0.9rem;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: 100%;
+    min-height: 0;
   }
 
   .lane {
@@ -420,8 +564,11 @@
     background: var(--surface-2);
     border-radius: 0.6rem;
     padding: 0.75rem;
-    min-height: 16rem;
+    height: 100%;
+    min-height: 0;
     box-shadow: var(--elevation-1), var(--inner-highlight);
+    display: flex;
+    flex-direction: column;
   }
 
   .lane-head {
@@ -443,6 +590,10 @@
   .task-list {
     display: grid;
     gap: 0.55rem;
+    overflow: auto;
+    min-height: 0;
+    padding-right: 0.2rem;
+    align-content: start;
   }
 
   .task-card {
@@ -531,6 +682,7 @@
     border: 1px dashed var(--border-strong);
     border-radius: 0.45rem;
     padding: 0.65rem;
+    margin-top: auto;
   }
 
   .error {
@@ -546,6 +698,24 @@
     display: grid;
     gap: 0.8rem;
     box-shadow: var(--elevation-2), var(--inner-highlight);
+  }
+
+  .task-detail-backdrop {
+    position: fixed;
+    inset: 0;
+    border: 0;
+    background: rgba(15, 23, 42, 0.32);
+    z-index: 58;
+  }
+
+  .task-detail-sheet {
+    position: fixed;
+    top: 7.2rem;
+    right: 1.25rem;
+    left: max(6.7rem, 1.25rem);
+    max-height: calc(100vh - 8.3rem);
+    overflow: auto;
+    z-index: 59;
   }
 
   .detail-head {
@@ -604,6 +774,17 @@
     color: #0f172a;
     font-size: 0.78rem;
     line-height: 1.35;
+  }
+
+  .document-link {
+    color: #2563eb;
+    text-decoration: underline;
+    text-decoration-color: rgba(37, 99, 235, 0.45);
+    text-underline-offset: 2px;
+  }
+
+  .document-missing {
+    color: #b45309;
   }
 
   .detail-lists {
@@ -675,6 +856,19 @@
     color: #cbd5e1;
   }
 
+  :global(.dark .document-link) {
+    color: #93c5fd;
+    text-decoration-color: rgba(147, 197, 253, 0.55);
+  }
+
+  :global(.dark .document-missing) {
+    color: #fbbf24;
+  }
+
+  :global(.dark .task-detail-backdrop) {
+    background: rgba(2, 6, 23, 0.62);
+  }
+
   @media (max-width: 1100px) {
     .kanban-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -682,8 +876,18 @@
   }
 
   @media (max-width: 720px) {
+    .tasks-kanban-page {
+      height: auto;
+      overflow: visible;
+    }
+
     .kanban-grid {
       grid-template-columns: 1fr;
+      min-height: auto;
+    }
+
+    .lane {
+      max-height: 18rem;
     }
 
     .tasks-filters {
@@ -700,6 +904,14 @@
     .detail-grid,
     .detail-lists {
       grid-template-columns: 1fr;
+    }
+
+    .task-detail-sheet {
+      top: 6.9rem;
+      left: 0.8rem;
+      right: 0.8rem;
+      width: auto;
+      max-height: calc(100vh - 7.8rem);
     }
   }
 </style>
