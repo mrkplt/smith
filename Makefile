@@ -28,6 +28,7 @@ SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_LOCAL_DAEMON_IMAGE ?= smith-daemon:local
 SMITH_LOCAL_GIT_PAT ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS ?=
+SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE ?=
 SMITH_LOCAL_OVERLAY ?=
 SMITH_BOOTSTRAP_DOCUMENT_STORAGE ?= false
 SMITH_BOOTSTRAP_ENV_FILE ?= $(HOME)/.smith/.env
@@ -132,6 +133,7 @@ build-services: ## Build all service binaries
 	$(GO) build -o $(BIN_DIR)/smith-daemon ./cmd/smith-daemon
 	$(GO) build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
 	$(GO) build -o $(BIN_DIR)/smith ./cmd/smith
+	$(GO) build -o $(BIN_DIR)/task ./cmd/task
 
 dist: ## Build cross-platform smithctl binaries
 	@mkdir -p dist
@@ -235,6 +237,7 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  --create-namespace \
 	  --set-string secrets.managed.gitPat="$(SMITH_LOCAL_GIT_PAT)" \
 	  --set-string secrets.managed.runtimeCredentials="$(SMITH_LOCAL_RUNTIME_CREDENTIALS)" \
+	  --set-string secrets.managed.runtimeCredentialsClaude="$(SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE)" \
 	  $(if $(filter true,$(SMITH_FORCE_HELM_ROLLOUT_ID)),--set global.rolloutId="$(shell date +%s)",) \
 	  -f "$(SMITH_LOCAL_VALUES)" \
 	  $(if $(strip $(SMITH_LOCAL_OVERLAY)),-f "$(SMITH_LOCAL_OVERLAY)",)

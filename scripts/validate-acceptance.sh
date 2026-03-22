@@ -411,7 +411,7 @@ expect_rg "e2e-environment-summary.txt" ".github/workflows/ci.yml" "CI summary i
 section "td-d1c89c | smithctl skill mount configuration"
 expect_rg "skillFlag" "cmd/smithctl/main.go" "smithctl implements skill flag parser"
 expect_rg "--skill" "cmd/smithctl/main.go" "smithctl exposes --skill flag"
-expect_rg "Codex defaults to /smith/skills/<name>" "cmd/smithctl/main.go" "smithctl help documents codex default mountpoint"
+expect_rg "provider defaults apply \(codex: /workspace/.agents/skills/<name>, claude: /workspace/.claude/skills/<name>\)" "cmd/smithctl/main.go" "smithctl help documents provider-specific default mountpoints"
 expect_rg "TestLoopCreateWithSkillFlags" "cmd/smithctl/main_test.go" "smithctl skill flag payload test exists"
 expect_rg "## smithctl Skill Flags" "docs/skill-volume-mounts.md" "Skill mount doc includes smithctl usage"
 

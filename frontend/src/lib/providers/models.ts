@@ -48,9 +48,12 @@ export function staticModelsForProviderType(providerType: string): string[] {
 /**
  * Loads models for a provider profile and falls back to static defaults.
  */
-export async function loadProviderModels(providerProfileID: string, providerTypeHint = ''): Promise<string[]> {
+export async function loadProviderModels(providerProfileID: string, providerTypeHint = '', allowDynamicLookup = true): Promise<string[]> {
 	const profileID = String(providerProfileID || '').trim();
 	if (profileID === '') {
+		return staticModelsForProviderType(providerTypeHint);
+	}
+	if (!allowDynamicLookup) {
 		return staticModelsForProviderType(providerTypeHint);
 	}
 	if (modelCache.has(profileID)) {

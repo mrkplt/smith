@@ -6,11 +6,11 @@ Allow loops to mount skill bundles at runtime so agents can access curated instr
 
 ## MVP Scope
 
-- Provider support: Codex only.
+- Provider support: Codex and Claude.
 - Skills can be mounted either:
   - from loop definition (`loop.skills`), or
   - from runtime policy/default presets.
-- Default Codex mount path is used unless explicitly overridden.
+- Provider default mount path is used unless explicitly overridden.
 
 ## Proposed Loop Schema
 
@@ -30,7 +30,7 @@ Example:
       "name": "commit",
       "source": "local://skills/commit",
       "version": "v1.2.0",
-      "mount_path": "/smith/skills/commit",
+      "mount_path": "/workspace/.agents/skills/commit",
       "read_only": true
     }
   ]
@@ -40,12 +40,13 @@ Example:
 Precedence:
 
 - `loop.skills[*].mount_path` (explicit) overrides provider default mountpoint.
-- If no `mount_path` is provided, Codex default path is used.
+- If no `mount_path` is provided, provider default path is used.
 - `loop.skills` entries are the authoritative request payload in MVP; runtime policy presets may append/override only in future follow-up work.
 
-## Codex Default Behavior
+## Default Behavior by Provider
 
-- If `mount_path` omitted, use Codex default mountpoint: `/smith/skills/<skill-name>`.
+- Codex default mountpoint: `/workspace/.agents/skills/<skill-name>`.
+- Claude default mountpoint: `/workspace/.claude/skills/<skill-name>`.
 - Mount skills as read-only volumes by default.
 - Journal resolved skill list and versions in loop metadata/handoff.
 
@@ -66,7 +67,7 @@ Supported `--skill` fields:
 - `name` (required)
 - `source` (required)
 - `version` (optional)
-- `mount_path` (optional; if omitted, Codex default `/smith/skills/<name>` is applied server-side)
+- `mount_path` (optional; if omitted, provider defaults are applied server-side)
 - `read_only` (optional `true|false`; policy-gated)
 
 ## Runtime Integration
@@ -88,11 +89,11 @@ Current validation rules:
 - `source` is required.
 - Duplicate skill names (case-insensitive) are rejected.
 - `mount_path` must be an absolute, normalized path and cannot be `/` or include `..`.
-- MVP provider support is Codex only; non-Codex providers reject `loop.skills` with a clear error.
+- Supported providers for `loop.skills`: `codex`, `claude`; other providers reject with a clear error.
 
 ## Non-Goals (MVP)
 
-- Multi-agent dynamic mount translation beyond Codex default.
+- Multi-agent dynamic mount translation beyond Codex/Claude defaults.
 - Arbitrary privileged volume mounts.
 
 Post-MVP multi-provider design: `docs/multi-provider-skill-mount-abstraction.md`.

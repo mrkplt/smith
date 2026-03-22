@@ -1426,7 +1426,7 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 		},
 	})
 	if hasBoundTask {
-		boundTask.Status = model.TaskContractStatusRunning
+		model.ApplyTaskStatusTransition(&boundTask, model.TaskContractStatusRunning, "", time.Now().UTC())
 		if err := s.store.PutTaskContract(ctx, boundTask); err != nil {
 			_ = s.store.AppendJournal(ctx, model.JournalEntry{
 				LoopID:        loopID,
@@ -4284,7 +4284,7 @@ func loadConfig() (config, error) {
 		skillPolicy:                         skillPolicy,
 		runtimeNamespace:                    strings.TrimSpace(envString("SMITH_RUNTIME_NAMESPACE", envString("SMITH_NAMESPACE", authStoreK8sNamespace))),
 		runtimeContainerName:                strings.TrimSpace(envString("SMITH_RUNTIME_CONTAINER_NAME", "replica")),
-		providerClaudeEnabled:               envBool("SMITH_PROVIDER_CLAUDE_ENABLED", false),
+		providerClaudeEnabled:               envBool("SMITH_PROVIDER_CLAUDE_ENABLED", true),
 		providerGeminiEnabled:               envBool("SMITH_PROVIDER_GEMINI_ENABLED", false),
 		documentStoreBackend:                documentStoreBackend,
 		documentsPostgresDSN:                strings.TrimSpace(envString("SMITH_DOCUMENTS_POSTGRES_DSN", "")),
@@ -5014,7 +5014,7 @@ func normalizeTaskList(in []string) []string {
 }
 
 func taskChangedFields(before, after model.TaskContract) []string {
-	out := make([]string, 0, 9)
+	out := make([]string, 0, 12)
 	if before.ProjectID != after.ProjectID {
 		out = append(out, "project_id")
 	}
@@ -5038,6 +5038,15 @@ func taskChangedFields(before, after model.TaskContract) []string {
 	}
 	if before.Status != after.Status {
 		out = append(out, "status")
+	}
+	if before.TerminalOutcome != after.TerminalOutcome {
+		out = append(out, "terminal_outcome")
+	}
+	if before.TerminalReason != after.TerminalReason {
+		out = append(out, "terminal_reason")
+	}
+	if (before.TerminalAt == nil) != (after.TerminalAt == nil) || (before.TerminalAt != nil && after.TerminalAt != nil && !before.TerminalAt.Equal(*after.TerminalAt)) {
+		out = append(out, "terminal_at")
 	}
 	if !equalStringMap(before.Metadata, after.Metadata) {
 		out = append(out, "metadata")
@@ -5090,7 +5099,7 @@ func (s *server) syncTaskContractStatusForLoop(ctx context.Context, loopID strin
 		return
 	}
 	from := task.Status
-	task.Status = status
+	model.ApplyTaskStatusTransition(&task, status, reason, time.Now().UTC())
 	if strings.TrimSpace(correlationID) != "" {
 		task.CorrelationID = correlationID
 	}
@@ -5115,19 +5124,25 @@ func (s *server) syncTaskContractStatusForLoop(ctx context.Context, loopID strin
 	if strings.TrimSpace(actor) == "" {
 		actor = "operator"
 	}
+	metadata := map[string]string{
+		"task_id":                 taskID,
+		"status_from":             string(from),
+		"status_to":               string(status),
+		"loop_state":              string(loopState),
+		"sync_trigger":            "loop_state_transition",
+		"terminal_outcome":        string(task.TerminalOutcome),
+		"terminal_reason_present": strconv.FormatBool(strings.TrimSpace(task.TerminalReason) != ""),
+	}
+	if task.TerminalAt != nil {
+		metadata["terminal_at"] = task.TerminalAt.UTC().Format(time.RFC3339Nano)
+	}
 	_ = s.appendAudit(ctx, store.AuditRecord{
 		Actor:         actor,
 		Action:        "sync-task-status",
 		TargetLoopID:  loopID,
 		Reason:        reason,
 		CorrelationID: correlationID,
-		Metadata: map[string]string{
-			"task_id":      taskID,
-			"status_from":  string(from),
-			"status_to":    string(status),
-			"loop_state":   string(loopState),
-			"sync_trigger": "loop_state_transition",
-		},
+		Metadata:      metadata,
 	})
 }
 
@@ -5156,6 +5171,9 @@ func modelTaskToAPI(in model.TaskContract) api.TaskContract {
 		AcceptanceCriteria: in.AcceptanceCriteria,
 		Validation:         in.Validation,
 		Status:             modelTaskStatusToAPI(in.Status),
+		TerminalOutcome:    string(in.TerminalOutcome),
+		TerminalReason:     in.TerminalReason,
+		TerminalAt:         in.TerminalAt,
 		Metadata:           copyStringMap(in.Metadata),
 		CreatedAt:          in.CreatedAt,
 		UpdatedAt:          in.UpdatedAt,

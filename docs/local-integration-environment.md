@@ -48,6 +48,7 @@ Default configurable vars:
 - `SMITH_VALUES` (default `helm/smith/values/local.yaml`)
 - `SMITH_LOCAL_GIT_PAT` (required when `secrets.create=true` for local overlay)
 - `SMITH_LOCAL_RUNTIME_CREDENTIALS` (required when `secrets.create=true` for local overlay)
+- `SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE` (optional Claude runtime credential for `ANTHROPIC_API_KEY` injection)
 - `SMITH_VCLUSTER_VERSION` (default `0.32.1`, used by `scripts/integration/prereqs.sh`)
 - `SMITH_TEST_ARTIFACTS_DIR` (default `/tmp/smith-test-artifacts`)
 - `SMITH_FIXTURE_DIR` (default `/tmp/smith-test-repo`)
@@ -83,6 +84,7 @@ Before `make deploy-local`, set local credential values in your shell (instead o
 ```bash
 export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
 export SMITH_LOCAL_RUNTIME_CREDENTIALS="<runtime-credential>"
+export SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE="<anthropic-api-key>"
 ```
 
 ```bash

@@ -138,7 +138,7 @@ func appendSkillMountEnv(env []EnvVar, skillMounts []SkillMount) []EnvVar {
 
 func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 	if strings.TrimSpace(req.RuntimeSecretName) != "" {
-		return append(env,
+		env = append(env,
 			EnvVar{
 				Name: "SMITH_RUNTIME_CREDENTIALS",
 				SecretKeyRef: &SecretKeyRef{
@@ -154,14 +154,44 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 				},
 			},
 		)
+		claudeKey := strings.TrimSpace(req.RuntimeCredentialsClaudeKey)
+		if claudeKey == "" {
+			claudeKey = strings.TrimSpace(req.RuntimeCredentialsKey)
+		}
+		if providerUsesAnthropicKey(req.ProviderID) && claudeKey != "" {
+			env = append(env, EnvVar{
+				Name: "ANTHROPIC_API_KEY",
+				SecretKeyRef: &SecretKeyRef{
+					Name: req.RuntimeSecretName,
+					Key:  claudeKey,
+				},
+			})
+		}
+		return env
 	}
 	if strings.TrimSpace(req.RuntimeCredentialsValue) != "" {
-		return append(env,
+		env = append(env,
 			EnvVar{Name: "SMITH_RUNTIME_CREDENTIALS", Value: req.RuntimeCredentialsValue},
 			EnvVar{Name: "OPENAI_API_KEY", Value: req.RuntimeCredentialsValue},
 		)
 	}
+	claudeValue := strings.TrimSpace(req.RuntimeCredentialsClaudeValue)
+	if claudeValue == "" {
+		claudeValue = strings.TrimSpace(req.RuntimeCredentialsValue)
+	}
+	if providerUsesAnthropicKey(req.ProviderID) && claudeValue != "" {
+		env = append(env, EnvVar{Name: "ANTHROPIC_API_KEY", Value: claudeValue})
+	}
 	return env
+}
+
+func providerUsesAnthropicKey(providerID string) bool {
+	switch strings.ToLower(strings.TrimSpace(providerID)) {
+	case "claude", "anthropic":
+		return true
+	default:
+		return false
+	}
 }
 
 func appendGitPolicyEnv(env []EnvVar, req JobRequest) []EnvVar {

@@ -1,12 +1,12 @@
 # Feature Flags Map
 
-> **Notice (Gated / Under Development):** Every feature listed on this page is currently feature-flagged and treated as under development. Default posture is disabled unless explicitly enabled for controlled testing.
+> **Notice (Gated / Under Development):** Every feature listed on this page is currently feature-flagged and treated as under development. Most feature flags default disabled unless explicitly enabled for controlled testing.
 
 This map defines runtime feature gates used to control incomplete or optional surfaces while they are being finished and hardened.
 
 ## Current policy
 
-- Feature-flagged surfaces are **off by default** in base Helm values.
+- Feature-flagged surfaces are **off by default** in base Helm values unless noted otherwise.
 - Enabling a feature flag is an operator decision and should be done intentionally per environment.
 - Documentation for any feature listed below should be interpreted as preview behavior unless explicitly marked GA.
 
@@ -22,7 +22,7 @@ These values are injected into `window.__SMITH_CONFIG__` from ConfigMap `smith-<
 | Operator chat surfaces (`/assistant`, chat drawer, document chat entry points) | `featureChatEnabled` | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` |
 | Settings Integrations section visibility | `featureIntegrationsEnabled` | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` |
 | Settings Secrets section visibility | `featureSecretsEnabled` | `SMITH_FEATURE_SECRETS_ENABLED` | `console.featureFlags.secrets` | `false` |
-| Claude provider visibility in provider selector/editor | `featureProviderClaudeEnabled` | `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `false` |
+| Claude provider visibility in provider selector/editor | `featureProviderClaudeEnabled` | `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `true` |
 | Gemini provider visibility in provider selector/editor | `featureProviderGeminiEnabled` | `SMITH_FEATURE_PROVIDER_GEMINI_ENABLED` | `console.featureFlags.providerGemini` | `false` |
 | Documents PRD diagnostic `Resolve` action | `featurePRDDiagnosticResolveEnabled` | `SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED` | `console.featureFlags.prdDiagnosticResolve` | `false` |
 | Feature Capability access override | `featureCapabilityAccess` | `SMITH_FEATURE_CAPABILITY_ACCESS` | `console.featureCapabilityAccess` | `false` |
@@ -34,7 +34,7 @@ These flags gate provider types at the API contract level.
 
 | Feature Surface | Env Var | Helm Value | Default |
 | --- | --- | --- | --- |
-| Claude provider support in provider catalog + validation | `SMITH_PROVIDER_CLAUDE_ENABLED` | `api.featureFlags.providerClaude` | `false` |
+| Claude provider support in provider catalog + validation | `SMITH_PROVIDER_CLAUDE_ENABLED` | `api.featureFlags.providerClaude` | `true` |
 | Gemini provider support in provider catalog + validation | `SMITH_PROVIDER_GEMINI_ENABLED` | `api.featureFlags.providerGemini` | `false` |
 
 ## PRDs by flag

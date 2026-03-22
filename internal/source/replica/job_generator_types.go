@@ -46,39 +46,41 @@ type SSHAuth struct {
 }
 
 type JobRequest struct {
-	Namespace                 string
-	EtcdEndpoints             []string
-	LoopID                    string
-	CorrelationID             string
-	ProviderID                string
-	Model                     string
-	InvocationMethod          string
-	SourceType                string
-	SourceRef                 string
-	JobName                   string
-	Labels                    map[string]string
-	ServiceAccountName        string
-	Image                     string
-	ImagePullPolicy           string
-	WorkspaceSeedImage        string
-	WorkspaceSeedPullPolicy   string
-	Git                       GitContext
-	SkillMounts               []SkillMount
-	GitPolicy                 *gitpolicy.Policy
-	EnableGitPolicyConfig     bool
-	JournalPolicy             *journalpolicy.Policy
-	EnableJournalPolicyConfig bool
-	GitAuth                   *GitAuthConfig
-	HandoffConfigMapName      string
-	PRDConfigMapName          string
-	PRDConfigMapKey           string
-	WorkspacePRDPath          string
-	RuntimeSecretName         string
-	RuntimeCredentialsKey     string
-	RuntimeCredentialsValue   string
-	BackoffLimit              int32
-	ActiveDeadlineSeconds     int64
-	TTLSecondsAfterFinished   int32
+	Namespace                     string
+	EtcdEndpoints                 []string
+	LoopID                        string
+	CorrelationID                 string
+	ProviderID                    string
+	Model                         string
+	InvocationMethod              string
+	SourceType                    string
+	SourceRef                     string
+	JobName                       string
+	Labels                        map[string]string
+	ServiceAccountName            string
+	Image                         string
+	ImagePullPolicy               string
+	WorkspaceSeedImage            string
+	WorkspaceSeedPullPolicy       string
+	Git                           GitContext
+	SkillMounts                   []SkillMount
+	GitPolicy                     *gitpolicy.Policy
+	EnableGitPolicyConfig         bool
+	JournalPolicy                 *journalpolicy.Policy
+	EnableJournalPolicyConfig     bool
+	GitAuth                       *GitAuthConfig
+	HandoffConfigMapName          string
+	PRDConfigMapName              string
+	PRDConfigMapKey               string
+	WorkspacePRDPath              string
+	RuntimeSecretName             string
+	RuntimeCredentialsKey         string
+	RuntimeCredentialsValue       string
+	RuntimeCredentialsClaudeKey   string
+	RuntimeCredentialsClaudeValue string
+	BackoffLimit                  int32
+	ActiveDeadlineSeconds         int64
+	TTLSecondsAfterFinished       int32
 }
 
 type JobManifest struct {

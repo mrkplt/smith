@@ -107,10 +107,11 @@
 
 	async function loadProviderModelOptions() {
 		const canonicalType = canonicalProviderType(providerType);
+		const hasCredentialSecret = String(provider?.secret_ref || '').trim() !== '';
 		providerModelOptionsBusy = true;
 		try {
 			if (isEditing && id.trim() !== '') {
-				providerModelOptions = await loadProviderModels(id.trim(), canonicalType);
+				providerModelOptions = await loadProviderModels(id.trim(), canonicalType, hasCredentialSecret);
 				return;
 			}
 			providerModelOptions = staticModelsForProviderType(canonicalType);

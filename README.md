@@ -85,6 +85,7 @@ Smith is split into control-plane and data-plane components.
 - `smith-core` (`cmd/smith-core`): watches unresolved loop state in etcd, acquires per-loop locks, transitions loop state, and schedules replica Jobs in Kubernetes.
 - `smith-daemon` (`cmd/smith-daemon`): background control-plane worker for retention-based cleanup of terminal loops and runtime artifact pruning.
 - `smithctl` (`cmd/smithctl`): kubectl-style operator CLI for `loop` and `prd` resources with context/config support and scriptable JSON output.
+- `task` (`cmd/task`): task and handoff workflow CLI backed by etcd for Smith-native session/start/log/handoff flows.
 - `smith` (`cmd/smith`): PRD launcher CLI (`smith --prd`) for interactive PRD generation before build loops.
 - `smith-mcp` (`cmd/smith-mcp`): Model Context Protocol (MCP) server for tool-based AI integration.
 - `smith-console` (`console/` + Helm deployment): operator UI/runtime assets.

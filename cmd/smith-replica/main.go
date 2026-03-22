@@ -101,9 +101,17 @@ func main() {
 	if workspace == "" {
 		workspace = "/workspace"
 	}
+	runner := commandRunner{}
+	taskClient := newTaskWorkflowClient(startup.Anomaly, workspace, runner)
+	if warning := strings.TrimSpace(taskClient.Warning()); warning != "" {
+		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, errors.New(warning))
+	}
+	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Start(ctx))
+	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica execution starting"))
 	loopCfg := loadLoopExecutionConfigFromEnv()
-	envMeta, setupErr := setupLoopEnvironment(ctx, startup.Anomaly.Environment, workspace, commandRunner{})
+	envMeta, setupErr := setupLoopEnvironment(ctx, startup.Anomaly.Environment, workspace, runner)
 	if setupErr != nil {
+		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "environment setup failed: "+setupErr.Error()))
 		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
 			LoopID:        loopID,
 			Phase:         "environment",
@@ -159,9 +167,10 @@ func main() {
 		loopCfg,
 		startup.Anomaly,
 		workspace,
-		commandRunner{},
+		runner,
 	)
 	if runErr != nil {
+		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica runtime failed: "+runErr.Error()))
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, runErr)
 		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "replica-runtime-failed")
 		log.Fatalf("replica loop failed: %v", runErr)
@@ -228,6 +237,7 @@ func main() {
 	}
 
 	if finalizeErr != nil {
+		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica finalize failed: "+finalizeErr.Error()))
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, finalizeErr)
 		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "replica-runtime-failed")
 		log.Fatalf("failed to finalize state: %v", finalizeErr)
@@ -263,6 +273,7 @@ func main() {
 		CorrelationID:    correlationID,
 		Metadata:         handoffMetadata,
 	})
+	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Handoff(ctx, []string{handoffSummary}, []string{nextSteps}))
 
 	finalMessage := "replica execution completed"
 	if finalState == model.LoopStateCancelled {
@@ -287,6 +298,7 @@ func main() {
 			"cost_usd":     "0",
 		},
 	})
+	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, finalMessage))
 
 	log.Printf("smith-replica startup complete for loop_id=%s final_state=%s", loopID, finalState)
 }
@@ -2238,7 +2250,7 @@ func syncTaskContractStatusFromAnomaly(ctx context.Context, storeClient store.St
 		return
 	}
 	before := task.Status
-	task.Status = target
+	model.ApplyTaskStatusTransition(&task, target, reason, time.Now().UTC())
 	if strings.TrimSpace(task.CorrelationID) == "" {
 		task.CorrelationID = anomaly.CorrelationID
 	}

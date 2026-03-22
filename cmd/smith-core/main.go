@@ -44,28 +44,30 @@ const (
 )
 
 type config struct {
-	port                int
-	etcdEndpoints       []string
-	etcdDialTimeout     time.Duration
-	namespace           string
-	holderID            string
-	replicaImage        string
-	replicaPullPolicy   string
-	workspaceSeedImage  string
-	workspaceSeedPolicy string
-	runtimeCredentials  string
-	runtimeSecretName   string
-	runtimeSecretKey    string
-	gitPATSecretName    string
-	gitPATSecretKey     string
-	dockerfileRepo      string
-	dockerfileBuild     bool
-	gitPolicy           gitpolicy.Policy
-	gitPolicyConfig     bool
-	journalPolicy       journalpolicy.Policy
-	journalPolicyConfig bool
-	replicaSA           string
-	defaultPolicy       model.LoopPolicy
+	port                     int
+	etcdEndpoints            []string
+	etcdDialTimeout          time.Duration
+	namespace                string
+	holderID                 string
+	replicaImage             string
+	replicaPullPolicy        string
+	workspaceSeedImage       string
+	workspaceSeedPolicy      string
+	runtimeCredentials       string
+	runtimeCredentialsClaude string
+	runtimeSecretName        string
+	runtimeSecretKey         string
+	runtimeSecretClaudeKey   string
+	gitPATSecretName         string
+	gitPATSecretKey          string
+	dockerfileRepo           string
+	dockerfileBuild          bool
+	gitPolicy                gitpolicy.Policy
+	gitPolicyConfig          bool
+	journalPolicy            journalpolicy.Policy
+	journalPolicyConfig      bool
+	replicaSA                string
+	defaultPolicy            model.LoopPolicy
 }
 
 type executionImageSelection struct {
@@ -351,7 +353,7 @@ func (o *orchestrator) syncTaskContractStatus(ctx context.Context, anomaly model
 		return
 	}
 	before := task.Status
-	task.Status = target
+	model.ApplyTaskStatusTransition(&task, target, reason, time.Now().UTC())
 	if strings.TrimSpace(task.CorrelationID) == "" {
 		task.CorrelationID = anomaly.CorrelationID
 	}
@@ -415,37 +417,39 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		labels["smith.io/project"] = project
 	}
 	request := replica.JobRequest{
-		Namespace:                 o.cfg.namespace,
-		EtcdEndpoints:             append([]string(nil), o.cfg.etcdEndpoints...),
-		LoopID:                    loopID,
-		CorrelationID:             correlationID,
-		ProviderID:                loopProviderFor(anomaly),
-		Model:                     strings.TrimSpace(anomaly.Model),
-		InvocationMethod:          loopInvocationMethodFor(anomaly),
-		SourceType:                anomaly.SourceType,
-		SourceRef:                 anomaly.SourceRef,
-		JobName:                   jobName,
-		Labels:                    labels,
-		ServiceAccountName:        o.cfg.replicaSA,
-		Image:                     executionImage.Ref,
-		ImagePullPolicy:           executionImage.PullPolicy,
-		WorkspaceSeedImage:        workspaceSeedImageFor(anomaly, o.cfg),
-		WorkspaceSeedPullPolicy:   workspaceSeedPullPolicyFor(anomaly, o.cfg),
-		Git:                       gitContextFor(anomaly),
-		SkillMounts:               skillMounts,
-		GitPolicy:                 gitPolicyPtr(o.cfg.gitPolicy, o.cfg.gitPolicyConfig),
-		EnableGitPolicyConfig:     o.cfg.gitPolicyConfig,
-		JournalPolicy:             journalPolicyPtr(o.cfg.journalPolicy, o.cfg.journalPolicyConfig),
-		EnableJournalPolicyConfig: o.cfg.journalPolicyConfig,
-		HandoffConfigMapName:      handoffConfigMapName(loopID),
-		RuntimeSecretName:         strings.TrimSpace(o.cfg.runtimeSecretName),
-		RuntimeCredentialsKey:     strings.TrimSpace(o.cfg.runtimeSecretKey),
-		BackoffLimit:              o.jobBackoff,
-		ActiveDeadlineSeconds:     int64(o.cfg.defaultPolicy.Timeout.Seconds()),
-		TTLSecondsAfterFinished:   o.jobTTL,
+		Namespace:                   o.cfg.namespace,
+		EtcdEndpoints:               append([]string(nil), o.cfg.etcdEndpoints...),
+		LoopID:                      loopID,
+		CorrelationID:               correlationID,
+		ProviderID:                  loopProviderFor(anomaly),
+		Model:                       strings.TrimSpace(anomaly.Model),
+		InvocationMethod:            loopInvocationMethodFor(anomaly),
+		SourceType:                  anomaly.SourceType,
+		SourceRef:                   anomaly.SourceRef,
+		JobName:                     jobName,
+		Labels:                      labels,
+		ServiceAccountName:          o.cfg.replicaSA,
+		Image:                       executionImage.Ref,
+		ImagePullPolicy:             executionImage.PullPolicy,
+		WorkspaceSeedImage:          workspaceSeedImageFor(anomaly, o.cfg),
+		WorkspaceSeedPullPolicy:     workspaceSeedPullPolicyFor(anomaly, o.cfg),
+		Git:                         gitContextFor(anomaly),
+		SkillMounts:                 skillMounts,
+		GitPolicy:                   gitPolicyPtr(o.cfg.gitPolicy, o.cfg.gitPolicyConfig),
+		EnableGitPolicyConfig:       o.cfg.gitPolicyConfig,
+		JournalPolicy:               journalPolicyPtr(o.cfg.journalPolicy, o.cfg.journalPolicyConfig),
+		EnableJournalPolicyConfig:   o.cfg.journalPolicyConfig,
+		HandoffConfigMapName:        handoffConfigMapName(loopID),
+		RuntimeSecretName:           strings.TrimSpace(o.cfg.runtimeSecretName),
+		RuntimeCredentialsKey:       strings.TrimSpace(o.cfg.runtimeSecretKey),
+		RuntimeCredentialsClaudeKey: strings.TrimSpace(o.cfg.runtimeSecretClaudeKey),
+		BackoffLimit:                o.jobBackoff,
+		ActiveDeadlineSeconds:       int64(o.cfg.defaultPolicy.Timeout.Seconds()),
+		TTLSecondsAfterFinished:     o.jobTTL,
 	}
 	if strings.TrimSpace(request.RuntimeSecretName) == "" {
 		request.RuntimeCredentialsValue = strings.TrimSpace(o.cfg.runtimeCredentials)
+		request.RuntimeCredentialsClaudeValue = strings.TrimSpace(o.cfg.runtimeCredentialsClaude)
 	}
 	request.GitAuth = gitAuthFor(o.cfg)
 	prdPayload, hasWorkspacePRD, err := workspacePRDPayload(anomaly.Metadata)
@@ -1165,27 +1169,29 @@ func loadConfig() (config, error) {
 	}
 
 	cfg := config{
-		port:                envInt("SMITH_CORE_PORT", defaultPort),
-		etcdEndpoints:       endpoints,
-		etcdDialTimeout:     envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
-		namespace:           envString("SMITH_NAMESPACE", "default"),
-		holderID:            holderID,
-		replicaImage:        envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.4.3"),
-		replicaPullPolicy:   envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
-		workspaceSeedImage:  strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
-		workspaceSeedPolicy: envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
-		runtimeCredentials:  strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
-		runtimeSecretName:   strings.TrimSpace(os.Getenv("SMITH_RUNTIME_SECRET_NAME")),
-		runtimeSecretKey:    envString("SMITH_RUNTIME_CREDENTIALS_KEY", "runtime_credentials"),
-		gitPATSecretName:    strings.TrimSpace(os.Getenv("SMITH_GIT_PAT_SECRET_NAME")),
-		gitPATSecretKey:     envString("SMITH_GIT_PAT_SECRET_KEY", "git_pat"),
-		dockerfileRepo:      strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),
-		dockerfileBuild:     envBool("SMITH_DOCKERFILE_BUILD_ENABLED", false),
-		gitPolicy:           gitpolicy.DefaultPolicy(),
-		gitPolicyConfig:     envBool("SMITH_GIT_POLICY_CONFIG_ENABLED", false),
-		journalPolicy:       journalpolicy.DefaultPolicy(),
-		journalPolicyConfig: envBool("SMITH_JOURNAL_POLICY_CONFIG_ENABLED", false),
-		replicaSA:           envString("SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT", "default"),
+		port:                     envInt("SMITH_CORE_PORT", defaultPort),
+		etcdEndpoints:            endpoints,
+		etcdDialTimeout:          envDuration("SMITH_ETCD_DIAL_TIMEOUT", 5*time.Second),
+		namespace:                envString("SMITH_NAMESPACE", "default"),
+		holderID:                 holderID,
+		replicaImage:             envString("SMITH_REPLICA_IMAGE", "ghcr.io/smith/replica:v0.4.3"),
+		replicaPullPolicy:        envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
+		workspaceSeedImage:       strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
+		workspaceSeedPolicy:      envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
+		runtimeCredentials:       strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
+		runtimeCredentialsClaude: strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE")),
+		runtimeSecretName:        strings.TrimSpace(os.Getenv("SMITH_RUNTIME_SECRET_NAME")),
+		runtimeSecretKey:         envString("SMITH_RUNTIME_CREDENTIALS_KEY", "runtime_credentials"),
+		runtimeSecretClaudeKey:   envString("SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY", "runtime_credentials_claude"),
+		gitPATSecretName:         strings.TrimSpace(os.Getenv("SMITH_GIT_PAT_SECRET_NAME")),
+		gitPATSecretKey:          envString("SMITH_GIT_PAT_SECRET_KEY", "git_pat"),
+		dockerfileRepo:           strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),
+		dockerfileBuild:          envBool("SMITH_DOCKERFILE_BUILD_ENABLED", false),
+		gitPolicy:                gitpolicy.DefaultPolicy(),
+		gitPolicyConfig:          envBool("SMITH_GIT_POLICY_CONFIG_ENABLED", false),
+		journalPolicy:            journalpolicy.DefaultPolicy(),
+		journalPolicyConfig:      envBool("SMITH_JOURNAL_POLICY_CONFIG_ENABLED", false),
+		replicaSA:                envString("SMITH_REPLICA_TEMPLATE_SERVICE_ACCOUNT", "default"),
 		defaultPolicy: model.LoopPolicy{
 			MaxAttempts:      envInt("SMITH_LOOP_POLICY_MAX_ATTEMPTS", 3),
 			BackoffInitial:   envDuration("SMITH_LOOP_POLICY_BACKOFF_INITIAL", 5*time.Second),

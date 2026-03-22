@@ -70,7 +70,11 @@
 		try {
 			const profiles = await fetchJSON('/v1/providers');
 			chatProviderProfiles = Array.isArray(profiles)
-				? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+				? profiles.filter((profile) => {
+					const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
+					const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+					return providerTypeEnabled && isAddedProfile;
+				})
 				: [];
 		} catch {
 			chatProviderProfiles = [];
@@ -92,9 +96,10 @@
 		const normalizedProfileID = String(nextProfileID || '').trim();
 		const profile = chatProviderProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
 		const providerTypeHint = String(profile?.provider_type || '').trim();
+		const hasCredentialSecret = String(profile?.secret_ref || '').trim() !== '';
 		chatModelOptionsBusy = true;
 		try {
-			chatModelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+			chatModelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint, hasCredentialSecret);
 		} finally {
 			chatModelOptionsBusy = false;
 		}

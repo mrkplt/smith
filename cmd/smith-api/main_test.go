@@ -815,6 +815,20 @@ func TestHandleLoopLifecycleSyncsTaskContractStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, model.TaskContractStatusBlocked, task.Status)
+	assert.Equal(t, model.TaskTerminalOutcomeBlocked, task.TerminalOutcome)
+	assert.Equal(t, "cancelled-via-api", task.TerminalReason)
+	require.NotNil(t, task.TerminalAt)
+
+	getRec := httptest.NewRecorder()
+	getReq := httptest.NewRequest(http.MethodGet, "/api/tasks/task-lifecycle", nil)
+	s.handleTaskByID(getRec, getReq)
+	require.Equal(t, http.StatusOK, getRec.Code)
+	var payload api.TaskContract
+	require.NoError(t, json.NewDecoder(getRec.Body).Decode(&payload))
+	assert.Equal(t, api.TaskContractStatusBlocked, payload.Status)
+	assert.Equal(t, "blocked", payload.TerminalOutcome)
+	assert.Equal(t, "cancelled-via-api", payload.TerminalReason)
+	require.NotNil(t, payload.TerminalAt)
 }
 
 func TestHandleLoopInterventionIdempotencyByEventID(t *testing.T) {

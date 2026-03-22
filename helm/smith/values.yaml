@@ -22,9 +22,11 @@ secrets:
   managed:
     gitPat: ""
     runtimeCredentials: ""
+    runtimeCredentialsClaude: ""
   keys:
     gitPat: git_pat
     runtimeCredentials: runtime_credentials
+    runtimeCredentialsClaude: runtime_credentials_claude
 
 core:
   replicaCount: 1
@@ -91,8 +93,9 @@ api:
   resources: {}
   featureFlags:
     tasks: false
+    tasksKanban: false
     featureCapability: false
-    providerClaude: false
+    providerClaude: true
     providerGemini: false
   documents:
     backend: etcd
@@ -190,7 +193,7 @@ console:
     chat: false
     integrations: false
     secrets: false
-    providerClaude: false
+    providerClaude: true
     providerGemini: false
     prdDiagnosticResolve: false
   autoscaling:
