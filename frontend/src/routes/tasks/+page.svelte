@@ -10,7 +10,7 @@
     patchTaskContract,
     type TaskContract
   } from '$lib/api';
-  import { isTasksEnabled } from '$lib/feature-flags';
+  import { isTasksEnabled, isTasksKanbanEnabled } from '$lib/feature-flags';
   import { goto } from '$app/navigation';
 
   let tasks = $state<TaskContract[]>([]);
@@ -23,6 +23,38 @@
   let editValidation = $state('');
   let editSourceDocument = $state('');
   let editProviderProfileID = $state('');
+  function toSortTimestamp(task: TaskContract): number {
+    const timestamp = task.validated_at || task.updated_at || task.created_at;
+    if (!timestamp) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    const parsed = Date.parse(timestamp);
+    return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+  }
+
+  function compareAwaitingApprovalTasks(a: TaskContract, b: TaskContract): number {
+    const priorityDelta = (b.review_priority ?? 0) - (a.review_priority ?? 0);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+    const timestampDelta = toSortTimestamp(a) - toSortTimestamp(b);
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+    return a.id.localeCompare(b.id);
+  }
+
+  let awaitingApprovalTasks = $derived(
+    tasks
+      .filter((task) => task.status === 'validated')
+      .slice()
+      .sort(compareAwaitingApprovalTasks)
+  );
+  let draftTasks = $derived(tasks.filter((task) => task.status === 'draft'));
+  let approvedTasks = $derived(tasks.filter((task) => task.status === 'approved'));
+  let runningTasks = $derived(tasks.filter((task) => task.status === 'running'));
+  let completedTasks = $derived(tasks.filter((task) => task.status === 'completed'));
+  let blockedTasks = $derived(tasks.filter((task) => task.status === 'blocked'));
 
   let projectID = $state('');
   let providerProfileID = $state('codex-default');
@@ -189,6 +221,101 @@
 <TopBar title="Tasks" />
 
 <section class="tasks-page px-4 pb-8">
+  {#if isTasksKanbanEnabled()}
+    <div class="panel">
+      <h2>Kanban Board</h2>
+      <div class="kanban-lanes" data-testid="kanban-lanes">
+        <section class="kanban-lane" aria-label="Awaiting Approval lane" data-testid="awaiting-approval-lane">
+          <h3>
+            Awaiting Approval
+            <span class="lane-count" aria-hidden="true">({awaitingApprovalTasks.length})</span>
+          </h3>
+          <div class="kanban-cards">
+            {#each awaitingApprovalTasks as task (task.id)}
+              <article class="kanban-card" data-testid="awaiting-approval-card">
+                <div class="task-id">{task.id}</div>
+                <div class="task-objective">{task.objective}</div>
+              </article>
+            {/each}
+            {#if awaitingApprovalTasks.length === 0}
+              <p class="lane-empty" data-testid="awaiting-approval-empty">No tasks awaiting approval.</p>
+            {/if}
+          </div>
+        </section>
+        <section class="kanban-lane" aria-label="Draft lane" data-testid="draft-lane">
+          <h3>
+            Draft
+            <span class="lane-count" aria-hidden="true">({draftTasks.length})</span>
+          </h3>
+          <div class="kanban-cards">
+            {#each draftTasks as task (task.id)}
+              <article class="kanban-card" data-testid="draft-card">
+                <div class="task-id">{task.id}</div>
+                <div class="task-objective">{task.objective}</div>
+              </article>
+            {/each}
+          </div>
+        </section>
+        <section class="kanban-lane" aria-label="Approved lane" data-testid="approved-lane">
+          <h3>
+            Approved
+            <span class="lane-count" aria-hidden="true">({approvedTasks.length})</span>
+          </h3>
+          <div class="kanban-cards">
+            {#each approvedTasks as task (task.id)}
+              <article class="kanban-card" data-testid="approved-card">
+                <div class="task-id">{task.id}</div>
+                <div class="task-objective">{task.objective}</div>
+              </article>
+            {/each}
+          </div>
+        </section>
+        <section class="kanban-lane" aria-label="Running lane" data-testid="running-lane">
+          <h3>
+            Running
+            <span class="lane-count" aria-hidden="true">({runningTasks.length})</span>
+          </h3>
+          <div class="kanban-cards">
+            {#each runningTasks as task (task.id)}
+              <article class="kanban-card" data-testid="running-card">
+                <div class="task-id">{task.id}</div>
+                <div class="task-objective">{task.objective}</div>
+              </article>
+            {/each}
+          </div>
+        </section>
+        <section class="kanban-lane" aria-label="Completed lane" data-testid="completed-lane">
+          <h3>
+            Completed
+            <span class="lane-count" aria-hidden="true">({completedTasks.length})</span>
+          </h3>
+          <div class="kanban-cards">
+            {#each completedTasks as task (task.id)}
+              <article class="kanban-card" data-testid="completed-card">
+                <div class="task-id">{task.id}</div>
+                <div class="task-objective">{task.objective}</div>
+              </article>
+            {/each}
+          </div>
+        </section>
+        <section class="kanban-lane" aria-label="Blocked lane" data-testid="blocked-lane">
+          <h3>
+            Blocked
+            <span class="lane-count" aria-hidden="true">({blockedTasks.length})</span>
+          </h3>
+          <div class="kanban-cards">
+            {#each blockedTasks as task (task.id)}
+              <article class="kanban-card" data-testid="blocked-card">
+                <div class="task-id">{task.id}</div>
+                <div class="task-objective">{task.objective}</div>
+              </article>
+            {/each}
+          </div>
+        </section>
+      </div>
+    </div>
+  {/if}
+
   <div class="panel">
     <h2>Create Task Contract</h2>
     <div class="form-grid">
@@ -322,6 +449,56 @@
     gap: 0.75rem;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     margin-bottom: 0.75rem;
+  }
+
+  .kanban-lanes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .kanban-lane {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.45rem;
+    background: rgba(17, 24, 39, 0.35);
+    min-height: 5rem;
+    padding: 0.75rem;
+  }
+
+  .kanban-lane h3 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #d1d5db;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .lane-count {
+    color: #9ca3af;
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+  }
+
+  .kanban-cards {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .kanban-card {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.45rem;
+    background: rgba(17, 24, 39, 0.35);
+    padding: 0.6rem;
+  }
+
+  .lane-empty {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.8rem;
   }
 
   .full {

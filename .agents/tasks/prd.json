@@ -1,0 +1,117 @@
+{
+  "title": "[Feature Flag Smith Feature Tasks Kanban Enabled Prd] Awaiting Approval lane for review queue",
+  "description": "As an operator, I want validated tasks grouped in one lane so I can approve the next work item efficiently.",
+  "feature_flag": "smith.feature_tasks_kanban_enabled",
+  "problem_statement": "Validated tasks are not clearly grouped for operator review, causing slower and inconsistent approval flow.",
+  "objectives": [
+    "Surface all validated tasks in a single, dedicated Kanban lane.",
+    "Reduce operator time to identify the next task to approve.",
+    "Preserve existing task states and transitions outside the new lane behavior."
+  ],
+  "non_goals": [
+    "Changing task validation rules.",
+    "Adding new approval roles or permissions.",
+    "Redesigning the full Kanban board layout beyond the new lane."
+  ],
+  "scope": {
+    "in_scope": [
+      "Render an 'Awaiting Approval' lane when feature flag is enabled.",
+      "Move validated tasks into the 'Awaiting Approval' lane.",
+      "Keep lane ordering deterministic for operator review."
+    ],
+    "out_of_scope": [
+      "Bulk approval actions.",
+      "Cross-project board aggregation.",
+      "Mobile-specific UI redesign."
+    ]
+  },
+  "stories": [
+    {
+      "id": "US-1",
+      "title": "Show Awaiting Approval lane behind feature flag",
+      "as_a": "operator",
+      "i_want": "the Kanban board to display an 'Awaiting Approval' lane only when the feature flag is enabled",
+      "so_that": "I can use the new review queue without affecting users when disabled",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given the feature flag is enabled, when an operator loads the board, then an 'Awaiting Approval' lane is visible.",
+        "Given the feature flag is disabled, when an operator loads the board, then the 'Awaiting Approval' lane is not visible.",
+        "Toggling the feature flag does not change unrelated lane visibility."
+      ]
+    },
+    {
+      "id": "US-2",
+      "title": "Group validated tasks into Awaiting Approval lane",
+      "as_a": "operator",
+      "i_want": "all validated tasks to appear in one lane",
+      "so_that": "I can process approvals from a single queue",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given tasks are in validated state and the feature flag is enabled, when the board loads, then each validated task appears in 'Awaiting Approval'.",
+        "Given a task is not validated, when the board loads, then it does not appear in 'Awaiting Approval'.",
+        "A validated task appears only once on the board."
+      ]
+    },
+    {
+      "id": "US-3",
+      "title": "Keep stable ordering for review priority",
+      "as_a": "operator",
+      "i_want": "tasks in 'Awaiting Approval' ordered consistently",
+      "so_that": "I can approve the next work item efficiently",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given multiple validated tasks, when displayed in 'Awaiting Approval', then ordering follows configured priority (highest priority first, tie by oldest validation timestamp).",
+        "Refreshing the board preserves ordering for unchanged task data.",
+        "Newly validated tasks are inserted according to the same ordering rules."
+      ]
+    },
+    {
+      "id": "US-4",
+      "title": "Update lane membership after approval decision",
+      "as_a": "operator",
+      "i_want": "approved or rejected tasks to leave the Awaiting Approval lane immediately",
+      "so_that": "the queue always reflects pending review work",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given a task in 'Awaiting Approval', when it is approved, then it is removed from 'Awaiting Approval' and shown in its next state lane.",
+        "Given a task in 'Awaiting Approval', when it is rejected, then it is removed from 'Awaiting Approval' and shown in its next state lane.",
+        "Lane counts update to match displayed cards after each decision."
+      ]
+    },
+    {
+      "id": "US-5",
+      "title": "Handle empty Awaiting Approval state",
+      "as_a": "operator",
+      "i_want": "a clear empty state when no validated tasks exist",
+      "so_that": "I can quickly confirm there is nothing pending approval",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given feature flag is enabled and no validated tasks exist, when the board loads, then 'Awaiting Approval' displays an empty-state message.",
+        "Given at least one validated task exists, when the board loads, then the empty-state message is not shown.",
+        "The empty-state message does not block board interactions in other lanes."
+      ]
+    }
+  ],
+  "success_metrics": [
+    "Median time from board load to first approval action decreases by 20%.",
+    "At least 95% of validated tasks appear in 'Awaiting Approval' within one board refresh cycle.",
+    "Operator-reported clarity for approval queue improves in post-release survey."
+  ],
+  "risks": [
+    "Incorrect state mapping could hide validated tasks.",
+    "Ordering logic disagreements may cause perceived priority issues.",
+    "Feature flag misconfiguration may expose incomplete behavior."
+  ],
+  "dependencies": [
+    "Feature flag service availability.",
+    "Task state machine emitting reliable 'validated' status and timestamps.",
+    "Kanban board API includes fields required for ordering."
+  ],
+  "blockers": [
+    {
+      "date": "2026-03-22",
+      "story_id": "US-1",
+      "description": "Cannot run local git-hook CI workflow via act because both `act` and `docker` are unavailable in this environment."
+    }
+  ]
+}

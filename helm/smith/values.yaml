@@ -93,6 +93,7 @@ api:
   resources: {}
   featureFlags:
     tasks: false
+    tasksKanban: false
     featureCapability: false
     providerClaude: true
     providerGemini: false
