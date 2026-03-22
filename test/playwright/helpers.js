@@ -46,6 +46,28 @@ export const documentsFixture = [
   },
 ];
 
+export const defaultProvidersFixture = [
+  {
+    id: 'codex-default',
+    name: 'Codex Default',
+    provider_type: 'codex',
+    default_model: 'gpt-5.3-codex',
+    capabilities: ['chat', 'tools', 'loops'],
+    secret_ref: ''
+  }
+];
+
+export const addedProvidersFixture = [
+  {
+    id: 'codex-default',
+    name: 'Codex Default',
+    provider_type: 'codex',
+    default_model: 'gpt-5.3-codex',
+    capabilities: ['chat', 'tools', 'loops'],
+    secret_ref: 'codex-default-key'
+  }
+];
+
 /**
  * Inject a mock EventSource into the page so that the Svelte layout
  * streams never hit a real backend.  Call this BEFORE page.goto().
@@ -161,16 +183,8 @@ export async function mockApiRoutes(page, options = {}) {
   const loops = options.loops || loopsFixture;
   const documentsState = options.documents || documentsFixture;
   const runtimeConfig = options.runtimeConfig || {};
-  const providersState = options.providers || [
-    {
-      id: 'codex-default',
-      name: 'Codex Default',
-      provider_type: 'codex',
-      default_model: 'gpt-5.3-codex',
-      capabilities: ['chat', 'tools', 'loops'],
-      secret_ref: ''
-    }
-  ];
+  const providersSeed = Array.isArray(options.providers) ? options.providers : defaultProvidersFixture;
+  const providersState = providersSeed.map((provider) => ({ ...provider }));
   const secretsState = options.secrets || [];
   const projectsState = options.projects || [
     {

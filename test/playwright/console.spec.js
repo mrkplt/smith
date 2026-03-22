@@ -7,6 +7,7 @@ import {
   emitChatEvent,
   loopsFixture,
   documentsFixture,
+  defaultProvidersFixture,
 } from './helpers.js';
 
 // ── helpers ────────────────────────────────────────────────────────
@@ -88,23 +89,27 @@ test('filters by state and search', async ({ page }) => {
 
 test('provider API key config', async ({ page }) => {
   await mockEventSource(page);
-  const api = await mockApiRoutes(page);
+  const api = await mockApiRoutes(page, { providers: defaultProvidersFixture });
 
   await page.goto('/providers');
 
-  // Click Configure button to open drawer
-  await page.getByRole('button', { name: 'Configure' }).first().click();
+  // Unconfigured defaults are hidden until they have a credential label.
+  await expect(page.getByText('No Provider Profiles')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Configure' })).toHaveCount(0);
 
-  // Fill in the API key
-  await page.getByTestId('provider-credential-id').fill('codex-default-key');
-  await page.getByPlaceholder('sk-...').fill('sk-test-key');
+  // Create a reusable profile + credential from the providers section.
+  await page.getByRole('button', { name: 'New Profile' }).click();
+  await page.getByTestId('provider-profile-id').fill('codex-work');
+  await page.getByTestId('provider-display-name').fill('Codex Work');
+  await page.getByTestId('provider-credential-id').fill('codex-work-key');
+  await page.getByTestId('provider-api-key').fill('sk-test-key');
+  await page.getByTestId('provider-save').click();
 
-  // Submit the form
-  await page.getByRole('button', { name: 'Update Profile' }).click();
-
-  // Verify provider and secret state were updated
-  await expect.poll(() => api.providersState.find((provider) => provider.id === 'codex-default')?.secret_ref).toBe('codex-default-key');
-  await expect.poll(() => api.secretsState.some((secret) => secret.id === 'codex-default-key')).toBe(true);
+  // Verify provider and secret state were updated and now visible in UI.
+  await expect.poll(() => api.providersState.find((provider) => provider.id === 'codex-work')?.secret_ref).toBe('codex-work-key');
+  await expect.poll(() => api.secretsState.some((secret) => secret.id === 'codex-work-key')).toBe(true);
+  await expect(page.getByText('Codex Work')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Configure' }).first()).toBeVisible();
 });
 
 test('project management', async ({ page }) => {
