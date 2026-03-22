@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "project": "Feature Flag Smith Feature Tasks Kanban Enabled Prd",
+  "overview": "Add an In Focus Kanban lane that groups actively running tasks separately from backlog and completed work so operators can inspect live execution quickly.",
+  "goals": [
+    "Surface all running tasks in a dedicated In Focus lane",
+    "Keep task movement between lanes deterministic and status-driven",
+    "Improve operator speed for identifying active execution"
+  ],
+  "nonGoals": [
+    "Changing task execution semantics or scheduler behavior",
+    "Introducing new task statuses beyond existing domain values",
+    "Redesigning the entire Kanban board UI"
+  ],
+  "successMetrics": [
+    "Operators can identify all running tasks from one lane without cross-lane scanning",
+    "Tasks with running status appear in In Focus within one board refresh cycle",
+    "No non-running tasks are displayed in In Focus"
+  ],
+  "openQuestions": [
+    "Should paused tasks remain in their current lane or move to In Focus?",
+    "Should In Focus be ordered by start time, last update, or priority?"
+  ],
+  "blockers": [
+    {
+      "date": "2026-03-22",
+      "storyId": "US-001",
+      "summary": "Environment missing required tooling for full workflow verification.",
+      "details": [
+        "`td` command unavailable (`td: command not found`).",
+        "`go` command unavailable (`go: command not found`) so `go test ./...` could not run.",
+        "`docker` and `act` unavailable for local hook workflow checks."
+      ]
+    },
+    {
+      "date": "2026-03-22",
+      "storyId": "US-002",
+      "summary": "Full verification blocked by missing required local toolchain.",
+      "details": [
+        "`go test ./...` blocked because `go` is not installed.",
+        "Git hook workflow validation blocked because both `docker` and `act` are not installed."
+      ]
+    },
+    {
+      "date": "2026-03-22",
+      "storyId": "US-003",
+      "summary": "Full verification blocked by missing required local toolchain.",
+      "details": [
+        "`td usage` is blocked because `td` is not installed (`td: command not found`).",
+        "`go test ./...` blocked because `go` is not installed.",
+        "Git hook workflow validation blocked because both `docker` and `act` are not installed."
+      ]
+    },
+    {
+      "date": "2026-03-22",
+      "storyId": "US-004",
+      "summary": "Full verification blocked by missing required local toolchain.",
+      "details": [
+        "`td usage` is blocked because `td` is not installed (`td: command not found`).",
+        "`go test ./...` blocked because `go` is not installed.",
+        "Git hook workflow validation blocked because both `docker` and `act` are not installed."
+      ]
+    },
+    {
+      "date": "2026-03-22",
+      "storyId": "US-005",
+      "summary": "Full verification blocked by missing required local toolchain.",
+      "details": [
+        "`td usage` is blocked because `td` is not installed (`td: command not found`).",
+        "`go test ./...` blocked because `go` is not installed.",
+        "Git hook workflow validation blocked because both `docker` and `act` are not installed."
+      ]
+    }
+  ],
+  "stack": {
+    "framework": "Existing Smith console frontend and backend task APIs",
+    "hosting": "Current Smith deployment topology",
+    "database": "Existing task persistence layer",
+    "auth": "Existing operator authentication and authorization"
+  },
+  "routes": [
+    {
+      "path": "Kanban Board / Tasks",
+      "name": "Tasks Kanban View",
+      "purpose": "Display tasks grouped by lane including In Focus for active execution"
+    }
+  ],
+  "uiNotes": [
+    "Place In Focus as a first-class lane visible without scrolling on desktop layouts where possible.",
+    "Display task cards in In Focus with execution metadata needed for quick inspection."
+  ],
+  "dataModel": [
+    {
+      "name": "TaskCard",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "note": "Unique task identifier"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "note": "Existing task execution status used for lane assignment"
+        },
+        {
+          "name": "lane",
+          "type": "string",
+          "note": "Derived lane name for board rendering"
+        }
+      ]
+    }
+  ],
+  "importFormat": "Canonical Smith PRD JSON consumed from `.agents/tasks/prd.json`.",
+  "rules": [
+    "In Focus lane must include only tasks in active execution states.",
+    "Lane assignment must be derived from task status and remain deterministic.",
+    "Existing non-running lane behavior must remain unchanged.",
+    "All lane transitions must be reflected without manual page reload where current board refresh supports it."
+  ],
+  "qualityGates": [
+    "npm --prefix frontend run check",
+    "npm --prefix frontend run build",
+    "go test ./..."
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Define active status to In Focus lane mapping",
+      "status": "done",
+      "dependsOn": [],
+      "description": "As an operator, I want a clear status mapping so running tasks are consistently grouped into the In Focus lane.",
+      "acceptanceCriteria": [
+        "Document the set of task statuses considered active execution for Kanban grouping.",
+        "Board grouping logic maps each active status to lane `In Focus` and leaves other mappings unchanged.",
+        "Example: a task with an active execution status renders in In Focus.",
+        "Negative case: a task in a non-active status does not render in In Focus.",
+        "Automated tests validate mapping for every known task status."
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Render In Focus lane on tasks Kanban",
+      "status": "done",
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As an operator, I want a dedicated In Focus lane on the board so I can immediately locate active execution tasks.",
+      "acceptanceCriteria": [
+        "Kanban view shows an `In Focus` lane in the lane set.",
+        "Lane displays task cards assigned by status mapping from US-001.",
+        "Example: when two tasks are running, both appear in In Focus.",
+        "Negative case: when no tasks are active, In Focus renders an empty-state treatment instead of stale cards.",
+        "UI test verifies lane presence and card counts for seeded task fixtures."
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "Keep lane membership updated as task status changes",
+      "status": "done",
+      "dependsOn": [
+        "US-001",
+        "US-002"
+      ],
+      "description": "As an operator, I want tasks to move into and out of In Focus automatically when statuses change so the board reflects current execution.",
+      "acceptanceCriteria": [
+        "When a task changes from non-active to active, it appears in In Focus on the next supported refresh/update cycle.",
+        "When a task leaves active execution, it exits In Focus and appears in the correct target lane.",
+        "Example: transitioning `queued` -> `running` moves a card into In Focus.",
+        "Negative case: transitioning `running` -> `done` removes the card from In Focus and places it in Done.",
+        "Integration tests cover both transition directions."
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Prioritize inspection metadata in In Focus cards",
+      "status": "done",
+      "dependsOn": [
+        "US-002"
+      ],
+      "description": "As an operator, I want key execution metadata visible on In Focus cards so I can inspect active work without opening each task.",
+      "acceptanceCriteria": [
+        "In Focus cards display existing execution metadata fields required for quick inspection (for example current step and last update time) when available.",
+        "Metadata rendering uses existing task data contracts without requiring new backend fields.",
+        "Example: a running task card shows its current step and recency indicator.",
+        "Negative case: if metadata is missing, the card renders a safe fallback label and remains readable.",
+        "Component test verifies metadata rendering and fallback behavior."
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Validate no regression to existing non-active lanes",
+      "status": "done",
+      "dependsOn": [
+        "US-001",
+        "US-002",
+        "US-003"
+      ],
+      "description": "As an operator, I want existing lane behavior preserved so adding In Focus does not break grouping for backlog, blocked, or completed tasks.",
+      "acceptanceCriteria": [
+        "Non-active statuses continue to appear in their pre-existing lanes with unchanged counts for the same fixture set.",
+        "Adding In Focus does not duplicate cards across lanes.",
+        "Example: a completed task appears only in Done and never in In Focus.",
+        "Negative case: regression test fails if any non-active status is remapped unexpectedly.",
+        "Regression suite covers lane counts and exclusivity across all lanes."
+      ]
+    }
+  ]
+}

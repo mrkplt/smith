@@ -11,6 +11,7 @@
     type TaskContract
   } from '$lib/api';
   import { isTasksEnabled } from '$lib/feature-flags';
+  import { resolveTaskLane, type TaskLane } from '$lib/tasks/lane-mapping';
   import { goto } from '$app/navigation';
 
   let tasks = $state<TaskContract[]>([]);
@@ -29,15 +30,47 @@
   let sourceDocument = $state('docs/task.md');
   let objective = $state('');
   let validationCommands = $state('go test ./...');
+  const TASKS_POLL_INTERVAL_MS = 10_000;
 
-  onMount(async () => {
-    if (!isTasksEnabled()) {
-      pushToast('Tasks is not enabled in this environment', 'muted');
-      await goto('/pods', { replaceState: true });
-      return;
-    }
-    projectID = $appState.projects[0]?.id || 'smith';
-    await loadTasks();
+  let pollIntervalHandle: ReturnType<typeof setInterval> | undefined;
+
+  const KANBAN_LANES: { id: TaskLane; label: string; emptyMessage: string }[] = [
+    { id: 'in_focus', label: 'In Focus', emptyMessage: 'No tasks currently in active execution.' },
+    { id: 'backlog', label: 'Backlog', emptyMessage: 'No tasks in backlog.' },
+    { id: 'blocked', label: 'Blocked', emptyMessage: 'No blocked tasks.' },
+    { id: 'done', label: 'Done', emptyMessage: 'No completed tasks yet.' }
+  ];
+
+  onMount(() => {
+    const initializeTasks = async () => {
+      if (!isTasksEnabled()) {
+        pushToast('Tasks is not enabled in this environment', 'muted');
+        await goto('/pods', { replaceState: true });
+        return;
+      }
+
+      projectID = $appState.projects[0]?.id || 'smith';
+      await loadTasks();
+      startTaskPolling();
+    };
+
+    void initializeTasks();
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopTaskPolling();
+        return;
+      }
+
+      void loadTasks();
+      startTaskPolling();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      stopTaskPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   });
 
   async function loadTasks() {
@@ -51,6 +84,27 @@
     } finally {
       loading = false;
     }
+  }
+
+  function startTaskPolling() {
+    if (pollIntervalHandle || document.hidden) {
+      return;
+    }
+
+    pollIntervalHandle = setInterval(() => {
+      if (loading || saving) {
+        return;
+      }
+      void loadTasks();
+    }, TASKS_POLL_INTERVAL_MS);
+  }
+
+  function stopTaskPolling() {
+    if (!pollIntervalHandle) {
+      return;
+    }
+    clearInterval(pollIntervalHandle);
+    pollIntervalHandle = undefined;
   }
 
   function parseMultiline(input: string): string[] {
@@ -184,6 +238,41 @@
       actionTaskID = '';
     }
   }
+
+  function tasksForLane(lane: TaskLane): TaskContract[] {
+    return tasks.filter((task) => resolveTaskLane(task.status) === lane);
+  }
+
+  function currentStepLabel(task: TaskContract): string {
+    const currentStep = task.metadata?.current_step?.trim();
+    return currentStep ? `Step: ${currentStep}` : 'Step unavailable';
+  }
+
+  function recencyLabel(task: TaskContract): string {
+    if (!task.updated_at) {
+      return 'Update time unavailable';
+    }
+
+    const updatedAtMs = Date.parse(task.updated_at);
+    if (Number.isNaN(updatedAtMs)) {
+      return 'Update time unavailable';
+    }
+
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - updatedAtMs) / 1000));
+    if (elapsedSeconds < 60) {
+      return 'Updated just now';
+    }
+
+    if (elapsedSeconds < 60 * 60) {
+      return `Updated ${Math.floor(elapsedSeconds / 60)}m ago`;
+    }
+
+    if (elapsedSeconds < 60 * 60 * 24) {
+      return `Updated ${Math.floor(elapsedSeconds / (60 * 60))}h ago`;
+    }
+
+    return `Updated ${Math.floor(elapsedSeconds / (60 * 60 * 24))}d ago`;
+  }
 </script>
 
 <TopBar title="Tasks" />
@@ -228,64 +317,86 @@
     {/if}
     {#if tasks.length === 0}
       <p class="muted">No task contracts yet.</p>
-    {:else}
-      <div class="task-list">
-        {#each tasks as task}
-          <article class="task-item">
-            <div class="task-main">
-              <div class="task-id">{task.id}</div>
-              <div class="task-objective">{task.objective}</div>
-              <div class="task-meta">{task.project_id} · {task.provider_profile_id}</div>
-              {#if editingTaskID === task.id}
-                <div class="edit-grid">
-                  <label>
-                    <span>Objective</span>
-                    <textarea rows="2" bind:value={editObjective}></textarea>
-                  </label>
-                  <label>
-                    <span>Provider Profile</span>
-                    <input bind:value={editProviderProfileID} />
-                  </label>
-                  <label>
-                    <span>Source Document</span>
-                    <input bind:value={editSourceDocument} />
-                  </label>
-                  <label>
-                    <span>Validation</span>
-                    <textarea rows="3" bind:value={editValidation}></textarea>
-                  </label>
-                </div>
-              {/if}
-            </div>
-            <div class="task-actions">
-              <span class="status">{task.status}</span>
-              {#if task.status === 'draft'}
-                <button class="ghost" onclick={() => markValidated(task)}>Validate</button>
-              {/if}
-              {#if task.status === 'validated'}
-                <button class="ghost" onclick={() => reopenDraft(task)}>Reopen Draft</button>
-                <button class="primary" onclick={() => approve(task)}>Approve</button>
-              {/if}
-              {#if task.status === 'approved'}
-                <button class="primary" onclick={() => startLoop(task)} disabled={actionTaskID === task.id}>
-                  {actionTaskID === task.id ? 'Starting…' : 'Start Loop'}
-                </button>
-              {/if}
-              {#if task.status === 'draft' || task.status === 'validated'}
-                {#if editingTaskID === task.id}
-                  <button class="ghost" onclick={cancelEdit}>Cancel Edit</button>
-                  <button class="primary" onclick={() => saveEdit(task.id)} disabled={actionTaskID === task.id}>
-                    {actionTaskID === task.id ? 'Saving…' : 'Save Edit'}
-                  </button>
-                {:else}
-                  <button class="ghost" onclick={() => startEdit(task)}>Edit</button>
-                {/if}
-              {/if}
-            </div>
-          </article>
-        {/each}
-      </div>
     {/if}
+    <div class="kanban-board" data-testid="tasks-kanban-board">
+      {#each KANBAN_LANES as lane}
+        {@const laneTasks = tasksForLane(lane.id)}
+        <section class="lane" data-testid={`lane-${lane.id}`}>
+          <header class="lane-head">
+            <h3>{lane.label}</h3>
+            <span class="lane-count">{laneTasks.length}</span>
+          </header>
+          {#if laneTasks.length === 0}
+            <p class="lane-empty" data-testid={`lane-empty-${lane.id}`}>{lane.emptyMessage}</p>
+          {:else}
+            <div class="lane-list" data-testid={`lane-cards-${lane.id}`}>
+              {#each laneTasks as task}
+                <article class="task-item" data-testid={`task-card-${lane.id}`}>
+                  <div class="task-main">
+                    <div class="task-id">{task.id}</div>
+                    <div class="task-objective">{task.objective}</div>
+                    <div class="task-meta">{task.project_id} · {task.provider_profile_id}</div>
+                    {#if lane.id === 'in_focus'}
+                      <div class="task-meta task-in-focus-meta" data-testid="task-in-focus-current-step">
+                        {currentStepLabel(task)}
+                      </div>
+                      <div class="task-meta task-in-focus-meta" data-testid="task-in-focus-recency">
+                        {recencyLabel(task)}
+                      </div>
+                    {/if}
+                    {#if editingTaskID === task.id}
+                      <div class="edit-grid">
+                        <label>
+                          <span>Objective</span>
+                          <textarea rows="2" bind:value={editObjective}></textarea>
+                        </label>
+                        <label>
+                          <span>Provider Profile</span>
+                          <input bind:value={editProviderProfileID} />
+                        </label>
+                        <label>
+                          <span>Source Document</span>
+                          <input bind:value={editSourceDocument} />
+                        </label>
+                        <label>
+                          <span>Validation</span>
+                          <textarea rows="3" bind:value={editValidation}></textarea>
+                        </label>
+                      </div>
+                    {/if}
+                  </div>
+                  <div class="task-actions">
+                    <span class="status">{task.status}</span>
+                    {#if task.status === 'draft'}
+                      <button class="ghost" onclick={() => markValidated(task)}>Validate</button>
+                    {/if}
+                    {#if task.status === 'validated'}
+                      <button class="ghost" onclick={() => reopenDraft(task)}>Reopen Draft</button>
+                      <button class="primary" onclick={() => approve(task)}>Approve</button>
+                    {/if}
+                    {#if task.status === 'approved'}
+                      <button class="primary" onclick={() => startLoop(task)} disabled={actionTaskID === task.id}>
+                        {actionTaskID === task.id ? 'Starting…' : 'Start Loop'}
+                      </button>
+                    {/if}
+                    {#if task.status === 'draft' || task.status === 'validated'}
+                      {#if editingTaskID === task.id}
+                        <button class="ghost" onclick={cancelEdit}>Cancel Edit</button>
+                        <button class="primary" onclick={() => saveEdit(task.id)} disabled={actionTaskID === task.id}>
+                          {actionTaskID === task.id ? 'Saving…' : 'Save Edit'}
+                        </button>
+                      {:else}
+                        <button class="ghost" onclick={() => startEdit(task)}>Edit</button>
+                      {/if}
+                    {/if}
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
+        </section>
+      {/each}
+    </div>
   </div>
 </section>
 
@@ -350,7 +461,51 @@
     padding: 0.55rem 0.65rem;
   }
 
-  .task-list {
+  .kanban-board {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .lane {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    background: rgba(17, 24, 39, 0.25);
+    padding: 0.65rem;
+    min-height: 8rem;
+  }
+
+  .lane-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.6rem;
+  }
+
+  h3 {
+    margin: 0;
+    color: #e5e7eb;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .lane-count {
+    color: #d1d5db;
+    font-size: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    padding: 0.1rem 0.4rem;
+  }
+
+  .lane-empty {
+    color: #9ca3af;
+    font-size: 0.8rem;
+    margin: 0;
+  }
+
+  .lane-list {
     display: grid;
     gap: 0.65rem;
   }
@@ -380,6 +535,10 @@
     color: #9ca3af;
     font-size: 0.75rem;
     margin-top: 0.25rem;
+  }
+
+  .task-in-focus-meta {
+    color: #cbd5e1;
   }
 
   .edit-grid {
@@ -461,6 +620,10 @@
 
   @media (max-width: 900px) {
     .form-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .kanban-board {
       grid-template-columns: 1fr;
     }
 
