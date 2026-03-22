@@ -8,6 +8,7 @@ import {
   isPRDDiagnosticResolveEnabled,
   isProviderTypeEnabled,
   isSecretsEnabled,
+  isTasksKanbanEnabled,
   isTasksEnabled,
   parseBoolean
 } from '$lib/feature-flags';
@@ -28,6 +29,7 @@ describe('feature flags', () => {
 
   it('defaults unfinished features off', () => {
     expect(isTasksEnabled({})).toBe(false);
+    expect(isTasksKanbanEnabled({})).toBe(false);
     expect(isFeatureCapabilityEnabled({})).toBe(false);
     expect(isChatEnabled({})).toBe(false);
     expect(isIntegrationsEnabled({})).toBe(false);
@@ -37,6 +39,8 @@ describe('feature flags', () => {
   it('supports boolean and string runtime overrides', () => {
     expect(isTasksEnabled({ featureTasksEnabled: true })).toBe(true);
     expect(isTasksEnabled({ featureTasksEnabled: 'true' })).toBe(true);
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: true })).toBe(true);
+    expect(isTasksKanbanEnabled({ featureTasksKanbanEnabled: '1' })).toBe(true);
     expect(isFeatureCapabilityEnabled({ featureCapabilityEnabled: true })).toBe(true);
     expect(isFeatureCapabilityEnabled({ featureCapabilityEnabled: '1' })).toBe(true);
   });

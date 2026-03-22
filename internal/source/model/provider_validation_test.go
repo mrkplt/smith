@@ -22,10 +22,16 @@ func TestNormalizeProviderModelRejectsUnknownProvider(t *testing.T) {
 	}
 }
 
-func TestNormalizeProviderModelRejectsUnsupportedModel(t *testing.T) {
-	_, _, err := NormalizeProviderModel("codex", "gpt-5-unknown")
-	if err == nil {
-		t.Fatal("expected error for unsupported model")
+func TestNormalizeProviderModelAcceptsCustomModel(t *testing.T) {
+	providerID, model, err := NormalizeProviderModel("codex", "gpt-5.3-codex")
+	if err != nil {
+		t.Fatalf("expected custom model to normalize, got %v", err)
+	}
+	if providerID != DefaultProviderID {
+		t.Fatalf("expected provider %q, got %q", DefaultProviderID, providerID)
+	}
+	if model != "gpt-5.3-codex" {
+		t.Fatalf("expected model %q, got %q", "gpt-5.3-codex", model)
 	}
 }
 

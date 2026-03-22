@@ -10,7 +10,8 @@
     patchTaskContract,
     type TaskContract
   } from '$lib/api';
-  import { isTasksEnabled } from '$lib/feature-flags';
+  import { isTasksEnabled, isTasksKanbanEnabled } from '$lib/feature-flags';
+  import { buildTaskLanes, getTaskTerminalOutcome } from '$lib/tasks/kanban';
   import { goto } from '$app/navigation';
 
   let tasks = $state<TaskContract[]>([]);
@@ -29,6 +30,8 @@
   let sourceDocument = $state('docs/task.md');
   let objective = $state('');
   let validationCommands = $state('go test ./...');
+  const tasksKanbanEnabled = $derived(isTasksKanbanEnabled());
+  const lanes = $derived(buildTaskLanes(tasks, { kanbanEnabled: tasksKanbanEnabled }));
 
   onMount(async () => {
     if (!isTasksEnabled()) {
@@ -184,6 +187,18 @@
       actionTaskID = '';
     }
   }
+
+  function terminalOutcomeLabel(task: TaskContract): string {
+    const outcome = getTaskTerminalOutcome(task);
+    if (outcome === 'completed') return 'Completed';
+    if (outcome === 'blocked') return 'Blocked';
+    return 'Terminal';
+  }
+
+  function terminalReason(task: TaskContract): string {
+    const reason = task.terminal_reason?.trim();
+    return reason || '';
+  }
 </script>
 
 <TopBar title="Tasks" />
@@ -229,60 +244,95 @@
     {#if tasks.length === 0}
       <p class="muted">No task contracts yet.</p>
     {:else}
-      <div class="task-list">
-        {#each tasks as task}
-          <article class="task-item">
-            <div class="task-main">
-              <div class="task-id">{task.id}</div>
-              <div class="task-objective">{task.objective}</div>
-              <div class="task-meta">{task.project_id} · {task.provider_profile_id}</div>
-              {#if editingTaskID === task.id}
-                <div class="edit-grid">
-                  <label>
-                    <span>Objective</span>
-                    <textarea rows="2" bind:value={editObjective}></textarea>
-                  </label>
-                  <label>
-                    <span>Provider Profile</span>
-                    <input bind:value={editProviderProfileID} />
-                  </label>
-                  <label>
-                    <span>Source Document</span>
-                    <input bind:value={editSourceDocument} />
-                  </label>
-                  <label>
-                    <span>Validation</span>
-                    <textarea rows="3" bind:value={editValidation}></textarea>
-                  </label>
-                </div>
-              {/if}
+      <div class="kanban-grid">
+        {#each lanes as lane}
+          <section class="lane">
+            <div class="lane-head">
+              <h3>{lane.title}</h3>
+              <span class="lane-count">{lane.tasks.length}</span>
             </div>
-            <div class="task-actions">
-              <span class="status">{task.status}</span>
-              {#if task.status === 'draft'}
-                <button class="ghost" onclick={() => markValidated(task)}>Validate</button>
-              {/if}
-              {#if task.status === 'validated'}
-                <button class="ghost" onclick={() => reopenDraft(task)}>Reopen Draft</button>
-                <button class="primary" onclick={() => approve(task)}>Approve</button>
-              {/if}
-              {#if task.status === 'approved'}
-                <button class="primary" onclick={() => startLoop(task)} disabled={actionTaskID === task.id}>
-                  {actionTaskID === task.id ? 'Starting…' : 'Start Loop'}
-                </button>
-              {/if}
-              {#if task.status === 'draft' || task.status === 'validated'}
-                {#if editingTaskID === task.id}
-                  <button class="ghost" onclick={cancelEdit}>Cancel Edit</button>
-                  <button class="primary" onclick={() => saveEdit(task.id)} disabled={actionTaskID === task.id}>
-                    {actionTaskID === task.id ? 'Saving…' : 'Save Edit'}
-                  </button>
-                {:else}
-                  <button class="ghost" onclick={() => startEdit(task)}>Edit</button>
-                {/if}
-              {/if}
-            </div>
-          </article>
+            {#if lane.tasks.length === 0}
+              <p class="muted lane-empty">No tasks</p>
+            {:else}
+              <div class="task-list">
+                {#each lane.tasks as task}
+                  <article class="task-item">
+                    <div class="task-main">
+                      <div class="task-id">{task.id}</div>
+                      <div class="task-objective">{task.objective}</div>
+                      <div class="task-meta">{task.project_id} · {task.provider_profile_id}</div>
+                      {#if editingTaskID === task.id}
+                        <div class="edit-grid">
+                          <label>
+                            <span>Objective</span>
+                            <textarea rows="2" bind:value={editObjective}></textarea>
+                          </label>
+                          <label>
+                            <span>Provider Profile</span>
+                            <input bind:value={editProviderProfileID} />
+                          </label>
+                          <label>
+                            <span>Source Document</span>
+                            <input bind:value={editSourceDocument} />
+                          </label>
+                          <label>
+                            <span>Validation</span>
+                            <textarea rows="3" bind:value={editValidation}></textarea>
+                          </label>
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="task-actions">
+                      <span class="status" class:status-blocked={task.status === 'blocked'}>{task.status}</span>
+                      {#if lane.id === 'finished'}
+                        {@const outcome = getTaskTerminalOutcome(task)}
+                        <span class="outcome-pill" class:outcome-blocked={outcome === 'blocked'} class:outcome-completed={outcome === 'completed'}>
+                          {terminalOutcomeLabel(task)}
+                        </span>
+                      {/if}
+                      {#if task.status === 'draft'}
+                        <button class="ghost" onclick={() => markValidated(task)}>Validate</button>
+                      {/if}
+                      {#if task.status === 'validated'}
+                        <button class="ghost" onclick={() => reopenDraft(task)}>Reopen Draft</button>
+                        <button class="primary" onclick={() => approve(task)}>Approve</button>
+                      {/if}
+                      {#if task.status === 'approved'}
+                        <button class="primary" onclick={() => startLoop(task)} disabled={actionTaskID === task.id}>
+                          {actionTaskID === task.id ? 'Starting…' : 'Start Loop'}
+                        </button>
+                      {/if}
+                      {#if task.status === 'draft' || task.status === 'validated'}
+                        {#if editingTaskID === task.id}
+                          <button class="ghost" onclick={cancelEdit}>Cancel Edit</button>
+                          <button class="primary" onclick={() => saveEdit(task.id)} disabled={actionTaskID === task.id}>
+                            {actionTaskID === task.id ? 'Saving…' : 'Save Edit'}
+                          </button>
+                        {:else}
+                          <button class="ghost" onclick={() => startEdit(task)}>Edit</button>
+                        {/if}
+                      {/if}
+                    </div>
+                    {#if lane.id === 'finished'}
+                      <details class="terminal-details">
+                        <summary>Outcome details</summary>
+                        <div class="terminal-row">
+                          <span class="terminal-label">Outcome</span>
+                          <span>{terminalOutcomeLabel(task)}</span>
+                        </div>
+                        {#if getTaskTerminalOutcome(task) === 'blocked' && terminalReason(task)}
+                          <div class="terminal-row">
+                            <span class="terminal-label">Block reason</span>
+                            <span>{terminalReason(task)}</span>
+                          </div>
+                        {/if}
+                      </details>
+                    {/if}
+                  </article>
+                {/each}
+              </div>
+            {/if}
+          </section>
         {/each}
       </div>
     {/if}
@@ -353,6 +403,53 @@
   .task-list {
     display: grid;
     gap: 0.65rem;
+  }
+
+  .kanban-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(5, minmax(12rem, 1fr));
+    align-items: start;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .lane {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    padding: 0.55rem;
+    background: rgba(17, 24, 39, 0.25);
+    min-height: 8rem;
+  }
+
+  .lane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.55rem;
+  }
+
+  h3 {
+    margin: 0;
+    color: #e5e7eb;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .lane-count {
+    border-radius: 999px;
+    background: rgba(134, 188, 37, 0.18);
+    color: #d9f99d;
+    font-size: 0.72rem;
+    line-height: 1;
+    padding: 0.25rem 0.45rem;
+    font-weight: 700;
+  }
+
+  .lane-empty {
+    margin: 0;
+    font-size: 0.8rem;
   }
 
   .task-item {
@@ -430,6 +527,64 @@
     padding: 0.2rem 0.45rem;
   }
 
+  .status-blocked {
+    border-color: rgba(248, 113, 113, 0.65);
+    color: #fecaca;
+    background: rgba(127, 29, 29, 0.22);
+  }
+
+  .outcome-pill {
+    text-transform: uppercase;
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    border-radius: 999px;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #d1d5db;
+    background: rgba(17, 24, 39, 0.4);
+  }
+
+  .outcome-completed {
+    border-color: rgba(134, 188, 37, 0.55);
+    color: #d9f99d;
+    background: rgba(77, 124, 15, 0.25);
+  }
+
+  .outcome-blocked {
+    border-color: rgba(248, 113, 113, 0.65);
+    color: #fecaca;
+    background: rgba(127, 29, 29, 0.22);
+  }
+
+  .terminal-details {
+    margin-top: 0.55rem;
+    width: 100%;
+    font-size: 0.76rem;
+    color: #d1d5db;
+  }
+
+  .terminal-details summary {
+    cursor: pointer;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.65rem;
+  }
+
+  .terminal-row {
+    display: grid;
+    gap: 0.35rem;
+    grid-template-columns: 6.5rem 1fr;
+    margin-top: 0.35rem;
+  }
+
+  .terminal-label {
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.64rem;
+  }
+
   button {
     border-radius: 0.35rem;
     padding: 0.4rem 0.55rem;
@@ -473,6 +628,10 @@
     }
 
     .edit-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .kanban-grid {
       grid-template-columns: 1fr;
     }
   }

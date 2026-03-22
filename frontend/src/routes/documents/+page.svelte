@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
-	import { createTaskContract } from '$lib/api';
+	import { createTaskContract, fetchJSON } from '$lib/api';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import DocChatModal from '$lib/components/DocChatModal.svelte';
 	import DocumentsSidebar from '$lib/components/DocumentsSidebar.svelte';
@@ -16,9 +16,11 @@
 		type PRDValidationReport
 	} from '$lib/documents/prd-validation';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { tick } from 'svelte';
 
 	let showAll = $state(false);
+	let docSearchQuery = $state('');
 	let chatOpen = $state(false);
 	let isEditing = $state(false);
 	
@@ -31,6 +33,8 @@
 	let validationBusy = $state(false);
 	let validationError = $state('');
 	let validationRequestSeq = 0;
+	let linkedDocRef = $state<string | null>(null);
+	let linkedDocResolved = $state(false);
 	let editorFocus = $state<{ lineIndex: number | null; sectionId: string; selectionText: string }>({
 		lineIndex: null,
 		sectionId: '',
@@ -54,8 +58,17 @@
 
 	const projectsWithDocs = $derived.by(() => {
 		const grouped: Record<string, any[]> = {};
+		const query = docSearchQuery.trim().toLowerCase();
 		$appState.documents.forEach((d: any) => {
 			if (!showAll && d.status === 'archived') return;
+			if (query) {
+				const title = String(d.title || '').toLowerCase();
+				const id = String(d.id || '').toLowerCase();
+				const sourceRef = String(d.source_ref || '').toLowerCase();
+				if (!title.includes(query) && !id.includes(query) && !sourceRef.includes(query)) {
+					return;
+				}
+			}
 			if (!grouped[d.project_id]) grouped[d.project_id] = [];
 			grouped[d.project_id].push(d);
 		});
@@ -101,6 +114,34 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		return inferPRDFormat(String(doc?.content || ''));
 	}
 
+	function documentMatchesReference(doc: any, reference: string): boolean {
+		const normalized = String(reference || '').trim();
+		if (!normalized) {
+			return false;
+		}
+		const docID = String(doc?.id || '').trim();
+		const docRef = String(doc?.source_ref || '').trim();
+		if (docID && normalized === docID) {
+			return true;
+		}
+		if (docRef && normalized === docRef) {
+			return true;
+		}
+		if (docID && normalized === `doc:${docID}`) {
+			return true;
+		}
+		return false;
+	}
+
+	function findDocumentByReference(reference: string): any | null {
+		for (const doc of $appState.documents) {
+			if (documentMatchesReference(doc, reference)) {
+				return doc;
+			}
+		}
+		return null;
+	}
+
 	function selectDocument(doc: any) {
 		const nextFormat = inferDocumentFormat(doc);
 		selectedDocId = doc.id;
@@ -111,6 +152,80 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		isEditing = false;
 		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
 		void refreshValidation(doc.content, nextFormat);
+		linkedDocResolved = true;
+	}
+
+	function clearActiveDocument() {
+		selectedDocId = null;
+		isEditing = false;
+		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
+	}
+
+	$effect(() => {
+		const requested = String(page.url.searchParams.get('doc') || '').trim();
+		if (!requested) {
+			linkedDocRef = null;
+			linkedDocResolved = false;
+			return;
+		}
+		linkedDocRef = requested;
+		linkedDocResolved = false;
+	});
+
+	$effect(() => {
+		const targetRef = linkedDocRef;
+		if (!targetRef || linkedDocResolved) {
+			return;
+		}
+		const matched = findDocumentByReference(targetRef);
+		if (matched) {
+			selectDocument(matched);
+			return;
+		}
+		if ($appState.documents.length > 0) {
+			pushToast('Requested document was not found (it may be archived or deleted).', 'err');
+			linkedDocResolved = true;
+		}
+	});
+
+	function orderedVisibleDocuments(documents: any[]): any[] {
+		const grouped: Record<string, any[]> = {};
+		for (const doc of documents) {
+			if (!showAll && doc.status === 'archived') {
+				continue;
+			}
+			const projectID = String(doc.project_id || 'default');
+			if (!grouped[projectID]) {
+				grouped[projectID] = [];
+			}
+			grouped[projectID].push(doc);
+		}
+		const orderedProjectIDs = Object.keys(grouped).sort();
+		const ordered: any[] = [];
+		for (const projectID of orderedProjectIDs) {
+			ordered.push(...grouped[projectID]);
+		}
+		return ordered;
+	}
+
+	function nextActiveDocumentAfterMutation(previousDocs: any[], nextDocs: any[], currentDocID: string): any | null {
+		const prevVisible = orderedVisibleDocuments(previousDocs);
+		const nextVisible = orderedVisibleDocuments(nextDocs);
+		if (nextVisible.length === 0) {
+			return null;
+		}
+		const prevIndex = prevVisible.findIndex((doc) => String(doc.id) === currentDocID);
+		if (prevIndex < 0) {
+			return nextVisible[0];
+		}
+		return nextVisible[prevIndex] || nextVisible[Math.max(0, prevIndex - 1)] || nextVisible[0] || null;
+	}
+
+	async function reloadDocumentsFromAPI(): Promise<any[]> {
+		const payload = await fetchJSON('/v1/documents');
+		const docs = Array.isArray(payload) ? payload : [];
+		appState.update((state) => ({ ...state, documents: docs }));
+		return docs;
 	}
 
 	function startEdit() {
@@ -152,10 +267,16 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		}
 	}
 
-	async function buildDoc() {
-		if (!selectedDocId) return;
+	async function buildDoc(doc?: any) {
+		const targetDocId = String(doc?.id || selectedDocId || '').trim();
+		if (!targetDocId) {
+			return;
+		}
+		if (doc && String(selectedDocId || '') !== targetDocId) {
+			selectDocument(doc);
+		}
 		try {
-			await buildDocument(selectedDocId);
+			await buildDocument(targetDocId);
 			pushToast("Build loop started", "ok");
 		} catch (err: any) {
 			const report = err?.body?.report;
@@ -170,22 +291,29 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		}
 	}
 
-	async function archiveDoc() {
-		if (!selectedDocId || !selectedDoc) return;
-		const docID = selectedDocId;
+	async function archiveDoc(doc?: any) {
+		const targetDoc = doc || selectedDoc;
+		const docID = String(targetDoc?.id || selectedDocId || '').trim();
+		if (!docID || !targetDoc) {
+			return;
+		}
+		if (doc && String(selectedDocId || '') !== docID) {
+			selectDocument(doc);
+		}
+		const previousDocs = [...$appState.documents];
 		try {
-			const nextStatus = await toggleDocumentArchive(selectedDocId, selectedDoc);
-			appState.update((state) => ({
-				...state,
-				documents: state.documents.map((doc: any) =>
-					doc.id === docID
-						? { ...doc, status: nextStatus, updated_at: new Date().toISOString() }
-						: doc
-				)
-			}));
-			if (!showAll && nextStatus === 'archived') {
-				selectedDocId = null;
-				isEditing = false;
+			const nextStatus = await toggleDocumentArchive(docID, targetDoc);
+			const freshDocs = await reloadDocumentsFromAPI();
+			let nextActiveDoc: any | null = null;
+			if (nextStatus === 'archived') {
+				nextActiveDoc = nextActiveDocumentAfterMutation(previousDocs, freshDocs, docID);
+			} else {
+				nextActiveDoc = freshDocs.find((doc: any) => String(doc.id) === docID) || null;
+			}
+			if (nextActiveDoc) {
+				selectDocument(nextActiveDoc);
+			} else {
+				clearActiveDocument();
 			}
 			pushToast(`Document ${nextStatus}`, "ok");
 		} catch (err: any) {
@@ -193,31 +321,56 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		}
 	}
 
-	async function deleteDoc() {
-		if (!selectedDocId || !confirm("Delete document?")) return;
+	async function deleteDoc(doc?: any) {
+		const targetDoc = doc || selectedDoc;
+		const docID = String(targetDoc?.id || selectedDocId || '').trim();
+		if (!docID) {
+			return;
+		}
+		const targetLabel = String(targetDoc?.title || '').trim();
+		const deletePrompt = targetLabel
+			? `Delete "${targetLabel}"? This action is permanent and cannot be undone.`
+			: 'Delete this document? This action is permanent and cannot be undone.';
+		if (!confirm(deletePrompt)) {
+			return;
+		}
+		if (doc && String(selectedDocId || '') !== docID) {
+			selectDocument(doc);
+		}
+		const previousDocs = [...$appState.documents];
 		try {
-			await deleteDocument(selectedDocId);
-			selectedDocId = null;
+			await deleteDocument(docID);
+			const freshDocs = await reloadDocumentsFromAPI();
+			const nextActiveDoc = nextActiveDocumentAfterMutation(previousDocs, freshDocs, docID);
+			if (nextActiveDoc) {
+				selectDocument(nextActiveDoc);
+			} else {
+				clearActiveDocument();
+			}
 			pushToast("Document deleted", "ok");
 		} catch (err: any) {
 			pushToast(err.message, "err");
 		}
 	}
 
-	async function createTaskFromDocument() {
+	async function createTaskFromDocument(doc?: any) {
 		if (!tasksFeatureEnabled) {
 			pushToast('Task contracts are currently gated and unavailable in this environment.', 'err');
 			return;
 		}
-		if (!selectedDoc) {
+		const targetDoc = doc || selectedDoc;
+		if (!targetDoc) {
 			pushToast('select a document first', 'err');
 			return;
 		}
+		if (doc && String(selectedDocId || '') !== String(doc.id || '')) {
+			selectDocument(doc);
+		}
 		try {
 			const providerProfileID = 'codex-default';
-			const projectID = String(selectedDoc.project_id || $appState.projects[0]?.id || 'smith');
-			const objective = String(selectedDoc.title || 'Document-derived task').trim();
-			const sourceDocument = String(selectedDoc.source_ref || `doc:${selectedDoc.id}`);
+			const projectID = String(targetDoc.project_id || $appState.projects[0]?.id || 'smith');
+			const objective = String(targetDoc.title || 'Document-derived task').trim();
+			const sourceDocument = String(targetDoc.source_ref || `doc:${targetDoc.id}`);
 			const validation = ['go test ./...'];
 			const created = await createTaskContract({
 				project_id: projectID,
@@ -226,7 +379,7 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 				objective,
 				validation,
 				metadata: {
-					document_id: String(selectedDoc.id || ''),
+					document_id: String(targetDoc.id || ''),
 					document_title: objective,
 					created_from: 'documents-page',
 				},
@@ -453,8 +606,15 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		{projectsWithDocs}
 		{selectedDocId}
 		{showAll}
+		tasksEnabled={tasksFeatureEnabled}
+		searchQuery={docSearchQuery}
 		onShowAllChange={(value) => showAll = value}
+		onSearchQueryChange={(value) => docSearchQuery = value}
 		onSelectDocument={selectDocument}
+		onBuildDocument={(doc) => void buildDoc(doc)}
+		onCreateTaskFromDocument={(doc) => void createTaskFromDocument(doc)}
+		onArchiveDocument={(doc) => void archiveDoc(doc)}
+		onDeleteDocument={(doc) => void deleteDoc(doc)}
 	/>
 
 	<DocumentWorkspace
@@ -483,10 +643,6 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		onRefreshValidation={refreshValidation}
 		onRefineWithAI={refineWithAI}
 		onResolveDiagnostic={runDiagnosticAgentAction}
-		onBuildDoc={buildDoc}
-		onCreateTask={createTaskFromDocument}
-		onArchiveDoc={archiveDoc}
-		onDeleteDoc={deleteDoc}
 	/>
 
 	{#if chatFeatureEnabled && chatOpen}
@@ -503,10 +659,14 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 <style>
 	.doc-layout {
 		display: grid;
-		height: calc(100vh - 160px);
-		background: #000000;
+		height: calc(100vh - 172px);
+		background: var(--surface-1);
 		overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+		margin-top: 10px;
+		margin-inline: 1rem;
+		border: 1px solid var(--border-subtle);
+		box-shadow: var(--elevation-1), var(--inner-highlight);
+		border-radius: 10px;
 	}
 
 </style>

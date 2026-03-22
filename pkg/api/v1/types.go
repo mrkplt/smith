@@ -209,6 +209,9 @@ type TaskContract struct {
 	AcceptanceCriteria []string           `json:"acceptance_criteria,omitempty"`
 	Validation         []string           `json:"validation,omitempty"`
 	Status             TaskContractStatus `json:"status"`
+	TerminalOutcome    string             `json:"terminal_outcome,omitempty"`
+	TerminalReason     string             `json:"terminal_reason,omitempty"`
+	TerminalAt         *time.Time         `json:"terminal_at,omitempty"`
 	Metadata           map[string]string  `json:"metadata,omitempty"`
 	CreatedAt          time.Time          `json:"created_at"`
 	UpdatedAt          time.Time          `json:"updated_at"`

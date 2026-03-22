@@ -220,6 +220,21 @@ export async function mockApiRoutes(page, options = {}) {
     window.confirm = (msg) => { window.__lastConfirmMessage = String(msg || ''); return true; };
   }, runtimeConfig);
 
+  await page.route(/\/runtime-config\.js$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/javascript',
+      body: `window.__SMITH_CONFIG__ = ${JSON.stringify({
+        apiBaseUrl: '',
+        operatorToken: 'test-token',
+        featureChatEnabled: true,
+        featureSecretsEnabled: true,
+        ...runtimeConfig
+      })};`
+    });
+  });
+
   // ── HTTP routes ───────────────────────────────────────────────────
 
   // GET /v1/loops

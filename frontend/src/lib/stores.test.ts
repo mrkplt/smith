@@ -33,14 +33,14 @@ describe('stores: pushToast', () => {
     expect(messages[0].level).toBe('muted');
   });
 
-  it('hides the toast after 3200ms', () => {
+  it('hides the toast after 2800ms', () => {
     pushToast('Hide me', 'err');
 
     // Initially showing
     expect(get(toastMessages)[0].show).toBe(true);
 
-    // Advance time by 3200ms
-    vi.advanceTimersByTime(3200);
+    // Advance time by 2800ms
+    vi.advanceTimersByTime(2800);
 
     // Toast should still exist but show=false
     const messages = get(toastMessages);
@@ -48,11 +48,11 @@ describe('stores: pushToast', () => {
     expect(messages[0].show).toBe(false);
   });
 
-  it('removes the toast completely after 3360ms (3200ms + 160ms)', () => {
+  it('removes the toast completely after 2960ms (2800ms + 160ms)', () => {
     pushToast('Remove me', 'ok');
 
     // Advance time to exactly when it gets hidden
-    vi.advanceTimersByTime(3200);
+    vi.advanceTimersByTime(2800);
     expect(get(toastMessages).length).toBe(1);
 
     // Advance time by another 160ms to trigger the second timeout

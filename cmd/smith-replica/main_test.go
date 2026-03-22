@@ -958,6 +958,36 @@ func TestResolveCompletionGitBranch(t *testing.T) {
 	}
 }
 
+func TestBuildCompletionTraceabilityIncludesPRDMetadata(t *testing.T) {
+	anomaly := model.Anomaly{
+		Title:         "US-001: Feature-gated Kanban visibility",
+		SourceRef:     "doc:doc-123#US-001",
+		CorrelationID: "corr-123",
+		Metadata: map[string]string{
+			"prd_story_id":   "US-001",
+			"prd_source_ref": "doc:doc-123",
+			"project_id":     "smith",
+		},
+	}
+
+	summary, prTitle, prBody := buildCompletionTraceability(anomaly, "loop-123")
+	if !strings.Contains(summary, "US-001: Feature-gated Kanban visibility") {
+		t.Fatalf("expected summary title, got %q", summary)
+	}
+	if !strings.Contains(summary, "- PRD: doc:doc-123") {
+		t.Fatalf("expected PRD trace in summary, got %q", summary)
+	}
+	if !strings.Contains(summary, "- Story: US-001") {
+		t.Fatalf("expected story trace in summary, got %q", summary)
+	}
+	if !strings.Contains(prTitle, "feat(prd):") {
+		t.Fatalf("expected PR title prefix, got %q", prTitle)
+	}
+	if !strings.Contains(prBody, "## Traceability") {
+		t.Fatalf("expected PR body traceability section, got %q", prBody)
+	}
+}
+
 func TestEnsureCodexLoginRunsWhenCredentialPresent(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 	ms := store.NewMemStore()
@@ -1102,5 +1132,14 @@ func TestSyncTaskContractStatusFromAnomaly(t *testing.T) {
 	}
 	if task.Status != model.TaskContractStatusBlocked {
 		t.Fatalf("expected blocked task status, got %s", task.Status)
+	}
+	if task.TerminalOutcome != model.TaskTerminalOutcomeBlocked {
+		t.Fatalf("expected blocked terminal outcome, got %s", task.TerminalOutcome)
+	}
+	if task.TerminalReason != "runtime-failure" {
+		t.Fatalf("expected blocked terminal reason to match sync reason, got %q", task.TerminalReason)
+	}
+	if task.TerminalAt == nil {
+		t.Fatal("expected terminal_at to be set for blocked status")
 	}
 }

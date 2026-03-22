@@ -58,8 +58,8 @@ When configured, the generator emits:
 ## Custom Agent Identity
 
 By default, Smith commits changes using the following identity:
-- **User Name**: `smith-replica`
-- **User Email**: `smith-replica@smith.io`
+- **User Name**: `SMITH`
+- **User Email**: `smith@cromleylabs.com`
 
 When using a PAT or other authentication methods, you can customize this identity to match a specific "Smith Service User" or a developer profile.
 

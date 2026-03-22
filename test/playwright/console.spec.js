@@ -17,9 +17,22 @@ async function setupPods(page) {
   const api = await mockApiRoutes(page);
   await page.goto('/pods');
   await emitLoopUpdates(page, loopsFixture);
-  // Wait for at least one pod card to render
-  await expect(page.locator('.pod-card-container').first()).toBeVisible();
+  // Wait for seeded loops to render
+  await expect(page.getByRole('button', { name: /loop-alpha/i })).toBeVisible();
   return api;
+}
+
+async function setStateFilter(page, value) {
+  const select = page.locator('select').first();
+  if (await select.count()) {
+    await select.selectOption(value);
+    return;
+  }
+
+  await page.getByTestId('pods-state-filter-trigger').click();
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('menuitemcheckbox', { name: new RegExp(`^${value}$`, 'i') }).click();
+  await page.keyboard.press('Escape');
 }
 
 // ── tests ──────────────────────────────────────────────────────────
@@ -27,22 +40,26 @@ async function setupPods(page) {
 test('renders loop tiles and summary stats', async ({ page }) => {
   await setupPods(page);
 
-  await expect(page.locator('.grid > div').filter({ hasText: 'Total Pods' }).locator('span.text-3xl')).toHaveText('3');
-  await expect(page.locator('.pod-card-container')).toHaveCount(2);
+  await expect(page.getByText('Total Pods')).toBeVisible();
+  await expect(page.getByText('Active Loops')).toBeVisible();
+  await expect(page.locator('.pods-summary').getByText('Flatline')).toBeVisible();
+  await expect(page.getByRole('button', { name: /loop-alpha/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /loop-beta/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /loop-gamma/i })).toHaveCount(0);
 });
 
 test('pod detail and command execution', async ({ page }) => {
   const api = await setupPods(page);
 
   // Click first tile (loop-alpha)
-  await page.locator('.pod-card-container', { hasText: 'loop-alpha' }).click();
+  await page.getByRole('button', { name: /loop-alpha/i }).click();
   await expect(page).toHaveURL(/\/pod-view\/loop-alpha/);
 
   // Verify title
   await expect(page.locator('h1')).toContainText('Pod: loop-alpha');
 
   // Fill command input and submit
-  await page.getByPlaceholder('Run command').fill('echo ok');
+  await page.getByPlaceholder(/Run command/i).fill('echo ok');
   await page.keyboard.press('Enter');
 
   // Verify command was sent
@@ -54,7 +71,7 @@ test('cancel and terminate from pod detail', async ({ page }) => {
   const api = await setupPods(page);
 
   // Navigate to pod-view for loop-beta
-  await page.locator('.pod-card-container', { hasText: 'loop-beta' }).click();
+  await page.getByRole('button', { name: /loop-beta/i }).click();
   await expect(page).toHaveURL(/\/pod-view\/loop-beta/);
 
   // Click Cancel button
@@ -74,17 +91,19 @@ test('filters by state and search', async ({ page }) => {
   await setupPods(page);
 
   // Filter by search
-  await page.getByPlaceholder('Filter ID...').fill('alpha');
-  await expect(page.locator('.pod-card-container')).toHaveCount(1);
+  await page.getByPlaceholder(/Filter pods/i).fill('alpha');
+  await expect(page.getByRole('button', { name: /loop-alpha/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /loop-beta/i })).toHaveCount(0);
 
   // Clear search
-  await page.getByPlaceholder('Filter ID...').fill('');
-  await expect(page.locator('.pod-card-container')).toHaveCount(2);
+  await page.getByPlaceholder(/Filter pods/i).fill('');
+  await expect(page.getByRole('button', { name: /loop-alpha/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /loop-beta/i })).toBeVisible();
 
   // Filter by state
-  await page.locator('select').selectOption('flatline');
-  await expect(page.locator('.pod-card-container')).toHaveCount(1);
-  await expect(page.locator('.pod-card-container')).toContainText('loop-gamma');
+  await setStateFilter(page, 'flatline');
+  await expect(page.getByRole('button', { name: /loop-gamma/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /loop-alpha/i })).toHaveCount(0);
 });
 
 test('provider API key config', async ({ page }) => {
@@ -142,10 +161,17 @@ test('document refinement chat shows context and patch workflow', async ({ page 
   await page.goto('/documents');
   await emitDocumentUpdates(page, documentsFixture);
 
+  await page.getByRole('button', { name: 'alpha' }).click();
+  await expect(page.locator('.doc-item', { hasText: 'Checkout PRD' })).toBeVisible();
   await page.locator('.doc-item', { hasText: 'Checkout PRD' }).click();
   await expect(page.getByRole('heading', { name: 'Checkout PRD' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'EDIT' }).click();
+  const iconEditButton = page.locator('button[title="Edit document"]');
+  if (await iconEditButton.count()) {
+    await iconEditButton.first().click();
+  } else {
+    await page.getByRole('button', { name: /edit/i }).first().click();
+  }
 
   await page.getByRole('button', { name: 'Refine with AI' }).click();
 

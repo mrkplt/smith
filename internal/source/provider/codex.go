@@ -89,10 +89,8 @@ func (a *codexAdapter) CloseSession(context.Context, Session) error {
 
 func (a *codexAdapter) ValidateConfig(config Config) error {
 	model := normalize(config.Model)
-	switch model {
-	case DefaultCodexModel, CodexMiniModel:
-		return nil
-	default:
-		return fmt.Errorf("%w: provider=%s model=%s", ErrUnsupportedModel, ProviderCodex, model)
+	if model == "" {
+		return fmt.Errorf("model is required")
 	}
+	return nil
 }

@@ -1,0 +1,85 @@
+{
+  "title": "[Feature Flag Smith Feature Tasks Kanban Enabled Prd] Finished lane for terminal outcomes",
+  "description": "As an operator, I want completed and blocked tasks grouped in Finished so I can confirm closed outcomes and detect failures.",
+  "blockers": [
+    {
+      "date": "2026-03-22",
+      "iteration": 2,
+      "story_id": "US-3",
+      "reason": "Required task-management prerequisite failed: `td usage --new-session` could not run because `td` is not installed (`td: command not found`). Work paused per instruction."
+    },
+    {
+      "date": "2026-03-22",
+      "iteration": 3,
+      "story_id": "US-3",
+      "reason": "Go verification/tooling blocker: `go` and `gofmt` are not installed in this environment, so backend tests/format checks for terminal metadata changes could not be executed."
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-1",
+      "title": "Group completed tasks in Finished lane",
+      "as_a": "operator",
+      "i_want": "tasks with terminal success outcomes to appear in the Finished lane",
+      "so_that": "I can verify completed work from one location",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given a task status changes to completed, when the board refreshes, then the task appears in Finished.",
+        "Given a completed task appears in Finished, when viewed, then it is not shown in non-terminal lanes.",
+        "Given multiple completed tasks exist, when sorted in Finished, then all are visible and selectable."
+      ]
+    },
+    {
+      "id": "US-2",
+      "title": "Group blocked tasks in Finished lane",
+      "as_a": "operator",
+      "i_want": "tasks with terminal blocked outcomes to appear in the Finished lane",
+      "so_that": "I can detect failures without scanning active lanes",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given a task status changes to blocked, when the board refreshes, then the task appears in Finished.",
+        "Given a blocked task appears in Finished, when viewed, then it remains clearly marked as blocked.",
+        "Given blocked tasks exist, when filtering for Finished, then blocked items are included in results."
+      ]
+    },
+    {
+      "id": "US-3",
+      "title": "Preserve terminal reason metadata in Finished",
+      "as_a": "operator",
+      "i_want": "each Finished task to show whether it ended as completed or blocked",
+      "so_that": "I can quickly interpret closure outcomes",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given a Finished task, when opened, then terminal outcome type is displayed as completed or blocked.",
+        "Given a blocked outcome, when viewing task details, then the block reason field is visible if provided.",
+        "Given mixed terminal outcomes, when scanning Finished, then each item has an outcome indicator."
+      ]
+    },
+    {
+      "id": "US-4",
+      "title": "Support feature-flag gating for Finished lane behavior",
+      "as_a": "operator",
+      "i_want": "Finished lane grouping to follow the kanban feature flag state",
+      "so_that": "rollout can be controlled safely",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given the kanban feature flag is enabled, when terminal tasks exist, then completed and blocked tasks are grouped in Finished.",
+        "Given the kanban feature flag is disabled, when terminal tasks exist, then Finished lane grouping behavior is not active.",
+        "Given flag state changes, when the board reloads, then lane behavior matches the current flag state."
+      ]
+    },
+    {
+      "id": "US-5",
+      "title": "Validate Finished lane counts and auditability",
+      "as_a": "operator",
+      "i_want": "Finished lane counts to reflect all completed and blocked tasks",
+      "so_that": "I can trust board totals and audit closed outcomes",
+      "status": "done",
+      "acceptance_criteria": [
+        "Given terminal tasks are present, when viewing Finished lane header, then count equals completed plus blocked tasks.",
+        "Given a terminal task transitions back to active, when the board refreshes, then Finished count decreases accordingly.",
+        "Given an audit check, when comparing task list and count, then no Finished task is omitted or duplicated."
+      ]
+    }
+  ]
+}

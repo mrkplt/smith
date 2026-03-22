@@ -423,14 +423,14 @@
 />
 <ProjectEditorDrawer bind:open={projectEditorOpen} onClose={() => projectEditorOpen = false} onSaved={handleProjectSaved} {projectToEdit} />
 
-<section class="px-4 pb-6">
-  <div class="max-w-7xl border border-gray-800 bg-black/60 md:grid md:grid-cols-[260px_1fr]">
-    <aside class="border-b border-gray-800 md:border-b-0 md:border-r md:border-gray-800 p-4 md:p-5">
+<section class="settings-shell px-4 pt-4 md:pt-5 pb-6">
+  <div class="settings-frame max-w-7xl border border-gray-800 bg-black/60 md:grid md:grid-cols-[260px_1fr]">
+    <aside class="settings-nav border-b border-gray-800 md:border-b-0 md:border-r md:border-gray-800 p-4 md:p-5">
       <div class="text-[10px] uppercase tracking-[0.2em] font-bold text-gray-500 mb-3">Settings Menu</div>
       <nav class="space-y-3">
         {#each sections as section}
           <button
-            class={`w-full text-left rounded-none border px-3 py-3 transition-colors ${activeSection === section.id ? 'border-[#86BC25] bg-[#86BC25]/10 text-white' : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'}`}
+            class={`settings-nav-item w-full text-left rounded-none border px-3 py-3 transition-colors ${activeSection === section.id ? 'border-[#86BC25] bg-[#86BC25]/10 text-white' : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'}`}
             onclick={() => selectSection(section.id)}
           >
             <div class="text-xs uppercase tracking-widest font-bold">{section.label}</div>
@@ -440,7 +440,7 @@
       </nav>
     </aside>
 
-    <div class="p-6 border-t border-gray-800 md:border-t-0">
+    <div class="settings-content p-6 border-t border-gray-800 md:border-t-0">
       {#if activeSection === 'general'}
         <div class="pb-6 border-b border-gray-800">
           <h2 class="text-lg font-bold text-white uppercase tracking-tight">General</h2>
@@ -853,3 +853,29 @@
     </div>
   </div>
 </section>
+
+<style>
+  .settings-frame {
+    background: var(--surface-1);
+    border-color: var(--border-subtle);
+    box-shadow: var(--elevation-1), var(--inner-highlight);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .settings-nav {
+    background: var(--surface-2);
+  }
+
+  .settings-content {
+    background: var(--surface-1);
+  }
+
+  .settings-nav-item {
+    box-shadow: var(--elevation-1);
+  }
+
+  :global(.dark .settings-nav-item) {
+    box-shadow: none;
+  }
+</style>

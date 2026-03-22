@@ -93,6 +93,7 @@ api:
   resources: {}
   featureFlags:
     tasks: false
+    tasksKanban: false
     featureCapability: false
     providerClaude: true
     providerGemini: false
@@ -188,6 +189,7 @@ console:
   showComingSoonProviders: false
   featureFlags:
     tasks: false
+    tasksKanban: false
     featureCapability: false
     chat: false
     integrations: false

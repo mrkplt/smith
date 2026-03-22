@@ -28,11 +28,6 @@ func NormalizeProviderModel(providerID, model string) (string, string, error) {
 	if resolvedModel == "" {
 		return "", "", fmt.Errorf("model is required")
 	}
-	switch resolvedModel {
-	case DefaultModel, CodexMiniModel:
-	default:
-		return "", "", fmt.Errorf("unsupported model %q for provider %q", resolvedModel, provider)
-	}
 
 	return provider, resolvedModel, nil
 }

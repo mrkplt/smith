@@ -25,6 +25,7 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_CHAT_BASE_URL` | `console.chatBaseUrl` | `/chat` | Base path for chat service calls. |
 | `SMITH_OPERATOR_PERMISSIONS` | `console.operatorPermissions` | `""` | Comma-separated permission set used by runtime capability checks. |
 | `SMITH_FEATURE_TASKS_ENABLED` | `console.featureFlags.tasks` | `false` | Shows/hides Tasks route + nav and enables route access. |
+| `SMITH_FEATURE_TASKS_KANBAN_ENABLED` | `console.featureFlags.tasksKanban` | `false` | Controls Tasks Kanban visibility and defaults to disabled when unset or invalid. |
 | `SMITH_FEATURE_CAPABILITY_ENABLED` | `console.featureFlags.featureCapability` | `false` | Shows/hides Feature Capability route + nav and enables route access. |
 | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` | Shows/hides operator chat surfaces (TopBar chat button, assistant route, and settings chat section). |
 | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` | Shows/hides Integrations section in Settings. |
@@ -100,7 +101,7 @@ Helm note: when `documentDependencies.postgres.enabled` and/or `documentDependen
 | `SMITH_CORRELATION_ID` | Correlates loop execution with ingress/task/audit records. |
 | `SMITH_WORKSPACE` | Workspace path used for git/bootstrap and agent execution. |
 | `SMITH_GIT_REPOSITORY` / `SMITH_GIT_BRANCH` / `SMITH_GIT_PAT` | Git bootstrap and completion credentials/targets. |
-| `SMITH_GIT_USER_NAME` / `SMITH_GIT_USER_EMAIL` | Commit identity for completion protocol. |
+| `SMITH_GIT_USER_NAME` / `SMITH_GIT_USER_EMAIL` | Commit identity for completion protocol (defaults: `SMITH` / `smith@cromleylabs.com`). |
 | `SMITH_GIT_CREATE_PR` | Enables PR creation during completion when branch changes exist. |
 | `SMITH_LOOP_PROVIDER` / `SMITH_LOOP_MODEL` | Selected provider/model invocation parameters. |
 | `SMITH_LOOP_INVOCATION_METHOD` | Provider invocation method for loop execution (`sdk`, `cli`, etc.). |

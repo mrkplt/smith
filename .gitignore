@@ -21,5 +21,6 @@ output/frontend-coverage/
 frontend/build/
 frontend/.svelte-kit/
 .gemini/
+.smith/
 dist/
 cmd/smith/.smith/prompts/*.md

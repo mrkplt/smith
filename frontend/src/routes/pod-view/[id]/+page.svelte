@@ -278,47 +278,47 @@
 
 <TopBar title={`Pod: ${id}`} />
 
-<div class="px-4 mb-6 space-y-3">
-	<div class="bg-black border border-gray-800 rounded-none px-3 py-2 flex flex-wrap items-center justify-between gap-3">
-		<div class="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-widest">
-			<span class="text-gray-500">State</span>
+<div class="pod-detail-shell px-4 mb-6 space-y-3">
+	<div class="pod-surface-row">
+		<div class="pod-state-strip">
+			<span class="pod-chip-label">State</span>
 			<Badge color={stateColor} rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">{loopState}</Badge>
-			<span class="text-gray-500">Lifecycle</span>
+			<span class="pod-chip-label">Lifecycle</span>
 			<Badge color={lifecycle.color} rounded class="uppercase text-[10px] px-2 py-0.5 font-bold">{lifecycle.label}</Badge>
-			<span class="text-gray-500">Terminal</span>
+			<span class="pod-chip-label">Terminal</span>
 			<span class={terminalAttached ? 'text-[#86BC25]' : 'text-amber-400'}>{terminalAttached ? 'attached' : 'detached'}</span>
 			{#if loopReason}
-				<span class="text-gray-500 normal-case tracking-normal font-mono text-[10px] break-all">{loopReason}</span>
+				<span class="pod-reason">{loopReason}</span>
 			{/if}
 		</div>
-    <Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={refreshLoop} disabled={busy}>
+    <Button color="alternative" class="pod-btn secondary" onclick={refreshLoop} disabled={busy}>
       Refresh
     </Button>
   </div>
 
-	<div class="bg-black border border-gray-800 rounded-none px-3 py-2 flex flex-wrap items-center justify-between gap-3">
-		<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={() => goto('/pods')}>
+	<div class="pod-surface-row">
+		<Button color="alternative" class="pod-btn secondary" onclick={() => goto('/pods')}>
 			<ArrowLeftOutline size="xs" class="mr-1.5" />
 			Back
 		</Button>
-		<div class="flex flex-wrap items-center justify-end gap-2">
+		<div class="pod-action-group">
 			{#if canPause}
-				<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={pause} disabled={busy}>
+				<Button color="alternative" class="pod-btn secondary" onclick={pause} disabled={busy}>
 					Pause
 				</Button>
 			{/if}
 			{#if canResume}
-				<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={resume} disabled={busy}>
+				<Button color="alternative" class="pod-btn secondary" onclick={resume} disabled={busy}>
 					Resume
 				</Button>
 			{/if}
 			{#if canCancel}
-				<Button color="alternative" class="bg-black border-gray-800 text-gray-400 hover:text-white rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={cancel} disabled={busy}>
+				<Button color="alternative" class="pod-btn secondary" onclick={cancel} disabled={busy}>
 					Cancel
 				</Button>
 			{/if}
 			{#if canTerminate}
-				<Button color="red" class="rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7 border-none" onclick={terminate} disabled={busy}>
+				<Button color="red" class="pod-btn danger" onclick={terminate} disabled={busy}>
 					<TrashBinOutline size="xs" class="mr-1.5" />
 					Terminate
 				</Button>
@@ -329,7 +329,7 @@
 
 <div class="px-4">
   <Journal loopID={id || ""}>
-    <div class="pod-command-row bg-black border border-gray-800 rounded-none p-2 flex items-center gap-3">
+    <div class="pod-command-row">
       <div class="flex items-center gap-2 pl-2 text-[#86BC25]">
         <TerminalOutline size="xs" />
         <span class="font-mono font-bold">$</span>
@@ -341,13 +341,13 @@
         onkeydown={(e) => e.key === 'Enter' && runCommand()}
         disabled={busy}
         size="sm"
-        class="bg-transparent border-none text-white font-mono flex-1 focus:ring-0 rounded-none"
+        class="pod-command-input"
       />
-      <Button size="xs" color="alternative" class="bg-[#86BC25] text-black font-bold uppercase px-4 rounded-none h-7 text-[10px]" onclick={runCommand} disabled={busy || !command}>
+      <Button size="xs" color="alternative" class="pod-btn execute" onclick={runCommand} disabled={busy || !command}>
         {busy ? '...' : 'Execute'}
       </Button>
     </div>
-    <div class="pod-command-row bg-black border border-gray-800 border-t-0 rounded-none p-2 flex items-center gap-3">
+    <div class="pod-command-row pod-command-row-tail">
       <div class="flex items-center gap-2 pl-2 text-blue-400">
         <span class="font-mono font-bold">!</span>
       </div>
@@ -358,9 +358,9 @@
         onkeydown={(e) => e.key === 'Enter' && sendIntervention()}
         disabled={busy}
         size="sm"
-        class="bg-transparent border-none text-white font-mono flex-1 focus:ring-0 rounded-none"
+        class="pod-command-input"
       />
-      <Button size="xs" color="alternative" class="bg-blue-500 text-black font-bold uppercase px-4 rounded-none h-7 text-[10px]" onclick={sendIntervention} disabled={busy || !intervention.trim()}>
+      <Button size="xs" color="alternative" class="pod-btn info" onclick={sendIntervention} disabled={busy || !intervention.trim()}>
         Record
       </Button>
     </div>
@@ -368,7 +368,127 @@
 </div>
 
 <style>
+  .pod-surface-row {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    box-shadow: var(--elevation-1), var(--inner-highlight);
+    padding: 0.55rem 0.7rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+  }
+
+  .pod-state-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .pod-chip-label {
+    color: #64748b;
+  }
+
+  .pod-reason {
+    color: #64748b;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    overflow-wrap: anywhere;
+  }
+
+  .pod-action-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+  }
+
+  :global(.pod-btn) {
+    border-radius: 8px !important;
+    border: 1px solid var(--border-subtle) !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.12em !important;
+    font-size: 0.6rem !important;
+    height: 1.75rem;
+  }
+
+  :global(.pod-btn.secondary) {
+    background: var(--surface-1) !important;
+    color: #475569 !important;
+  }
+
+  :global(.pod-btn.execute) {
+    background: #86bc25 !important;
+    color: #0f172a !important;
+    border-color: rgba(134, 188, 37, 0.6) !important;
+  }
+
+  :global(.pod-btn.info) {
+    background: #3b82f6 !important;
+    color: #0f172a !important;
+    border-color: rgba(59, 130, 246, 0.6) !important;
+  }
+
+  :global(.pod-btn.danger) {
+    border-color: rgba(239, 68, 68, 0.55) !important;
+    background: rgba(254, 226, 226, 0.72) !important;
+    color: #b91c1c !important;
+  }
+
+  .pod-command-row {
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .pod-command-row-tail {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top: none;
+    margin-top: -1px;
+  }
+
+  :global(.pod-command-input) {
+    background: transparent !important;
+    border: none !important;
+    color: #334155 !important;
+    font-family: var(--mono) !important;
+  }
+
   :global(.pod-command-row input) {
     background: transparent !important;
+  }
+
+  :global(.dark .pod-chip-label),
+  :global(.dark .pod-reason) {
+    color: #94a3b8;
+  }
+
+  :global(.dark .pod-btn.secondary) {
+    color: #cbd5e1 !important;
+  }
+
+  :global(.dark .pod-btn.danger) {
+    color: #fca5a5 !important;
+    background: rgba(127, 29, 29, 0.38) !important;
+  }
+
+  :global(.dark .pod-command-input) {
+    color: #e2e8f0 !important;
   }
 </style>

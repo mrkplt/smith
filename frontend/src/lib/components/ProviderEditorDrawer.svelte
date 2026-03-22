@@ -145,7 +145,6 @@
 			secretRef = '';
 		}
 		apiKey = '';
-		void loadProviderModelOptions();
 	});
 
 	$effect(() => {
@@ -312,8 +311,7 @@
 					<select
 						data-testid="provider-type"
 						class="w-full bg-black border border-gray-800 text-white text-sm rounded-none px-3 py-2"
-						value={providerType}
-						oninput={(event) => providerType = (event.currentTarget as HTMLSelectElement).value}
+						bind:value={providerType}
 						disabled={busy}
 					>
 						{#each providerCatalog as entry}
@@ -329,8 +327,7 @@
 					<Label class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Default Model</Label>
 					<select
 						class="w-full bg-black border border-gray-800 text-white text-sm rounded-none px-3 py-2"
-						value={defaultModel}
-						oninput={(event) => defaultModel = (event.currentTarget as HTMLSelectElement).value}
+						bind:value={defaultModel}
 						disabled={busy}
 					>
 						<option value="">Use provider default</option>

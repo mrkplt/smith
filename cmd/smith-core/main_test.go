@@ -451,6 +451,15 @@ func TestSyncTaskContractStatus(t *testing.T) {
 	if task.Status != model.TaskContractStatusBlocked {
 		t.Fatalf("expected blocked status, got %s", task.Status)
 	}
+	if task.TerminalOutcome != model.TaskTerminalOutcomeBlocked {
+		t.Fatalf("expected blocked outcome, got %s", task.TerminalOutcome)
+	}
+	if task.TerminalReason != "replica-job-create-failed" {
+		t.Fatalf("expected blocked reason to match transition reason, got %q", task.TerminalReason)
+	}
+	if task.TerminalAt == nil {
+		t.Fatal("expected terminal_at to be set for blocked transition")
+	}
 }
 
 func TestLoadConfigGitPolicyDefaults(t *testing.T) {
