@@ -71,10 +71,10 @@ describe('feature flags', () => {
     expect(isSecretsEnabled({ featureSecretsEnabled: 'false' })).toBe(false);
   });
 
-  it('defaults only codex/openai provider enabled', () => {
+  it('defaults codex/openai/claude provider types enabled', () => {
     expect(isProviderTypeEnabled('codex', {})).toBe(true);
     expect(isProviderTypeEnabled('openai', {})).toBe(true);
-    expect(isProviderTypeEnabled('claude', {})).toBe(false);
+    expect(isProviderTypeEnabled('claude', {})).toBe(true);
     expect(isProviderTypeEnabled('gemini', {})).toBe(false);
   });
 

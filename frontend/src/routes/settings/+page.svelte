@@ -105,16 +105,21 @@
   const availableModelOptions = $derived(includeSelectedModel(modelOptions, defaultModel));
 
   const generalRows = $derived([
-    { label: 'Installation', value: 'smith-console' },
-    { label: 'Operator Identity', value: 'operator' },
-    { label: 'Runtime Namespace', value: 'smith-system' },
-    { label: 'API Base', value: apiBaseUrl },
-    { label: 'Chat Base', value: chatBaseUrl },
-    { label: 'Host', value: typeof window !== 'undefined' ? window.location.host : 'local' },
-    { label: 'Build', value: buildLabel }
+    ...[
+      { label: 'Installation', value: 'smith-console' },
+      { label: 'Operator Identity', value: 'operator' },
+      { label: 'Runtime Namespace', value: 'smith-system' },
+      { label: 'API Base', value: apiBaseUrl }
+    ],
+    ...(chatFeatureEnabled ? [{ label: 'Chat Base', value: chatBaseUrl }] : []),
+    ...[
+      { label: 'Host', value: typeof window !== 'undefined' ? window.location.host : 'local' },
+      { label: 'Build', value: buildLabel }
+    ]
   ]);
 
   const activeSection = $derived(parseSection(page.url.searchParams.get('section')));
+  const hasConfiguredProjects = $derived($appState.projects.length > 0);
 
   onMount(() => {
     if (typeof window === 'undefined') {
@@ -123,7 +128,11 @@
     const config = (window as any).__SMITH_CONFIG__ || {};
     buildLabel = String(config.build || config.version || 'local');
 
-    void loadProviderProfiles().then(loadChatSettingsFromBrowser);
+    void loadProviderProfiles().then(() => {
+      if (chatFeatureEnabled) {
+        loadChatSettingsFromBrowser();
+      }
+    });
     if (secretsFeatureEnabled) {
       void loadSecrets();
     }
@@ -134,7 +143,11 @@
     try {
       const profiles = await fetchJSON('/v1/providers');
       providerProfiles = Array.isArray(profiles)
-        ? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+        ? profiles.filter((profile) => {
+            const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
+            const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+            return providerTypeEnabled && isAddedProfile;
+          })
         : [];
     } catch (err: any) {
       pushToast(err?.message || 'Failed to load provider profiles', 'err');
@@ -158,9 +171,10 @@
     const normalizedProfileID = String(nextProfileID || '').trim();
     const profile = providerProfiles.find((item) => String(item?.id || '').trim() === normalizedProfileID);
     const providerTypeHint = String(profile?.provider_type || '').trim();
+    const hasCredentialSecret = String(profile?.secret_ref || '').trim() !== '';
     modelOptionsBusy = true;
     try {
-      modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint);
+      modelOptions = await loadProviderModels(normalizedProfileID, providerTypeHint, hasCredentialSecret);
     } finally {
       modelOptionsBusy = false;
     }
@@ -561,7 +575,7 @@
           </Button>
         </div>
 
-        {#if providerProfiles.length > 0}
+        {#if providerProfiles.length > 0 && !hasConfiguredProjects}
           <Card class="mt-6 bg-black border-gray-800 rounded-none p-0">
             <div class="p-4 flex flex-wrap items-center justify-between gap-3">
               <div>

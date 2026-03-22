@@ -17,7 +17,7 @@ It is intentionally focused on **important** variables (not every internal knob)
 
 These are persisted in ConfigMap `smith-<release>-console-config` and injected into the console container.
 
-> **Notice (Gated / Under Development):** Feature-flagged console surfaces listed below are currently treated as under development and default to disabled unless explicitly enabled.
+> **Notice (Gated / Under Development):** Feature-flagged console surfaces listed below are currently treated as under development and most default to disabled unless explicitly enabled.
 
 | Variable | Helm value | Default | Purpose |
 | --- | --- | --- | --- |
@@ -29,7 +29,7 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_FEATURE_CHAT_ENABLED` | `console.featureFlags.chat` | `false` | Shows/hides operator chat surfaces (TopBar chat button, assistant route, and settings chat section). |
 | `SMITH_FEATURE_INTEGRATIONS_ENABLED` | `console.featureFlags.integrations` | `false` | Shows/hides Integrations section in Settings. |
 | `SMITH_FEATURE_SECRETS_ENABLED` | `console.featureFlags.secrets` | `false` | Shows/hides Secrets section in Settings while retaining backend secret-ref support. |
-| `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `false` | Shows/hides Claude provider type in console provider configuration surfaces. |
+| `SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED` | `console.featureFlags.providerClaude` | `true` | Shows/hides Claude provider type in console provider configuration surfaces. |
 | `SMITH_FEATURE_PROVIDER_GEMINI_ENABLED` | `console.featureFlags.providerGemini` | `false` | Shows/hides Gemini provider type in console provider configuration surfaces. |
 | `SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED` | `console.featureFlags.prdDiagnosticResolve` | `false` | Enables per-diagnostic `Resolve` action in Documents PRD readiness notifications. |
 | `SMITH_FEATURE_CAPABILITY_ACCESS` | `console.featureCapabilityAccess` | `false` | Explicit override for Feature Capability access check when feature is enabled. |
@@ -44,7 +44,7 @@ These are persisted in ConfigMap `smith-<release>-console-config` and injected i
 | `SMITH_OPERATOR_TOKEN` | empty | Bearer token required for protected operator endpoints. |
 | `SMITH_DEFAULT_ENV_PRESET` | empty | Default loop environment preset when not explicitly provided. |
 | `SMITH_RUNTIME_CONTAINER_NAME` | `replica` | Container name used for attach/command/detach operations. |
-| `SMITH_PROVIDER_CLAUDE_ENABLED` | `false` | Enables/disables Claude provider type in API provider catalog and provider validation. |
+| `SMITH_PROVIDER_CLAUDE_ENABLED` | `true` | Enables/disables Claude provider type in API provider catalog and provider validation. |
 | `SMITH_PROVIDER_GEMINI_ENABLED` | `false` | Enables/disables Gemini provider type in API provider catalog and provider validation. |
 | `SMITH_AUTH_STORE_BACKEND` | `file` | Settings credential store backend (`file` or `k8s-secret`) for provider/project credential data. |
 | `SMITH_AUTH_STORE_PATH` | `/tmp/smith-auth/tokens.json` | File path for credential/settings persistence when backend is file. |
@@ -80,7 +80,9 @@ Helm note: when `documentDependencies.postgres.enabled` and/or `documentDependen
 | `SMITH_REPLICA_IMAGE_PULL_POLICY` | `IfNotPresent` | Pull policy for replica image. |
 | `SMITH_RUNTIME_SECRET_NAME` | empty | Secret name used by core when wiring runtime credentials into replica jobs. |
 | `SMITH_RUNTIME_CREDENTIALS_KEY` | `runtime_credentials` | Secret key field used for runtime credential lookup in replica jobs. |
+| `SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY` | `runtime_credentials_claude` | Secret key field used for Claude runtime credential lookup in replica jobs (`ANTHROPIC_API_KEY`). |
 | `SMITH_RUNTIME_CREDENTIALS` | empty | Legacy inline runtime credential fallback (used only when runtime secret name is unset). |
+| `SMITH_RUNTIME_CREDENTIALS_CLAUDE` | empty | Optional inline Claude runtime credential fallback (used only when runtime secret name is unset). |
 | `SMITH_GIT_PAT_SECRET_NAME` | empty | Secret name containing git PAT for replica setup. |
 | `SMITH_GIT_PAT_SECRET_KEY` | `git_pat` | Secret key field for git PAT lookup. |
 | `SMITH_DOCKERFILE_BUILD_ENABLED` | `false` | Enables dockerfile-based execution image build path. |
@@ -141,6 +143,7 @@ These variables are consumed by `make deploy-local` / `make deploy-local-documen
 | `SMITH_BOOTSTRAP_DOCUMENT_STORAGE` | `false` | Enables ordered document-storage bootstrap flow inside `deploy-local` (pre-secrets -> deploy -> post-bootstrap). |
 | `SMITH_BOOTSTRAP_ENV_FILE` | `~/.smith/.env` | Env file consumed by `scripts/bootstrap-document-storage.sh` when bootstrap mode is enabled. |
 | `SMITH_BOOTSTRAP_SCRIPT` | `./scripts/bootstrap-document-storage.sh` | Script path used for document-storage bootstrap orchestration. |
+| `SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE` | empty | Optional local Claude runtime credential forwarded to Helm as `secrets.managed.runtimeCredentialsClaude`. |
 | `SMITH_LOCAL_OVERLAY` | empty | Optional extra Helm values file passed to `deploy-local` (for example `helm/smith/values/local-document-storage-1password.yaml`). |
 | `SMITH_FORCE_HELM_ROLLOUT_ID` | `true` | When `true`, forces Helm rollout id mutation on each `deploy-local`; set `false` for idempotent runs. |
 | `SMITH_FORCE_ROLLOUT` | `true` | When `true`, forces `rollout-local` restarts after Helm deploy; set `false` for idempotent runs. |

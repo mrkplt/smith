@@ -73,6 +73,8 @@ spec:
               value: {{ $runtimeSecretName | quote }}
             - name: SMITH_RUNTIME_CREDENTIALS_KEY
               value: {{ .Values.secrets.keys.runtimeCredentials | quote }}
+            - name: SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY
+              value: {{ .Values.secrets.keys.runtimeCredentialsClaude | quote }}
             {{- end }}
             {{- with .Values.core.env }}
             {{- toYaml . | nindent 12 }}

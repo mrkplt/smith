@@ -75,7 +75,11 @@
 		try {
 			const profiles = await fetchJSON('/v1/providers');
 			providerProfiles = Array.isArray(profiles)
-				? profiles.filter((profile) => isProviderTypeEnabled(String(profile?.provider_type || profile?.id || '')))
+				? profiles.filter((profile) => {
+					const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
+					const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+					return providerTypeEnabled && isAddedProfile;
+				})
 				: [];
 		} catch {
 			providerProfiles = [];

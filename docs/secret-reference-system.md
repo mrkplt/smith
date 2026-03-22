@@ -13,10 +13,11 @@ Current contract:
 - `smith-core` reads secret metadata from env:
   - `SMITH_RUNTIME_SECRET_NAME`
   - `SMITH_RUNTIME_CREDENTIALS_KEY`
+  - `SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY`
   - `SMITH_GIT_PAT_SECRET_NAME`
   - `SMITH_GIT_PAT_SECRET_KEY`
 - `smith-core` passes secret references to replica Job generation.
-- Replica pods consume runtime credentials through `valueFrom.secretKeyRef` (`SMITH_RUNTIME_CREDENTIALS`, `OPENAI_API_KEY`) and git PAT (`SMITH_GIT_PAT`).
+- Replica pods consume runtime credentials through `valueFrom.secretKeyRef` (`SMITH_RUNTIME_CREDENTIALS`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) and git PAT (`SMITH_GIT_PAT`).
 
 Important fallback behavior:
 
@@ -89,7 +90,7 @@ sequenceDiagram
 
 | Secret | Key(s) | Consumer | Purpose |
 | --- | --- | --- | --- |
-| `smith-runtime-external` (default local) | `git_pat`, `runtime_credentials` | core + replica Jobs | Git auth and runtime provider auth for loop execution |
+| `smith-runtime-external` (default local) | `git_pat`, `runtime_credentials`, `runtime_credentials_claude` (optional) | core + replica Jobs | Git auth and runtime provider auth for loop execution |
 | `smith-stage-documents` (default local/staging doc mode) | `postgres_password`, `postgres_dsn`, `garage_access_key_id`, `garage_secret_access_key` | api, documents-postgres, Garage bootstrap | Document metadata/content storage connectivity |
 
 ## Operational Notes
