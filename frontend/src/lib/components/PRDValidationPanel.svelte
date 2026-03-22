@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Badge, Button } from 'flowbite-svelte';
+  import { Button } from 'flowbite-svelte';
   import type { PRDValidationDiagnostic, PRDValidationReport } from '$lib/documents/prd-validation';
 
   interface Props {
@@ -31,14 +31,14 @@
     severity: NotificationSeverity;
   }
 
-  function badgeColor(readiness: string): 'green' | 'yellow' | 'red' {
+  function readinessState(readiness: string): 'pass' | 'warn' | 'fail' {
     if (readiness === 'pass') {
-      return 'green';
+      return 'pass';
     }
     if (readiness === 'warn') {
-      return 'yellow';
+      return 'warn';
     }
-    return 'red';
+    return 'fail';
   }
 
   const notificationItems = $derived.by((): NotificationItem[] => {
@@ -97,7 +97,7 @@
     <div class="actions-wrap flex items-center gap-2">
       {#if report}
         <button class="readiness-indicator" data-readiness={report.readiness} onclick={toggleNotifications}>
-          <Badge color={badgeColor(report.readiness)} class="rounded-none uppercase text-[9px] tracking-[0.12em]">{readinessLabel}</Badge>
+          <span class="smith-chip" data-state={readinessState(report.readiness)}>{readinessLabel}</span>
         </button>
       {/if}
       <Button color="alternative" class="smith-btn" onclick={() => onRecheck()}>Recheck</Button>
@@ -162,16 +162,15 @@
   .readiness-indicator {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    border: 1px solid var(--border-subtle);
-    padding: 3px 4px;
-    background: var(--surface-1);
+    gap: 0.3rem;
+    border: 0;
+    padding: 0;
+    background: transparent;
     cursor: pointer;
   }
 
   .readiness-indicator:hover {
-    border-color: var(--border-strong);
-    background: var(--surface-2);
+    filter: brightness(0.98);
   }
 
   .overlay-backdrop {

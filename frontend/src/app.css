@@ -279,15 +279,15 @@ body {
 
 /* Shared button treatment */
 .smith-btn {
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-1);
-  color: #475569;
-  height: 1.85rem;
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
+  border-radius: 8px !important;
+  border: 1px solid var(--border-subtle) !important;
+  background: var(--surface-1) !important;
+  color: #475569 !important;
+  height: 1.85rem !important;
+  font-size: 0.62rem !important;
+  letter-spacing: 0.12em !important;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 700 !important;
 }
 
 .smith-btn:hover {
@@ -295,21 +295,21 @@ body {
 }
 
 .smith-btn-primary {
-  background: #86bc25;
-  color: #0f172a;
-  border-color: rgba(134, 188, 37, 0.62);
+  background: #86bc25 !important;
+  color: #0f172a !important;
+  border-color: rgba(134, 188, 37, 0.62) !important;
 }
 
 .smith-btn-accent {
-  background: rgba(134, 188, 37, 0.16);
-  color: #4d7c0f;
-  border-color: rgba(134, 188, 37, 0.46);
+  background: rgba(134, 188, 37, 0.16) !important;
+  color: #4d7c0f !important;
+  border-color: rgba(134, 188, 37, 0.46) !important;
 }
 
 .smith-btn-danger {
-  color: #b91c1c;
-  border-color: rgba(239, 68, 68, 0.45);
-  background: rgba(254, 226, 226, 0.55);
+  color: #b91c1c !important;
+  border-color: rgba(239, 68, 68, 0.45) !important;
+  background: rgba(254, 226, 226, 0.55) !important;
 }
 
 .smith-btn-icon {
@@ -322,14 +322,67 @@ body {
 }
 
 .dark .smith-btn {
-  color: #cbd5e1;
+  color: #cbd5e1 !important;
 }
 
 .dark .smith-btn-accent {
-  color: #a3e635;
+  color: #a3e635 !important;
 }
 
 .dark .smith-btn-danger {
+  color: #fca5a5 !important;
+  background: rgba(127, 29, 29, 0.35) !important;
+}
+
+.smith-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.45rem;
+  padding: 0 0.5rem;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #475569;
+}
+
+.smith-chip[data-state='pass'] {
+  color: #3f6212;
+  border-color: rgba(101, 163, 13, 0.45);
+  background: rgba(190, 242, 100, 0.25);
+}
+
+.smith-chip[data-state='warn'] {
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(252, 211, 77, 0.24);
+}
+
+.smith-chip[data-state='fail'] {
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(254, 202, 202, 0.25);
+}
+
+.dark .smith-chip {
+  color: #cbd5e1;
+}
+
+.dark .smith-chip[data-state='pass'] {
+  color: #bef264;
+  background: rgba(101, 163, 13, 0.2);
+}
+
+.dark .smith-chip[data-state='warn'] {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.18);
+}
+
+.dark .smith-chip[data-state='fail'] {
   color: #fca5a5;
-  background: rgba(127, 29, 29, 0.35);
+  background: rgba(239, 68, 68, 0.18);
 }
