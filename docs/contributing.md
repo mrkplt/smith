@@ -4,18 +4,18 @@ This is the canonical contributor workflow for local development, validation, an
 
 ## Core Workflow
 
-Smith uses `td` for task management and `make` as the primary local command surface.
+Smith uses `task` for task management and `make` as the primary local command surface.
 
 At the start of a new work session:
 
 ```bash
-td usage --new-session
+task usage --new-session
 ```
 
 For follow-up reads in the same session:
 
 ```bash
-td usage -q
+task usage -q
 ```
 
 Use `make help` to discover the local workflow entrypoints.
@@ -28,7 +28,7 @@ For features that span multiple surfaces, implement and review work in this orde
 2. CLI parity on top of the API contract
 3. Web UI surface on top of API + CLI behavior
 
-When creating `td` work items for cross-surface features:
+When creating `task` work items for cross-surface features:
 
 - encode API -> CLI -> UI ordering with explicit issue dependencies;
 - keep downstream issues blocked until upstream contracts are in review/approved;
@@ -38,7 +38,7 @@ When creating `td` work items for cross-surface features:
 
 Required local tools include:
 
-- `td`
+- `task`
 - `git`
 - `mise`
 - `docker`

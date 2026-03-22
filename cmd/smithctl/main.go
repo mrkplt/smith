@@ -1255,7 +1255,7 @@ func cmdLoopCreate(client *client.Client, output string, args []string, stdout, 
 	fs.StringVar(&envDockerFile, "env-dockerfile", "", "Environment dockerfile path")
 	fs.StringVar(&envDockerTarget, "env-docker-target", "", "Environment docker build target stage")
 	fs.Var(&envBuildArgs, "env-build-arg", "Docker build arg in key=value format (repeatable)")
-	fs.Var(&skills, "skill", "Skill mount spec: name=...,source=...[,version=...][,mount_path=/...][,read_only=true|false] (repeatable). If mount_path is omitted, Codex defaults to /smith/skills/<name>.")
+	fs.Var(&skills, "skill", "Skill mount spec: name=...,source=...[,version=...][,mount_path=/...][,read_only=true|false] (repeatable). If mount_path is omitted, provider defaults apply (codex: /workspace/.agents/skills/<name>, claude: /workspace/.claude/skills/<name>).")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
