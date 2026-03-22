@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { appState, pushToast } from '$lib/stores';
-	import { createTaskContract } from '$lib/api';
+	import { createTaskContract, fetchJSON } from '$lib/api';
 	import TopBar from '$lib/components/TopBar.svelte';
 	import DocChatModal from '$lib/components/DocChatModal.svelte';
 	import DocumentsSidebar from '$lib/components/DocumentsSidebar.svelte';
@@ -19,6 +19,7 @@
 	import { tick } from 'svelte';
 
 	let showAll = $state(false);
+	let docSearchQuery = $state('');
 	let chatOpen = $state(false);
 	let isEditing = $state(false);
 	
@@ -54,8 +55,17 @@
 
 	const projectsWithDocs = $derived.by(() => {
 		const grouped: Record<string, any[]> = {};
+		const query = docSearchQuery.trim().toLowerCase();
 		$appState.documents.forEach((d: any) => {
 			if (!showAll && d.status === 'archived') return;
+			if (query) {
+				const title = String(d.title || '').toLowerCase();
+				const id = String(d.id || '').toLowerCase();
+				const sourceRef = String(d.source_ref || '').toLowerCase();
+				if (!title.includes(query) && !id.includes(query) && !sourceRef.includes(query)) {
+					return;
+				}
+			}
 			if (!grouped[d.project_id]) grouped[d.project_id] = [];
 			grouped[d.project_id].push(d);
 		});
@@ -111,6 +121,52 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		isEditing = false;
 		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
 		void refreshValidation(doc.content, nextFormat);
+	}
+
+	function clearActiveDocument() {
+		selectedDocId = null;
+		isEditing = false;
+		editorFocus = { lineIndex: null, sectionId: '', selectionText: '' };
+	}
+
+	function orderedVisibleDocuments(documents: any[]): any[] {
+		const grouped: Record<string, any[]> = {};
+		for (const doc of documents) {
+			if (!showAll && doc.status === 'archived') {
+				continue;
+			}
+			const projectID = String(doc.project_id || 'default');
+			if (!grouped[projectID]) {
+				grouped[projectID] = [];
+			}
+			grouped[projectID].push(doc);
+		}
+		const orderedProjectIDs = Object.keys(grouped).sort();
+		const ordered: any[] = [];
+		for (const projectID of orderedProjectIDs) {
+			ordered.push(...grouped[projectID]);
+		}
+		return ordered;
+	}
+
+	function nextActiveDocumentAfterMutation(previousDocs: any[], nextDocs: any[], currentDocID: string): any | null {
+		const prevVisible = orderedVisibleDocuments(previousDocs);
+		const nextVisible = orderedVisibleDocuments(nextDocs);
+		if (nextVisible.length === 0) {
+			return null;
+		}
+		const prevIndex = prevVisible.findIndex((doc) => String(doc.id) === currentDocID);
+		if (prevIndex < 0) {
+			return nextVisible[0];
+		}
+		return nextVisible[prevIndex] || nextVisible[Math.max(0, prevIndex - 1)] || nextVisible[0] || null;
+	}
+
+	async function reloadDocumentsFromAPI(): Promise<any[]> {
+		const payload = await fetchJSON('/v1/documents');
+		const docs = Array.isArray(payload) ? payload : [];
+		appState.update((state) => ({ ...state, documents: docs }));
+		return docs;
 	}
 
 	function startEdit() {
@@ -173,19 +229,20 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 	async function archiveDoc() {
 		if (!selectedDocId || !selectedDoc) return;
 		const docID = selectedDocId;
+		const previousDocs = [...$appState.documents];
 		try {
 			const nextStatus = await toggleDocumentArchive(selectedDocId, selectedDoc);
-			appState.update((state) => ({
-				...state,
-				documents: state.documents.map((doc: any) =>
-					doc.id === docID
-						? { ...doc, status: nextStatus, updated_at: new Date().toISOString() }
-						: doc
-				)
-			}));
-			if (!showAll && nextStatus === 'archived') {
-				selectedDocId = null;
-				isEditing = false;
+			const freshDocs = await reloadDocumentsFromAPI();
+			let nextActiveDoc: any | null = null;
+			if (nextStatus === 'archived') {
+				nextActiveDoc = nextActiveDocumentAfterMutation(previousDocs, freshDocs, docID);
+			} else {
+				nextActiveDoc = freshDocs.find((doc: any) => String(doc.id) === docID) || null;
+			}
+			if (nextActiveDoc) {
+				selectDocument(nextActiveDoc);
+			} else {
+				clearActiveDocument();
 			}
 			pushToast(`Document ${nextStatus}`, "ok");
 		} catch (err: any) {
@@ -195,9 +252,17 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 
 	async function deleteDoc() {
 		if (!selectedDocId || !confirm("Delete document?")) return;
+		const docID = selectedDocId;
+		const previousDocs = [...$appState.documents];
 		try {
 			await deleteDocument(selectedDocId);
-			selectedDocId = null;
+			const freshDocs = await reloadDocumentsFromAPI();
+			const nextActiveDoc = nextActiveDocumentAfterMutation(previousDocs, freshDocs, docID);
+			if (nextActiveDoc) {
+				selectDocument(nextActiveDoc);
+			} else {
+				clearActiveDocument();
+			}
 			pushToast("Document deleted", "ok");
 		} catch (err: any) {
 			pushToast(err.message, "err");
@@ -453,7 +518,9 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 		{projectsWithDocs}
 		{selectedDocId}
 		{showAll}
+		searchQuery={docSearchQuery}
 		onShowAllChange={(value) => showAll = value}
+		onSearchQueryChange={(value) => docSearchQuery = value}
 		onSelectDocument={selectDocument}
 	/>
 
@@ -503,10 +570,13 @@ const tasksFeatureEnabled = $derived(isTasksEnabled());
 <style>
 	.doc-layout {
 		display: grid;
-		height: calc(100vh - 160px);
-		background: #000000;
+		height: calc(100vh - 166px);
+		background: var(--surface-1);
 		overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.05);
+		margin-top: 8px;
+		border: 1px solid var(--border-subtle);
+		box-shadow: var(--elevation-1), var(--inner-highlight);
+		border-radius: 10px;
 	}
 
 </style>

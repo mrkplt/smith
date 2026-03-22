@@ -224,8 +224,8 @@
   });
 </script>
 
-<div class="flex-1 flex flex-col bg-black overflow-hidden">
-  <div class="px-8 py-2 border-b border-gray-900 bg-slate-900/20 text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center justify-between gap-4">
+<div class="editor-pane-shell">
+  <div class="editor-pane-header">
     <span>Editor</span>
     {#if format === 'markdown'}
       <span class="line-status">Live markdown rendering</span>
@@ -240,13 +240,13 @@
       oninput={(event) => onEditContent((event.currentTarget as HTMLTextAreaElement).value)}
       rows={20}
       placeholder="Paste canonical PRD JSON..."
-      class="bg-black border-none text-gray-300 font-mono text-base focus:ring-0 resize-none h-full w-full rounded-none px-8 py-6"
+      class="json-editor-textarea"
     />
   {:else}
     <div class="line-canvas h-full overflow-y-auto px-8 py-6">
       {#each lines as line, index}
         {#if index === activeLineIndex}
-          <div class="line-row active-line-row">
+          <div class="line-row active-line-row" class:empty-active-line={line.trim() === ''}>
             <textarea
               bind:this={activeLineEditor}
               class="line-source-input"
@@ -269,22 +269,59 @@
 
 <style>
   .line-status {
-    color: #69788d;
+    color: #64748b;
     font-size: 0.56rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
 
   .line-canvas {
-    background: linear-gradient(180deg, rgba(8, 14, 22, 0.42), rgba(8, 8, 8, 0));
+    background: var(--surface-1);
+  }
+
+  .editor-pane-shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface-1);
+  }
+
+  .editor-pane-header {
+    padding: 0.5rem 2rem;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-2);
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  :global(.json-editor-textarea) {
+    background: var(--surface-1) !important;
+    border: none !important;
+    color: #334155 !important;
+    font-family: var(--mono) !important;
+    font-size: 0.94rem !important;
+    line-height: 1.6 !important;
+    resize: none !important;
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 0 !important;
+    padding: 1.5rem 2rem !important;
   }
 
   .line-row {
     width: 100%;
     border: 1px solid transparent;
-    border-radius: 2px;
-    padding: 6px 10px;
-    margin-bottom: 4px;
+    border-radius: 0;
+    padding: 3px 8px;
+    margin-bottom: 1px;
     text-align: left;
   }
 
@@ -294,13 +331,25 @@
   }
 
   .rendered-line-row:hover {
-    border-color: rgba(74, 89, 112, 0.28);
-    background: rgba(10, 14, 20, 0.75);
+    border-color: transparent;
+    background: rgba(148, 163, 184, 0.14);
+  }
+
+  .rendered-line-row:focus-visible {
+    outline: none;
+    border-color: transparent;
   }
 
   .active-line-row {
-    border-color: rgba(134, 188, 37, 0.78);
-    background: rgba(134, 188, 37, 0.06);
+    border-color: transparent;
+    background: transparent;
+    border-left: 2px solid rgba(134, 188, 37, 0.65);
+    padding-left: 6px;
+  }
+
+  .active-line-row.empty-active-line {
+    border-left-color: transparent;
+    padding-left: 8px;
   }
 
   .line-source-input {
@@ -310,18 +359,18 @@
     resize: none;
     overflow: hidden;
     background: transparent;
-    color: #d4ddf0;
-    font-size: 1.02rem;
-    line-height: 1.8;
-    font-family: var(--mono);
+    color: #1e293b;
+    font-size: 0.96rem;
+    line-height: 1.65;
+    font-family: inherit;
   }
 
   .line-rendered {
     display: block;
-    color: #d1d7e0;
-    line-height: 1.8;
-    font-size: 1.02rem;
-    min-height: 1.8em;
+    color: #334155;
+    line-height: 1.65;
+    font-size: 0.96rem;
+    min-height: 1.65em;
   }
 
   :global(.markdown-line > p) {
@@ -332,7 +381,7 @@
   :global(.markdown-line > h2),
   :global(.markdown-line > h3) {
     margin: 0;
-    color: #fff;
+    color: #0f172a;
     font-weight: 650;
   }
 
@@ -347,16 +396,17 @@
   }
 
   :global(.markdown-line code) {
-    padding: 0.1em 0.35em;
-    background-color: rgba(110, 118, 129, 0.4);
+    padding: 0;
+    background: transparent;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.35);
     font-family: var(--mono);
-    font-size: 85%;
+    font-size: 90%;
   }
 
   :global(.markdown-line > pre) {
     margin: 0;
-    border: 1px solid #1f2937;
-    background: #0b0e12;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-2);
     padding: 10px 12px;
     white-space: pre-wrap;
   }
@@ -365,5 +415,26 @@
     opacity: 0.28;
     display: inline-block;
     min-width: 1px;
+  }
+
+  :global(.dark .editor-pane-header),
+  :global(.dark .line-status) {
+    color: #94a3b8;
+  }
+
+  :global(.dark .json-editor-textarea),
+  :global(.dark .line-source-input),
+  :global(.dark .line-rendered) {
+    color: #d1d5db !important;
+  }
+
+  :global(.dark .rendered-line-row:hover) {
+    background: rgba(15, 23, 42, 0.42);
+  }
+
+  :global(.dark .markdown-line > h1),
+  :global(.dark .markdown-line > h2),
+  :global(.dark .markdown-line > h3) {
+    color: #f8fafc;
   }
 </style>

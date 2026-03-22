@@ -113,6 +113,48 @@ describe('ProviderEditorDrawer', () => {
 		cleanup();
 	});
 
+	it('keeps a selected claude provider type and submits it', async () => {
+		(window as any).__SMITH_CONFIG__ = {
+			featureProviderClaudeEnabled: true,
+			featureProviderGeminiEnabled: true
+		};
+		const { container, getByTestId } = render(ProviderEditorDrawer, {
+			open: true,
+			onClose: vi.fn(),
+			onSaved: vi.fn(),
+			provider: null,
+			secretOptions: []
+		});
+
+		const providerTypeSelect = getByTestId('provider-type') as HTMLSelectElement;
+		await waitFor(() => expect(providerTypeSelect.options.length).toBe(3));
+		await fireEvent.change(providerTypeSelect, { target: { value: 'claude' } });
+		expect(providerTypeSelect.value).toBe('claude');
+
+		await fireEvent.input(getByTestId('provider-profile-id'), { target: { value: 'claude-team' } });
+		await fireEvent.input(getByTestId('provider-display-name'), { target: { value: 'Claude Team' } });
+		await fireEvent.input(getByTestId('provider-credential-id'), { target: { value: 'anthropic-key' } });
+		await fireEvent.input(getByTestId('provider-api-key'), { target: { value: 'sk-ant-123' } });
+
+		const form = container.querySelector('form');
+		expect(form).toBeTruthy();
+		await fireEvent.submit(form!);
+
+		await waitFor(() => {
+			expect(api.postJSON).toHaveBeenCalledWith(
+				'/v1/providers',
+				expect.objectContaining({
+					id: 'claude-team',
+					name: 'Claude Team',
+					provider_type: 'claude',
+					secret_ref: 'anthropic-key'
+				})
+			);
+		});
+
+		cleanup();
+	});
+
 	it('upserts secret from API key and submits provider with secret_ref', async () => {
 		const onClose = vi.fn();
 		const onSaved = vi.fn();

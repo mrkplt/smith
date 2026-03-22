@@ -83,22 +83,22 @@
 
 <style>
 	.waypoint-terminal-window {
-		background: #0f111a;
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: var(--surface-2);
+		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+		box-shadow: var(--elevation-2), var(--inner-highlight);
 		margin-bottom: 12px;
 	}
 
 	.terminal-header {
-		background: #1b1e28;
+		background: var(--surface-1);
 		padding: 10px 16px;
 		display: flex;
 		align-items: center;
-		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		border-bottom: 1px solid var(--border-subtle);
 		position: relative;
 	}
 
@@ -122,7 +122,7 @@
 		transform: translateX(-50%);
 		font-size: 0.8rem;
 		font-family: var(--mono);
-		color: #8fa2b9;
+		color: #64748b;
 		font-weight: 600;
 	}
 
@@ -133,8 +133,8 @@
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		padding: 3px 8px;
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		background: rgba(15, 17, 26, 0.75);
+		border: 1px solid var(--border-subtle);
+		background: var(--surface-2);
 	}
 
 	.latency-chip.ok {
@@ -160,7 +160,7 @@
 		font-family: var(--mono);
 		font-size: 0.8rem;
 		line-height: 1.5;
-		color: #e2e8f0;
+		color: #334155;
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
@@ -168,5 +168,13 @@
 	.terminal-input-area {
 		padding: 0 16px 16px 16px;
 		flex: 0 0 auto;
+	}
+
+	:global(.dark .terminal-title) {
+		color: #8fa2b9;
+	}
+
+	:global(.dark .terminal-body) {
+		color: #e2e8f0;
 	}
 </style>

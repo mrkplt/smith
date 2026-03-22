@@ -118,7 +118,6 @@
         report={validationReport}
         busy={validationBusy}
         errorMessage={validationError}
-        format={editFormat}
         {chatEnabled}
         resolveDiagnosticEnabled={resolveDiagnosticEnabled}
         onRecheck={onRefreshValidation}
@@ -145,7 +144,7 @@
 
 <style>
   .doc-editor-pane {
-    background: #000000;
+    background: var(--surface-1);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -161,5 +160,6 @@
     flex: 1;
     overflow: hidden;
     display: flex;
+    background: var(--surface-1);
   }
 </style>

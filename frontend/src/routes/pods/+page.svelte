@@ -8,7 +8,7 @@
 	import PodsStatsStrip from '$lib/components/PodsStatsStrip.svelte';
   import { GridOutline } from 'flowbite-svelte-icons';
 
-	let stateFilter = $state('healthy');
+	let selectedStates = $state<string[]>(['running', 'synced']);
 	let searchQuery = $state('');
 
 	function normalizeLoop(item: any) {
@@ -34,11 +34,8 @@
 
 	const filteredLoops = $derived(
 		$appState.loops.filter((loop: any) => {
-			const matchesState =
-				stateFilter === "all" ||
-				(stateFilter === "healthy" && (loop.status === "running" || loop.status === "synced")) ||
-				(stateFilter === "active" && (loop.status === "unresolved" || loop.status === "running")) ||
-				loop.status === stateFilter;
+			const normalizedSelection = selectedStates.map((state) => state.toLowerCase());
+			const matchesState = normalizedSelection.length === 0 || normalizedSelection.includes(String(loop.status || '').toLowerCase());
 			const query = searchQuery.toLowerCase();
 			const matchesSearch = !searchQuery || String(loop.loopID).toLowerCase().includes(query) || String(loop.displayTitle || '').toLowerCase().includes(query);
 			return matchesState && matchesSearch;
@@ -64,16 +61,20 @@
 	}
 </script>
 
-<TopBar title="Pods" />
+<TopBar title="Pods">
+  {#snippet controls()}
+    <PodsFilterBar
+      {selectedStates}
+      {searchQuery}
+      onSelectedStatesChange={(value) => selectedStates = value}
+      onSearchQueryChange={(value) => searchQuery = value}
+    />
+  {/snippet}
+</TopBar>
 
-<PodsFilterBar
-  {stateFilter}
-  {searchQuery}
-  onStateFilterChange={(value) => stateFilter = value}
-  onSearchQueryChange={(value) => searchQuery = value}
-/>
-
-<PodsStatsStrip {stats} />
+<section class="pods-summary px-4">
+  <PodsStatsStrip {stats} />
+</section>
 
 <section class="tiles-shell px-4">
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" role="list">
@@ -115,3 +116,19 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .pods-summary {
+    display: grid;
+    gap: 0.85rem;
+    padding-top: 0.55rem;
+    padding-bottom: 1rem;
+  }
+
+  @media (max-width: 900px) {
+    .pods-summary {
+      gap: 0.7rem;
+      padding-top: 0.4rem;
+    }
+  }
+</style>

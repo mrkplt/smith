@@ -109,6 +109,7 @@ export const appState = writable<AppState>({
 export const sidebarOpen = writable(false);
 export const chatOpen = writable(false);
 export const chatType = writable('prd-refinement');
+export const themeMode = writable<'dark' | 'light'>('dark');
 
 export interface ToastMessage {
   id: string;
@@ -119,15 +120,62 @@ export interface ToastMessage {
 
 export const toastMessages = writable<ToastMessage[]>([]);
 
+type ToastLifecycleTimers = {
+  hideTimer: ReturnType<typeof setTimeout>;
+  removeTimer: ReturnType<typeof setTimeout> | null;
+};
+
+const toastTimers = new Map<string, ToastLifecycleTimers>();
+
+function cancelToastLifecycle(id: string) {
+  const timers = toastTimers.get(id);
+  if (!timers) {
+    return;
+  }
+  clearTimeout(timers.hideTimer);
+  if (timers.removeTimer) {
+    clearTimeout(timers.removeTimer);
+  }
+  toastTimers.delete(id);
+}
+
+function scheduleToastLifecycle(id: string, durationMs = 2800) {
+  cancelToastLifecycle(id);
+  const lifecycle: ToastLifecycleTimers = {
+    hideTimer: setTimeout(() => {
+      toastMessages.update((messages) => messages.map((m) => (m.id === id ? { ...m, show: false } : m)));
+      lifecycle.removeTimer = setTimeout(() => {
+        toastMessages.update((messages) => messages.filter((m) => m.id !== id));
+        toastTimers.delete(id);
+      }, 160);
+    }, durationMs),
+    removeTimer: null
+  };
+  toastTimers.set(id, lifecycle);
+}
+
 /** Adds a transient toast notification to the shared UI state. */
 export function pushToast(message: string, level: 'ok' | 'err' | 'muted' = 'muted') {
-  const id = Math.random().toString(36).substring(2);
-  toastMessages.update(messages => [...messages, { id, message, level, show: true }]);
-  
-  setTimeout(() => {
-    toastMessages.update(messages => messages.map(m => m.id === id ? { ...m, show: false } : m));
-    setTimeout(() => {
-      toastMessages.update(messages => messages.filter(m => m.id !== id));
-    }, 160);
-  }, 3200);
+  const normalized = String(message || '').trim();
+  if (normalized === '') {
+    return;
+  }
+
+  let activeID = '';
+  toastMessages.update((messages) => {
+    const existing = messages.find((m) => m.message === normalized && m.level === level);
+    if (existing) {
+      activeID = existing.id;
+      return [{ ...existing, show: true }];
+    }
+    activeID = Math.random().toString(36).substring(2);
+    return [{ id: activeID, message: normalized, level, show: true }];
+  });
+
+  for (const id of toastTimers.keys()) {
+    if (id !== activeID) {
+      cancelToastLifecycle(id);
+    }
+  }
+  scheduleToastLifecycle(activeID);
 }

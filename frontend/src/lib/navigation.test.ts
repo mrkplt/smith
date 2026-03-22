@@ -7,7 +7,6 @@ describe('shell navigation', () => {
     expect(shellPrimaryNav.map((item) => item.id)).toEqual([
       'pods',
       'documents',
-      'tasks',
       'tasks-kanban',
       'feature-capability',
       'settings'
@@ -15,7 +14,6 @@ describe('shell navigation', () => {
     expect(shellPrimaryNav.map((item) => item.href)).toEqual([
       '/pods',
       '/documents',
-      '/tasks',
       '/tasks/kanban',
       '/feature-capability',
       '/settings'

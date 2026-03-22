@@ -6,7 +6,6 @@
     report: PRDValidationReport | null;
     busy: boolean;
     errorMessage: string;
-    format: 'markdown' | 'json';
     chatEnabled: boolean;
     resolveDiagnosticEnabled: boolean;
     onRecheck: () => void;
@@ -18,7 +17,6 @@
     report,
     busy,
     errorMessage,
-    format,
     chatEnabled,
     resolveDiagnosticEnabled,
     onRecheck,
@@ -92,7 +90,6 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="flex items-center gap-2">
       <h2 class="text-[11px] uppercase font-bold tracking-[0.16em] text-gray-400">PRD Readiness</h2>
-      <span class="text-[10px] uppercase tracking-[0.14em] text-gray-600">{format}</span>
       {#if busy}
         <span class="text-[10px] uppercase tracking-[0.14em] text-gray-500">Checking...</span>
       {/if}
@@ -103,9 +100,9 @@
           <Badge color={badgeColor(report.readiness)} class="rounded-none uppercase text-[9px] tracking-[0.12em]">{readinessLabel}</Badge>
         </button>
       {/if}
-      <Button color="alternative" class="rounded-none border-gray-700 text-[9px] uppercase tracking-[0.14em] px-3 h-7" onclick={() => onRecheck()}>Recheck</Button>
+      <Button color="alternative" class="smith-btn" onclick={() => onRecheck()}>Recheck</Button>
       {#if chatEnabled}
-        <Button color="alternative" class="rounded-none bg-[#86BC25] text-black text-[9px] uppercase tracking-[0.14em] px-3 h-7" onclick={() => onRefineWithAI()}>Refine with AI</Button>
+        <Button color="alternative" class="smith-btn smith-btn-primary" onclick={() => onRefineWithAI()}>Refine with AI</Button>
       {/if}
 
       {#if showNotifications && report}
@@ -153,7 +150,9 @@
 
 <style>
   .prd-validation {
-    background: #040404;
+    background: var(--surface-2);
+    border-color: var(--border-subtle);
+    box-shadow: var(--elevation-1), var(--inner-highlight);
   }
 
   .actions-wrap {
@@ -164,15 +163,15 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border-subtle);
     padding: 3px 4px;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-1);
     cursor: pointer;
   }
 
   .readiness-indicator:hover {
-    border-color: rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-strong);
+    background: var(--surface-2);
   }
 
   .overlay-backdrop {
@@ -188,11 +187,11 @@
     width: min(620px, calc(100vw - 80px));
     max-height: 48vh;
     overflow: auto;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(6, 8, 12, 0.98);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-3);
     padding: 8px 10px 10px;
     z-index: 30;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--elevation-3);
   }
 
   .notification-overlay-title {
@@ -200,12 +199,12 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    color: #93a1b5;
+    color: #64748b;
     margin-bottom: 4px;
   }
 
   .notification-row {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--border-subtle);
     padding-top: 7px;
     margin-top: 7px;
     display: flex;
@@ -219,8 +218,8 @@
 
   .notification-severity {
     margin-top: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    color: #9ba7b8;
+    border: 1px solid var(--border-subtle);
+    color: #64748b;
     font-size: 0.55rem;
     line-height: 1;
     text-transform: uppercase;
@@ -256,9 +255,9 @@
   }
 
   .notification-action {
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.02);
-    color: #d5deea;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-1);
+    color: #334155;
     font-size: 0.58rem;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -280,16 +279,27 @@
   }
 
   .diagnostic-message {
-    color: #d6dce6;
+    color: #334155;
     font-size: 0.78rem;
     margin-top: 4px;
   }
 
   .diagnostic-suggestion {
-    color: #9ba7b8;
+    color: #64748b;
     font-size: 0.72rem;
     margin-top: 4px;
     line-height: 1.4;
+  }
+
+  :global(.dark .notification-overlay-title),
+  :global(.dark .notification-severity),
+  :global(.dark .diagnostic-suggestion) {
+    color: #94a3b8;
+  }
+
+  :global(.dark .diagnostic-message),
+  :global(.dark .notification-action) {
+    color: #d6dce6;
   }
 
 </style>

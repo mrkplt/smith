@@ -10,6 +10,17 @@ type RuntimeConfig = {
   featurePRDDiagnosticResolveEnabled?: boolean | string;
 };
 
+export const FEATURE_IDS = {
+  TASKS_CONTRACTS: 'tasks-contracts',
+  TASKS_KANBAN: 'tasks-kanban',
+  FEATURE_CAPABILITY: 'feature-capability',
+  CHAT: 'chat',
+  INTEGRATIONS: 'integrations',
+  SECRETS: 'secrets'
+} as const;
+
+export type FeatureID = (typeof FEATURE_IDS)[keyof typeof FEATURE_IDS];
+
 /** Parses a runtime boolean-like value (boolean or string) into strict boolean/null. */
 export function parseBoolean(value: boolean | string | undefined): boolean | null {
   if (typeof value === 'boolean') {
@@ -54,7 +65,7 @@ export function isTasksKanbanEnabled(config = getRuntimeConfig()): boolean {
 
 /** Returns whether Tasks Kanban navigation/route should be visible. */
 export function isTasksKanbanVisible(config = getRuntimeConfig()): boolean {
-  return isTasksEnabled(config) && isTasksKanbanEnabled(config);
+  return isTasksKanbanEnabled(config);
 }
 
 /** Returns whether the Feature Capability runtime surface is enabled. */
@@ -78,20 +89,23 @@ export function isSecretsEnabled(config = getRuntimeConfig()): boolean {
 }
 
 /** Returns whether a shell nav/runtime feature is visible in current config. */
-export function isFeatureVisible(featureID: string, config = getRuntimeConfig()): boolean {
-  if (featureID === 'tasks') {
+export function isFeatureVisible(featureID: FeatureID | string, config = getRuntimeConfig()): boolean {
+  if (featureID === FEATURE_IDS.TASKS_CONTRACTS || featureID === 'tasks') {
     return isTasksEnabled(config);
   }
-  if (featureID === 'feature-capability') {
+  if (featureID === FEATURE_IDS.TASKS_KANBAN || featureID === 'tasks-kanban') {
+    return isTasksKanbanVisible(config);
+  }
+  if (featureID === FEATURE_IDS.FEATURE_CAPABILITY || featureID === 'feature-capability') {
     return isFeatureCapabilityEnabled(config);
   }
-  if (featureID === 'chat') {
+  if (featureID === FEATURE_IDS.CHAT || featureID === 'chat') {
     return isChatEnabled(config);
   }
-  if (featureID === 'integrations') {
+  if (featureID === FEATURE_IDS.INTEGRATIONS || featureID === 'integrations') {
     return isIntegrationsEnabled(config);
   }
-  if (featureID === 'secrets') {
+  if (featureID === FEATURE_IDS.SECRETS || featureID === 'secrets') {
     return isSecretsEnabled(config);
   }
   return true;

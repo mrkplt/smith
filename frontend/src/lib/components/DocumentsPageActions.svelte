@@ -34,12 +34,12 @@
     onchange={handleFileSelection}
   />
 
-  <Button color="alternative" class="bg-black border-gray-800 text-[#86BC25] hover:bg-white/5 rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={triggerUpload}>
+  <Button color="alternative" class="smith-btn" onclick={triggerUpload}>
     <CloudArrowUpOutline size="xs" class="mr-1.5" />
     Upload PRD
   </Button>
 
-  <Button color="alternative" class="bg-[#86BC25] text-black rounded-none font-bold uppercase text-[9px] tracking-widest py-1 px-3 h-7" onclick={onCreateNew}>
+  <Button color="alternative" class="smith-btn smith-btn-primary" onclick={onCreateNew}>
     <PlusOutline size="xs" class="mr-1.5" />
     New Doc
   </Button>
