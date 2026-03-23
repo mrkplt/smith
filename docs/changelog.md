@@ -21,6 +21,25 @@
 - Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
 - Pods list defaults to healthy-state filtering; destructive cleanup is policy/API-driven rather than tile-level UI actions.
 
+## v0.5.0
+
+Release date: 2026-03-22
+
+This minor release closes open frontend security advisories by upgrading the Vite toolchain and pinning patched transitive dependencies, while advancing chart/image/docs/frontend defaults to the `v0.5.0` line.
+
+### Highlights
+
+- Remediated `GHSA-67mh-4wv8-2f99` by upgrading `vite` to `6.4.1` (bringing `esbuild` to `0.25.12`).
+- Remediated `GHSA-pxg6-pf52-xh8x` by overriding transitive `cookie` to `0.7.2`.
+- Patched `CVE-2026-33186` across `smith-api`, `smith-chat`, `smith-core`, and `smith-replica` with `google.golang.org/grpc v1.79.3` in shipped binaries.
+- Patched `CVE-2026-32767` in `smith-console` by ensuring upgraded runtime packages (`libexpat` and related Alpine libs) are present in the final image layer.
+- Updated Svelte build tooling to compatible secure versions (`@sveltejs/kit@2.55.0`, `@sveltejs/vite-plugin-svelte@6.2.4`).
+- Bumped chart/image/frontend/docs defaults to `v0.5.0` for release consistency.
+
+### Notes
+
+- `v0.5.0` is a minor release because it combines frontend and container security hardening with coordinated baseline/toolchain updates across release metadata and deployment defaults.
+
 ## v0.4.3
 
 Release date: 2026-03-20
@@ -35,23 +54,6 @@ This patch release adds repository hygiene for local generated outputs and advan
 ### Notes
 
 - `v0.4.3` is a patch release because it focuses on release-hygiene and version-reference alignment without introducing new runtime features.
-
-## v0.5.0
-
-Release date: 2026-03-20
-
-This minor release closes open frontend security advisories by upgrading the Vite toolchain and pinning patched transitive dependencies, while advancing chart/image/docs/frontend defaults to the `v0.5.0` line.
-
-### Highlights
-
-- Remediated `GHSA-67mh-4wv8-2f99` by upgrading `vite` to `6.4.1` (bringing `esbuild` to `0.25.12`).
-- Remediated `GHSA-pxg6-pf52-xh8x` by overriding transitive `cookie` to `0.7.2`.
-- Updated Svelte build tooling to compatible secure versions (`@sveltejs/kit@2.55.0`, `@sveltejs/vite-plugin-svelte@6.2.4`).
-- Bumped chart/image/frontend/docs defaults to `v0.5.0` for release consistency.
-
-### Notes
-
-- `v0.5.0` is a minor release because it combines security hardening with coordinated baseline/toolchain updates across release metadata and deployment defaults.
 
 ## v0.4.2
 
