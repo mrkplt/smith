@@ -93,12 +93,12 @@ Source PRD: `docs/prd1.md`
   - Codex login flow supports operator connect/reconnect and token refresh lifecycle.
   - Provider calls fail safely with actionable auth status when credentials are missing/expired.
 
-### FR-015: Multi-source loop ingress and smithctl control surface
-- Description: Smith supports loop creation from GitHub issues, PRDs, and direct interactive control, with `smithctl` as primary operator CLI.
+### FR-015: Multi-source loop ingress and smith control surface
+- Description: Smith supports loop creation from GitHub issues, PRDs, and direct interactive control, with `smith` as primary operator CLI.
 - Acceptance:
   - API supports single and batch loop creation with source metadata and idempotency.
   - Ingestion from GitHub issues and PRDs creates traceable loop specs.
-  - `smithctl` supports loop create/get/logs/attach/cancel and PRD create/submit flows.
+  - `smith` supports loop create/get/logs/attach/cancel and PRD create/submit flows.
 
 ### FR-016: Configurable loop execution environments
 - Description: Smith allows per-loop execution environment selection using `mise`, container image references, Dockerfile build specs, or named presets.
@@ -177,7 +177,7 @@ Source PRD: `docs/prd1.md`
 ### NFR-011: Operational ergonomics and automation readiness
 - Requirement: Loop control interfaces are scriptable and consistent for both interactive and non-interactive operations.
 - Metric:
-  - `smithctl` commands provide machine-parseable output for CI/automation workflows.
+  - `smith` commands provide machine-parseable output for CI/automation workflows.
   - Core loop lifecycle actions are executable without UI dependency.
 
 ### NFR-012: Environment reproducibility and supply-chain safety

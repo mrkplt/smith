@@ -1,4 +1,4 @@
-package main
+package smith
 
 import (
 	"bytes"
@@ -135,9 +135,8 @@ func (s *skillFlag) Set(value string) error {
 	return nil
 }
 
-func main() {
-	code := run(os.Args[1:], os.Stdout, os.Stderr)
-	os.Exit(code)
+func Run(args []string, stdout, stderr io.Writer) int {
+	return run(args, stdout, stderr)
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -175,7 +174,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 				"git_commit": GitCommit,
 			})
 		} else {
-			fmt.Fprintf(stdout, "smithctl version %s (%s)\n", Version, GitCommit)
+			fmt.Fprintf(stdout, "smith version %s (%s)\n", Version, GitCommit)
 		}
 		return 0
 	case "help", "-h", "--help":
@@ -195,11 +194,11 @@ func parseRootFlags(args []string) (rootFlags, []string, error) {
 		Config: filepath.Join(home, ".smith", "config.json"),
 		Output: "text",
 	}
-	fs := flag.NewFlagSet("smithctl", flag.ContinueOnError)
+	fs := flag.NewFlagSet("smith", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&defaults.Server, "server", "", "Smith API server URL")
 	fs.StringVar(&defaults.Token, "token", "", "Operator bearer token")
-	fs.StringVar(&defaults.Config, "config", defaults.Config, "Path to smithctl config file")
+	fs.StringVar(&defaults.Config, "config", defaults.Config, "Path to smith config file")
 	fs.StringVar(&defaults.Context, "context", "", "Named config context")
 	fs.StringVar(&defaults.Output, "output", defaults.Output, "Output format: text|json")
 	if err := fs.Parse(args); err != nil {
@@ -429,7 +428,7 @@ func cmdConfigCurrentContext(configPath string, stdout, stderr io.Writer) int {
 
 func cmdConfigUseContext(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl config use-context <name>")
+		fmt.Fprintln(stderr, "usage: smith config use-context <name>")
 		return 2
 	}
 	name := strings.TrimSpace(args[0])
@@ -456,7 +455,7 @@ func cmdConfigUseContext(configPath string, args []string, stdout, stderr io.Wri
 
 func cmdConfigSetContext(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]")
+		fmt.Fprintln(stderr, "usage: smith config set-context <name> [--server URL] [--token TOKEN]")
 		return 2
 	}
 
@@ -475,7 +474,7 @@ func cmdConfigSetContext(configPath string, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]")
+		fmt.Fprintln(stderr, "usage: smith config set-context <name> [--server URL] [--token TOKEN]")
 		return 2
 	}
 
@@ -514,7 +513,7 @@ func cmdConfigSetContext(configPath string, args []string, stdout, stderr io.Wri
 
 func cmdConfigDeleteContext(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl config delete-context <name>")
+		fmt.Fprintln(stderr, "usage: smith config delete-context <name>")
 		return 2
 	}
 
@@ -547,7 +546,7 @@ func cmdConfigDeleteContext(configPath string, args []string, stdout, stderr io.
 
 func cmdConfigRenameContext(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) != 2 || strings.TrimSpace(args[0]) == "" || strings.TrimSpace(args[1]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl config rename-context <old> <new>")
+		fmt.Fprintln(stderr, "usage: smith config rename-context <old> <new>")
 		return 2
 	}
 
@@ -609,7 +608,7 @@ func cmdLoopTrace(client *client.Client, output string, args []string, stdout, s
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop trace <loop-id> [<loop-id>...] [--limit N] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop trace <loop-id> [<loop-id>...] [--limit N] [--file ids.json]")
 		return 2
 	}
 	results := make([]map[string]any, 0, len(loopIDs))
@@ -716,7 +715,7 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl provider add --id <id> --credential-id <label> --api-key <key> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--endpoint <url>] [--capabilities c1,c2]")
+		fmt.Fprintln(stderr, "usage: smith provider add --id <id> --credential-id <label> --api-key <key> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--endpoint <url>] [--capabilities c1,c2]")
 		return 2
 	}
 	id = strings.TrimSpace(id)
@@ -765,7 +764,7 @@ func cmdProviderAdd(client *client.Client, output string, args []string, stdout,
 
 func cmdProviderConfigure(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
+		fmt.Fprintln(stderr, "usage: smith provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
 		return 2
 	}
 	providerID := strings.TrimSpace(args[0])
@@ -794,7 +793,7 @@ func cmdProviderConfigure(client *client.Client, output string, args []string, s
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
+		fmt.Fprintln(stderr, "usage: smith provider configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
 		return 2
 	}
 	resolvedCredentialID, err := resolveCredentialID(credentialID, secretRef)
@@ -908,7 +907,7 @@ func cmdProjectAdd(client *client.Client, output string, args []string, stdout, 
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl project add --id <id> --repo-url <url> [--name <name>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+		fmt.Fprintln(stderr, "usage: smith project add --id <id> --repo-url <url> [--name <name>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
 		return 2
 	}
 	id = strings.TrimSpace(id)
@@ -936,7 +935,7 @@ func cmdProjectAdd(client *client.Client, output string, args []string, stdout, 
 
 func cmdProjectConfigure(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl project configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+		fmt.Fprintln(stderr, "usage: smith project configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
 		return 2
 	}
 	projectID := strings.TrimSpace(args[0])
@@ -961,7 +960,7 @@ func cmdProjectConfigure(client *client.Client, output string, args []string, st
 		return 2
 	}
 	if len(fs.Args()) != 0 {
-		fmt.Fprintln(stderr, "usage: smithctl project configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
+		fmt.Fprintln(stderr, "usage: smith project configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
 		return 2
 	}
 	if code := ensureProviderFirstOnboarding(client, output, stdout, stderr, "project.configure"); code != 0 {
@@ -1095,7 +1094,7 @@ func ensureProviderFirstOnboarding(client *client.Client, output string, stdout,
 	if nextStep, ok := readiness["next_step"].(string); ok && strings.TrimSpace(nextStep) == "provider_catalog" {
 		errorMessage = "provider catalog is empty; configure a provider profile first"
 	}
-	suggested := "smithctl provider add --id codex-default --type codex --credential-id codex-default-key --api-key $SMITH_CODEX_API_KEY"
+	suggested := "smith provider add --id codex-default --type codex --credential-id codex-default-key --api-key $SMITH_CODEX_API_KEY"
 
 	if output == "json" {
 		printOutput(stdout, output, map[string]any{
@@ -1166,7 +1165,7 @@ func cmdLoopGet(client *client.Client, output string, args []string, stdout, std
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop get <loop-id> [<loop-id>...] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop get <loop-id> [<loop-id>...] [--file ids.json]")
 		return 2
 	}
 	results := make([]map[string]any, 0, len(loopIDs))
@@ -1451,7 +1450,7 @@ func cmdLoopCreate(client *client.Client, output string, args []string, stdout, 
 			sourceType = "prompt"
 		}
 		if sourceRef == "" && sourceType == "prompt" {
-			sourceRef = "prompt:smithctl"
+			sourceRef = "prompt:smith"
 		}
 		if title == "" {
 			switch {
@@ -1608,7 +1607,7 @@ func cmdLoopLogs(client *client.Client, output string, args []string, stdout, st
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop logs <loop-id> [<loop-id>...] [--follow] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop logs <loop-id> [<loop-id>...] [--follow] [--file ids.json]")
 		return 2
 	}
 	if follow {
@@ -1671,7 +1670,7 @@ func cmdLoopAttach(apiClient *client.Client, output string, args []string, stdou
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop attach <loop-id> [<loop-id>...] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop attach <loop-id> [<loop-id>...] [--file ids.json]")
 		return 2
 	}
 
@@ -1681,7 +1680,7 @@ func cmdLoopAttach(apiClient *client.Client, output string, args []string, stdou
 	for _, loopID := range loopIDs {
 		payload := map[string]any{
 			"actor":    actor,
-			"terminal": "smithctl",
+			"terminal": "smith",
 		}
 		var out any
 		err := apiClient.Do(context.Background(), http.MethodPost, "/v1/loops/"+loopID+"/control/attach", payload, &out)
@@ -1733,7 +1732,7 @@ func cmdLoopCancel(client *client.Client, output string, args []string, stdout, 
 	)
 	fs.StringVar(&filePath, "file", "", "JSON or newline-delimited loop id file")
 	fs.StringVar(&filePath, "f", "", "JSON or newline-delimited loop id file")
-	fs.StringVar(&reason, "reason", "cancelled via smithctl", "Cancellation reason")
+	fs.StringVar(&reason, "reason", "cancelled via smith", "Cancellation reason")
 	fs.StringVar(&actor, "actor", "operator", "Actor performing cancellation")
 	parsedArgs := normalizeInterspersedFlags(args, map[string]bool{
 		"-f":       true,
@@ -1751,7 +1750,7 @@ func cmdLoopCancel(client *client.Client, output string, args []string, stdout, 
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop cancel <loop-id> [<loop-id>...] [--reason text] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop cancel <loop-id> [<loop-id>...] [--reason text] [--file ids.json]")
 		return 2
 	}
 	results := make([]map[string]any, 0, len(loopIDs))
@@ -1828,7 +1827,7 @@ func cmdLoopDetach(client *client.Client, output string, args []string, stdout, 
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop detach <loop-id> [<loop-id>...] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop detach <loop-id> [<loop-id>...] [--file ids.json]")
 		return 2
 	}
 	results := make([]map[string]any, 0, len(loopIDs))
@@ -1885,13 +1884,13 @@ func cmdLoopCommand(client *client.Client, output string, args []string, stdout,
 	loopID := loopIDArg
 	if loopID == "" {
 		if len(fs.Args()) != 1 {
-			fmt.Fprintln(stderr, "usage: smithctl loop command <loop-id> --command \"pause|resume|...\"")
+			fmt.Fprintln(stderr, "usage: smith loop command <loop-id> --command \"pause|resume|...\"")
 			return 2
 		}
 		loopID = strings.TrimSpace(fs.Args()[0])
 	}
 	if loopID == "" {
-		fmt.Fprintln(stderr, "usage: smithctl loop command <loop-id> --command \"pause|resume|...\"")
+		fmt.Fprintln(stderr, "usage: smith loop command <loop-id> --command \"pause|resume|...\"")
 		return 2
 	}
 	if strings.TrimSpace(command) == "" {
@@ -1922,7 +1921,7 @@ func cmdLoopIngestGitHub(client *client.Client, output string, args []string, st
 		return 2
 	}
 	if strings.TrimSpace(filePath) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl loop ingest-github --file issues.json")
+		fmt.Fprintln(stderr, "usage: smith loop ingest-github --file issues.json")
 		return 2
 	}
 	payload, err := readJSONFile(filePath)
@@ -1960,7 +1959,7 @@ func cmdPRDSubmit(client *client.Client, output string, args []string, stdout, s
 		return 2
 	}
 	if strings.TrimSpace(filePath) == "" {
-		fmt.Fprintln(stderr, "usage: smithctl prd submit --file prd.md [--format markdown|json]")
+		fmt.Fprintln(stderr, "usage: smith prd submit --file prd.md [--format markdown|json]")
 		return 2
 	}
 	content, err := os.ReadFile(filePath)
@@ -2039,7 +2038,7 @@ func cmdPRDCreate(output string, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if len(fs.Args()) > 0 {
-		fmt.Fprintln(stderr, "usage: smithctl prd create [name] [--template default|feature|bugfix] [--out path]")
+		fmt.Fprintln(stderr, "usage: smith prd create [name] [--template default|feature|bugfix] [--out path]")
 		return 2
 	}
 	name := "Smith PRD"
@@ -2362,13 +2361,13 @@ func printOutput(w io.Writer, format string, value any) {
 }
 
 func printHelp(w io.Writer) {
-	fmt.Fprintln(w, "smithctl - Smith operator CLI")
+	fmt.Fprintln(w, "smith - Smith operator CLI")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  smithctl [--server URL] [--token TOKEN] [--output text|json] <resource> <command> [flags]")
+	fmt.Fprintln(w, "  smith [--server URL] [--token TOKEN] [--output text|json] <resource> <command> [flags]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Resources:")
-	fmt.Fprintln(w, "  config  Manage smithctl configuration")
+	fmt.Fprintln(w, "  config  Manage smith configuration")
 	fmt.Fprintln(w, "  provider Manage provider profiles")
 	fmt.Fprintln(w, "  project  Manage project configuration")
 	fmt.Fprintln(w, "  loop    Manage loop resources")
@@ -2377,48 +2376,48 @@ func printHelp(w io.Writer) {
 
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintln(w, "  smithctl loop list")
-	fmt.Fprintln(w, "  smithctl provider list")
-	fmt.Fprintln(w, "  smithctl provider add --id codex-default --type codex --credential-id codex-default-key --api-key $SMITH_CODEX_API_KEY")
-	fmt.Fprintln(w, "  smithctl project add --id demo --repo-url https://github.com/acme/demo --provider-profile-id codex-default")
+	fmt.Fprintln(w, "  smith loop list")
+	fmt.Fprintln(w, "  smith provider list")
+	fmt.Fprintln(w, "  smith provider add --id codex-default --type codex --credential-id codex-default-key --api-key $SMITH_CODEX_API_KEY")
+	fmt.Fprintln(w, "  smith project add --id demo --repo-url https://github.com/acme/demo --provider-profile-id codex-default")
 	fmt.Fprintln(w, "  # Configure provider first, then create/configure projects")
-	fmt.Fprintln(w, "  smithctl loop get loop-abc123")
-	fmt.Fprintln(w, "  smithctl loop trace loop-abc123 --limit 100")
-	fmt.Fprintln(w, "  smithctl loop get loop-abc123 loop-def456")
-	fmt.Fprintln(w, "  smithctl loop create --title \"Fix drift\" --source-type github_issue --source-ref org/repo#1")
-	fmt.Fprintln(w, "  smithctl loop create --title \"Env test\" --source-type interactive --source-ref terminal/session-01 --env-image-ref ghcr.io/acme/replica:v2")
-	fmt.Fprintln(w, "  smithctl loop create --title \"Dockerfile run\" --source-type prd_task --source-ref docs/prd.md#1 --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22")
-	fmt.Fprintln(w, "  smithctl loop create --title \"Skill run\" --source-type interactive --source-ref terminal/session-02 --skill name=commit,source=local://skills/commit")
-	fmt.Fprintln(w, "  smithctl loop create --batch loops.json")
-	fmt.Fprintln(w, "  smithctl loop create --from-github issues.json")
-	fmt.Fprintln(w, "  smithctl loop create --from-prd docs/prd1.md --source-ref prd:docs/prd1.md")
-	fmt.Fprintln(w, "  smithctl loop logs loop-abc123 --follow")
-	fmt.Fprintln(w, "  smithctl loop runtime loop-abc123")
-	fmt.Fprintln(w, "  smithctl loop cost loop-abc123")
-	fmt.Fprintln(w, "  smithctl loop attach loop-abc123")
+	fmt.Fprintln(w, "  smith loop get loop-abc123")
+	fmt.Fprintln(w, "  smith loop trace loop-abc123 --limit 100")
+	fmt.Fprintln(w, "  smith loop get loop-abc123 loop-def456")
+	fmt.Fprintln(w, "  smith loop create --title \"Fix drift\" --source-type github_issue --source-ref org/repo#1")
+	fmt.Fprintln(w, "  smith loop create --title \"Env test\" --source-type interactive --source-ref terminal/session-01 --env-image-ref ghcr.io/acme/replica:v2")
+	fmt.Fprintln(w, "  smith loop create --title \"Dockerfile run\" --source-type prd_task --source-ref docs/prd.md#1 --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22")
+	fmt.Fprintln(w, "  smith loop create --title \"Skill run\" --source-type interactive --source-ref terminal/session-02 --skill name=commit,source=local://skills/commit")
+	fmt.Fprintln(w, "  smith loop create --batch loops.json")
+	fmt.Fprintln(w, "  smith loop create --from-github issues.json")
+	fmt.Fprintln(w, "  smith loop create --from-prd docs/prd1.md --source-ref prd:docs/prd1.md")
+	fmt.Fprintln(w, "  smith loop logs loop-abc123 --follow")
+	fmt.Fprintln(w, "  smith loop runtime loop-abc123")
+	fmt.Fprintln(w, "  smith loop cost loop-abc123")
+	fmt.Fprintln(w, "  smith loop attach loop-abc123")
 
-	fmt.Fprintln(w, "  smithctl loop command loop-abc123 --command \"pause\"")
-	fmt.Fprintln(w, "  smithctl loop detach loop-abc123")
-	fmt.Fprintln(w, "  smithctl loop cancel loop-abc123 --reason \"operator request\"")
-	fmt.Fprintln(w, "  smithctl loop ingest-github --file issues.json")
-	fmt.Fprintln(w, "  smithctl prd create \"Auth Flow\" --template feature --out docs/prd-auth.md")
-	fmt.Fprintln(w, "  smithctl prd submit --file docs/prd1.md")
+	fmt.Fprintln(w, "  smith loop command loop-abc123 --command \"pause\"")
+	fmt.Fprintln(w, "  smith loop detach loop-abc123")
+	fmt.Fprintln(w, "  smith loop cancel loop-abc123 --reason \"operator request\"")
+	fmt.Fprintln(w, "  smith loop ingest-github --file issues.json")
+	fmt.Fprintln(w, "  smith prd create \"Auth Flow\" --template feature --out docs/prd-auth.md")
+	fmt.Fprintln(w, "  smith prd submit --file docs/prd1.md")
 }
 
 func printConfigHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: smithctl config <command>")
+	fmt.Fprintln(w, "Usage: smith config <command>")
 	fmt.Fprintln(w, "Commands: view, get-contexts, current-context, use-context, set-context, delete-context, rename-context")
 }
 
 func printProviderHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: smithctl provider <command>")
+	fmt.Fprintln(w, "Usage: smith provider <command>")
 	fmt.Fprintln(w, "Commands: list, add, configure")
 	fmt.Fprintln(w, "  add --id <id> --credential-id <label> --api-key <key> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--endpoint <url>] [--capabilities c1,c2]")
 	fmt.Fprintln(w, "  configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
 }
 
 func printProjectHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: smithctl project <command>")
+	fmt.Fprintln(w, "Usage: smith project <command>")
 	fmt.Fprintln(w, "Commands: list, add, configure")
 	fmt.Fprintln(w, "  add --id <id> --repo-url <url> [--name <name>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
 	fmt.Fprintln(w, "  configure <id> [--name <name>] [--repo-url <url>] [--provider-profile-id <id>] [--github-user <user>] [--runtime-image <image>] [--skills-image <image>]")
@@ -2426,7 +2425,7 @@ func printProjectHelp(w io.Writer) {
 }
 
 func printLoopHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: smithctl loop <command>")
+	fmt.Fprintln(w, "Usage: smith loop <command>")
 	fmt.Fprintln(w, "Commands: list, get, trace, create, logs, runtime, cost, attach, detach, command, cancel, ingest-github")
 }
 
@@ -2446,7 +2445,7 @@ func cmdLoopRuntime(client *client.Client, output string, args []string, stdout,
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop runtime <loop-id> [<loop-id>...] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop runtime <loop-id> [<loop-id>...] [--file ids.json]")
 		return 2
 	}
 	results := make([]map[string]any, 0, len(loopIDs))
@@ -2496,7 +2495,7 @@ func cmdLoopCost(client *client.Client, output string, args []string, stdout, st
 		return 1
 	}
 	if len(loopIDs) == 0 {
-		fmt.Fprintln(stderr, "usage: smithctl loop cost <loop-id> [<loop-id>...] [--file ids.json]")
+		fmt.Fprintln(stderr, "usage: smith loop cost <loop-id> [<loop-id>...] [--file ids.json]")
 		return 2
 	}
 	results := make([]map[string]any, 0, len(loopIDs))
@@ -2556,7 +2555,7 @@ func runExternalCommand(name string, args ...string) (string, error) {
 	return out.String(), nil
 }
 func printPRDHelp(w io.Writer) {
-	fmt.Fprintln(w, "Usage: smithctl prd <command>")
+	fmt.Fprintln(w, "Usage: smith prd <command>")
 	fmt.Fprintln(w, "Commands: create, submit")
 	fmt.Fprintln(w, "  create [name] [--template default|feature|bugfix] [--out path]")
 	fmt.Fprintln(w, "  submit --file <path> [--format markdown|json] [--source-ref ref] [--project-id id] [--provider-profile-id id]")

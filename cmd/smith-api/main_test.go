@@ -513,7 +513,7 @@ func TestHandleLoopCreateRejectsInvalidWorkspacePRD(t *testing.T) {
 		"title":"Loop from supplied PRD",
 		"description":"Loop request from supplied PRD JSON",
 		"source_type":"prompt",
-		"source_ref":"prompt:smithctl",
+		"source_ref":"prompt:smith",
 		"metadata":{
 			"workspace_prd_json":"{\"version\":1,\"project\":\"Validation\",\"overview\":\"Canonical PRD validation\",\"qualityGates\":[],\"stories\":[]}",
 			"workspace_prd_path":".agents/tasks/prd.json"

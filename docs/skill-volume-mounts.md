@@ -50,12 +50,12 @@ Precedence:
 - Mount skills as read-only volumes by default.
 - Journal resolved skill list and versions in loop metadata/handoff.
 
-## smithctl Skill Flags
+## smith Skill Flags
 
-`smithctl loop create` supports repeatable `--skill` entries:
+`smith loop create` supports repeatable `--skill` entries:
 
 ```bash
-smithctl loop create \
+smith loop create \
   --title "Skill run" \
   --source-type interactive \
   --source-ref terminal/session-02 \

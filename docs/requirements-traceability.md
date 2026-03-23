@@ -23,9 +23,9 @@ Sources:
 | FR-012 Deployability via Helm | td-56f4e8, td-a1aebc, td-bcc114, td-c38e55, td-c1d238, td-b7aa01 | Chart, values, secrets, env overlays, ops runbook, image wiring |
 | FR-013 Containerized delivery | td-366583, td-ece36c, td-ffc123, td-a096c0, td-b77cdd | Dockerfiles, publish pipeline, versioning, multi-arch |
 | FR-014 Agent provider routing and Codex authentication | td-f8e9dd, td-afdaa4, td-5842f1 | Provider abstraction + Codex login/refresh + operator auth UX |
-| FR-015 Multi-source loop ingress and smithctl control surface | td-93543b, td-dc2332, td-fa3f21, td-6de678, td-bb3ded, td-c37a53, td-b7248b, td-2b3e2f | Ingress API + GitHub/PRD ingestion + interactive attach + smithctl lifecycle flows |
+| FR-015 Multi-source loop ingress and smith control surface | td-93543b, td-dc2332, td-fa3f21, td-6de678, td-bb3ded, td-c37a53, td-b7248b, td-2b3e2f | Ingress API + GitHub/PRD ingestion + interactive attach + smith lifecycle flows |
 | FR-016 Configurable loop execution environments | td-2517d0, td-8e7c54, td-65e317, td-c7e14a, td-f93e43, td-fdcb47, td-c155ab | Environment schema + mise/image/Dockerfile/preset execution modes + CLI and e2e coverage |
-| FR-017 Skill volume mounts in loop runtime (Codex-first) | td-d93ca9, td-2f6291, td-75f932, td-d1c89c, td-bafce8, td-a2e46e | Skill mount schema + runtime injection + API validation + smithctl support + e2e coverage |
+| FR-017 Skill volume mounts in loop runtime (Codex-first) | td-d93ca9, td-2f6291, td-75f932, td-d1c89c, td-bafce8, td-a2e46e | Skill mount schema + runtime injection + API validation + smith support + e2e coverage |
 
 ## Non-Functional Requirements Traceability
 
@@ -41,7 +41,7 @@ Sources:
 | NFR-008 Usability and accessibility | td-113f99, td-d12fd7, td-59f69d | Console experience + style/accessibility contract |
 | NFR-009 Maintainability and release control | td-eef8f8, td-c1d238, td-59d13e, td-a096c0 | MVP gates, release runbook, test matrix, version policy |
 | NFR-010 Credential security and auth reliability | td-afdaa4, td-5842f1, td-ccc047, td-bcc114 | Secure token storage, auth lifecycle events, RBAC and secrets controls |
-| NFR-011 Operational ergonomics and automation readiness | td-bb3ded, td-c37a53, td-b7248b, td-2d1f40 | smithctl scriptability and non-UI loop operations |
+| NFR-011 Operational ergonomics and automation readiness | td-bb3ded, td-c37a53, td-b7248b, td-2d1f40 | smith scriptability and non-UI loop operations |
 | NFR-012 Environment reproducibility and supply-chain safety | td-2517d0, td-65e317, td-c7e14a, td-c155ab | Deterministic environment resolution, image/build validation, and auditable runtime metadata |
 | NFR-013 Safe and auditable skill mount execution | td-d93ca9, td-75f932, td-2f6291, td-bafce8 | Policy-constrained skill sources/mount paths with consistent audit trail |
 

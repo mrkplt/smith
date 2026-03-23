@@ -72,7 +72,7 @@ The platform direction is informed by upstream tooling, [marcus/sidecar](https:/
 
 ## Installation and Usage
 
-`smithctl` is the primary CLI for interacting with Smith. Installation, usage examples, and operator workflows are documented in [docs/smithctl-installation-and-usage.md](docs/smithctl-installation-and-usage.md).
+`smith` is the primary CLI for interacting with Smith. Installation, usage examples, and operator workflows are documented in [docs/smithctl-installation-and-usage.md](docs/smithctl-installation-and-usage.md).
 
 ## Architecture Summary
 
@@ -84,9 +84,8 @@ Smith is split into control-plane and data-plane components.
 - `smith-chat` (`cmd/smith-chat`): dedicated chat service for session creation, message streaming (SSE), and chat action commit forwarding.
 - `smith-core` (`cmd/smith-core`): watches unresolved loop state in etcd, acquires per-loop locks, transitions loop state, and schedules replica Jobs in Kubernetes.
 - `smith-daemon` (`cmd/smith-daemon`): background control-plane worker for retention-based cleanup of terminal loops and runtime artifact pruning.
-- `smithctl` (`cmd/smithctl`): kubectl-style operator CLI for `loop` and `prd` resources with context/config support and scriptable JSON output.
+- `smith` (`cmd/smith`): unified operator CLI for `loop`, `project`, `provider`, `config`, `prd`, and `replica` workflows.
 - `task` (`cmd/task`): task and handoff workflow CLI backed by etcd for Smith-native session/start/log/handoff flows.
-- `smith` (`cmd/smith`): PRD launcher CLI (`smith --prd`) for interactive PRD generation before build loops.
 - `smith-mcp` (`cmd/smith-mcp`): Model Context Protocol (MCP) server for tool-based AI integration.
 - `smith-console` (`console/` + Helm deployment): operator UI/runtime assets.
 - `pkg/client/v1`: Typed Go client library for Smith API and chat endpoints.
@@ -94,7 +93,7 @@ Smith is split into control-plane and data-plane components.
 
 ### Data Plane
 
-- `smith-replica` (`cmd/smith-replica`): Kubernetes Job worker that executes loop work, appends journal entries, writes handoff output, and finalizes loop state.
+- `smith replica run` (`cmd/smith`): Kubernetes Job worker mode that executes loop work, appends journal entries, writes handoff output, and finalizes loop state.
 
 ### Deployment and Ops Assets
 

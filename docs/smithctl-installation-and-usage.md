@@ -1,24 +1,26 @@
-# smithctl Installation and Usage
+# Smith CLI Installation and Usage
 
-`smithctl` is the command-line interface for managing Smith autonomous development loops. It allows you to create, list, inspect, and control loops from your terminal.
+`smith` is the primary command-line interface for managing Smith autonomous development loops.
+
+`smith` is the single CLI entrypoint for control-plane and runtime workflows.
 
 ## Installation
 
 ### From Source
 
-If you have Go installed, you can install `smithctl` directly from the repository:
+If you have Go installed, you can install `smith` directly from the repository:
 
 ```bash
-go install ./cmd/smithctl
+go install ./cmd/smith
 ```
 
-Alternatively, you can use the provided `Makefile` to build the binary:
+Alternatively, you can use the provided `Makefile` to build binaries:
 
 ```bash
-make build-smithctl
+make build
 ```
 
-This will place the `smithctl` binary in the `bin/` directory.
+This places the binaries in the `bin/` directory.
 
 ### Downloading Binaries
 
@@ -28,7 +30,7 @@ Current repository for release artifacts: [https://github.com/callmeradical/smit
 
 ## Configuration
 
-`smithctl` uses a configuration file located at `~/.smith/config.json` by default. You can also use environment variables or command-line flags to configure it.
+`smith` uses a configuration file located at `~/.smith/config.json` by default. You can also use environment variables or command-line flags to configure it.
 
 ### Config File Format
 
@@ -56,7 +58,7 @@ Current repository for release artifacts: [https://github.com/callmeradical/smit
 
 - `--server URL`: Smith API server URL.
 - `--token TOKEN`: Operator bearer token.
-- `--config PATH`: Path to smithctl config file (default: `~/.smith/config.json`).
+- `--config PATH`: Path to smith config file (default: `~/.smith/config.json`).
 - `--context NAME`: Named config context to use.
 - `--output text|json`: Output format (default: `text`).
 
@@ -68,23 +70,23 @@ Provider/project onboarding sequence:
 2. Configure projects that bind to those provider profiles
 3. Start/create loops
 
-`smithctl` enforces this ordering for `project add` and `loop create` by checking onboarding readiness. If provider prerequisites are missing, responses include ordered missing requirements and a suggested next command.
+`smith` enforces this ordering for `project add` and `loop create` by checking onboarding readiness. If provider prerequisites are missing, responses include ordered missing requirements and a suggested next command.
 
 #### Managing Provider Profiles
 
 - **List provider profiles:**
   ```bash
-  smithctl provider list
+  smith provider list
   ```
 
 - **Add a provider profile:**
   ```bash
-  smithctl provider add --id codex-default --type codex --default-model gpt-5-codex --credential-id codex-default-key --api-key "$SMITH_CODEX_API_KEY"
+  smith provider add --id codex-default --type codex --default-model gpt-5-codex --credential-id codex-default-key --api-key "$SMITH_CODEX_API_KEY"
   ```
 
 - **Configure an existing provider profile:**
   ```bash
-  smithctl provider configure codex-default --credential-id openai-key --api-key "$SMITH_CODEX_API_KEY"
+  smith provider configure codex-default --credential-id openai-key --api-key "$SMITH_CODEX_API_KEY"
   ```
 
 Supported provider types: `codex`, `claude`, `gemini`.
@@ -93,83 +95,83 @@ Supported provider types: `codex`, `claude`, `gemini`.
 
 - **List projects:**
   ```bash
-  smithctl project list
+  smith project list
   ```
 
 - **Add a project:**
   ```bash
-  smithctl project add --id smith --repo-url https://github.com/acme/smith --provider-profile-id codex-default
+  smith project add --id smith --repo-url https://github.com/acme/smith --provider-profile-id codex-default
   ```
 
 - **Configure an existing project:**
   ```bash
-  smithctl project configure smith --github-user octocat
+  smith project configure smith --github-user octocat
   ```
 
 #### Managing Loops
 
 - **List loops:**
   ```bash
-  smithctl loop list
+  smith loop list
   ```
 
 - **Get loop details:**
   ```bash
-  smithctl loop get <loop-id>
+  smith loop get <loop-id>
   ```
 
 - **View loop journal (logs):**
   ```bash
-  smithctl loop logs <loop-id>
+  smith loop logs <loop-id>
   ```
   Use `--follow` to stream live journal entries.
 
 - **Create a loop from a GitHub issue:**
   ```bash
-  smithctl loop create --title "Fix bug" --source-type github_issue --source-ref "org/repo#123"
+  smith loop create --title "Fix bug" --source-type github_issue --source-ref "org/repo#123"
   ```
 
 - **Create a loop from a PRD:**
   ```bash
-  smithctl loop create --from-prd docs/prd1.md
+  smith loop create --from-prd docs/prd1.md
   ```
 
 - **Cancel a loop:**
   ```bash
-  smithctl loop cancel <loop-id> --reason "User requested"
+  smith loop cancel <loop-id> --reason "User requested"
   ```
 
 > **Notice (Gated / Under Development):** Task Contract UI/API surfaces (`/tasks`, `/v1/tasks`) are feature-flagged and may be disabled by default depending on runtime configuration.
 
-Task contract management currently ships through API/Console (`/v1/tasks`, `/tasks` route). `smithctl` does not yet expose a dedicated `task` resource command group.
+Task contract management currently ships through API/Console (`/v1/tasks`, `/tasks` route). `smith` does not yet expose a dedicated `task` resource command group.
 
 #### Interactive Control
 
 - **Attach to a running loop:**
   ```bash
-  smithctl loop attach <loop-id>
+  smith loop attach <loop-id>
   ```
 
 - **Execute a command in a loop:**
   ```bash
-  smithctl loop command <loop-id> --command "ls -la"
+  smith loop command <loop-id> --command "ls -la"
   ```
 
 - **Detach from a loop:**
   ```bash
-  smithctl loop detach <loop-id>
+  smith loop detach <loop-id>
   ```
 
 #### Managing PRDs
 
 - **Create a PRD template:**
   ```bash
-  smithctl prd create "New Feature" --template feature --out docs/feature.md
+  smith prd create "New Feature" --template feature --out docs/feature.md
   ```
 
 - **Submit a PRD to trigger loops:**
   ```bash
-  smithctl prd submit --file docs/feature.md
+  smith prd submit --file docs/feature.md
   ```
 
 ## Examples

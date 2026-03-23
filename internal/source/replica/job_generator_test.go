@@ -31,6 +31,10 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	if job.Spec.Template.Spec.ServiceAccountName != "smith-replica" {
 		t.Fatalf("unexpected service account: %q", job.Spec.Template.Spec.ServiceAccountName)
 	}
+	command := job.Spec.Template.Spec.Containers[0].Command
+	if len(command) != 3 || command[0] != "/bin/smith" || command[1] != "replica" || command[2] != "run" {
+		t.Fatalf("expected replica command [/bin/smith replica run], got %+v", command)
+	}
 	volumes := map[string]Volume{}
 	for _, v := range job.Spec.Template.Spec.Volumes {
 		volumes[v.Name] = v

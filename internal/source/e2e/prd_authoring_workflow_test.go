@@ -90,7 +90,7 @@ func TestPRDAuthoringWorkflowEndToEnd(t *testing.T) {
 		}))
 		defer server.Close()
 
-		submitOut := runSmithctl(t, server.URL, "--output", "json", "prd", "submit", "--file", jsonPath, "--source-ref", ".agents/tasks/prd.json")
+		submitOut := runSmithControl(t, server.URL, "--output", "json", "prd", "submit", "--file", jsonPath, "--source-ref", ".agents/tasks/prd.json")
 		loopID := mustGetIngressLoopID(t, submitOut)
 		assertLoopGet(t, server.URL, loopID, "prd_story", ".agents/tasks/prd.json#US-001", "synced")
 	})
@@ -126,14 +126,14 @@ func TestPRDAuthoringWorkflowEndToEnd(t *testing.T) {
 		}))
 		defer server.Close()
 
-		submitOut, stderr, code := runSmithctlWithExitCode(server.URL, "--output", "json", "prd", "submit", "--file", invalidFixture)
+		submitOut, stderr, code := runSmithControlWithExitCode(server.URL, "--output", "json", "prd", "submit", "--file", invalidFixture)
 		if code != 1 {
-			t.Fatalf("expected smithctl submit to fail, got code=%d stderr=%s stdout=%s", code, stderr, string(submitOut))
+			t.Fatalf("expected smith prd submit to fail, got code=%d stderr=%s stdout=%s", code, stderr, string(submitOut))
 		}
 
 		var submitBody map[string]any
 		if err := json.Unmarshal(submitOut, &submitBody); err != nil {
-			t.Fatalf("decode smithctl submit output: %v\n%s", err, string(submitOut))
+			t.Fatalf("decode smith submit output: %v\n%s", err, string(submitOut))
 		}
 		report, ok := submitBody["report"]
 		if !ok {

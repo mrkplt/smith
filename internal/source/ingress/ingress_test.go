@@ -42,7 +42,7 @@ func TestParsePRDMarkdown(t *testing.T) {
 - [ ] Add PRD ingestion endpoint
 
 ## CLI
-1. Scaffold smithctl resources
+1. Scaffold smith resources
 `
 	drafts, errs := ParsePRDMarkdown(doc, "docs/prd1.md", map[string]string{"env": "test"})
 	if len(errs) != 0 {

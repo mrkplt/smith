@@ -13,7 +13,7 @@ Define how loops are created and controlled for single and multi-loop execution.
 
 ```mermaid
 sequenceDiagram
-    participant operator as Operator / smithctl
+    participant operator as Operator / smith
     participant github as GitHub (API)
     participant api as smith-api
     participant etcd as etcd
@@ -39,7 +39,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant client as smithctl / Operator
+    participant client as smith / Operator
     participant api as smith-api
     participant etcd as etcd
 
@@ -60,7 +60,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant client as smithctl / Operator
+    participant client as smith / Operator
     participant api as smith-api
     participant etcd as etcd
 
@@ -98,7 +98,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant client as smithctl / Console
+    participant client as smith / Console
     participant api as smith-api
     participant core as smith-core
     participant etcd as etcd
@@ -172,26 +172,26 @@ Configuration endpoints used by Console Settings and automation:
 - `GET|POST /v1/projects` and `GET|PUT|DELETE /v1/projects/{id}` for project runtime records
 - `GET|POST /v1/secrets` and `GET|PUT|DELETE /v1/secrets/{id}` for reusable secret references
 
-## smithctl (kubectl-style UX)
+## smith CLI (kubectl-style UX)
 
 CLI should be resource-oriented and scriptable.
 
 Example command surface:
-- `smithctl loop create -f loop.yaml`
-- `smithctl loop create --from-github 123`
-- `smithctl loop create --from-prd docs/prd1.md`
-- `smithctl loop create --batch issues.yaml`
-- `smithctl loop create ... --env-preset standard`
-- `smithctl loop create ... --env-image-ref ghcr.io/acme/replica:v2 --env-image-pull-policy Always`
-- `smithctl loop create ... --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22`
-- `smithctl loop get <id>`
-- `smithctl loop logs <id> --follow`
-- `smithctl loop attach <id>`
-- `smithctl loop command <id> --command "pause|resume|..."` (attach required)
-- `smithctl loop detach <id>`
-- `smithctl loop cancel <id>`
-- `smithctl prd create <name> --template <tpl>`
-- `smithctl prd submit <file>`
+- `smith loop create -f loop.yaml`
+- `smith loop create --from-github 123`
+- `smith loop create --from-prd docs/prd1.md`
+- `smith loop create --batch issues.yaml`
+- `smith loop create ... --env-preset standard`
+- `smith loop create ... --env-image-ref ghcr.io/acme/replica:v2 --env-image-pull-policy Always`
+- `smith loop create ... --env-docker-context . --env-dockerfile Dockerfile --env-build-arg GO_VERSION=1.22`
+- `smith loop get <id>`
+- `smith loop logs <id> --follow`
+- `smith loop attach <id>`
+- `smith loop command <id> --command "pause|resume|..."` (attach required)
+- `smith loop detach <id>`
+- `smith loop cancel <id>`
+- `smith prd create <name> --template <tpl>`
+- `smith prd submit <file>`
 
 ## Go Client Library
 
@@ -368,7 +368,7 @@ classDiagram
 ## MVP Decisions
 
 - MVP supports all three ingress modes (GitHub issues, PRDs, direct interactive).
-- `smithctl` is the primary operator path for automation and terminal workflows.
+- `smith` is the primary operator path for automation and terminal workflows.
 - Operator Console remains the visual control/monitoring layer.
 
 ## Security and Audit
@@ -449,7 +449,7 @@ The interactive terminal flow used by the pods page and pod detail view is:
 
 ```mermaid
 sequenceDiagram
-    participant client as smithctl / Console
+    participant client as smith / Console
     participant api as smith-api
     participant k8s as Kubernetes
     participant replica as smith-replica

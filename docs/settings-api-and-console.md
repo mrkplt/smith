@@ -111,7 +111,7 @@ Project-level Git credentials are managed separately from project metadata.
 
 ## Onboarding Readiness APIs
 
-Onboarding state is shared by Console and `smithctl` provider-first gating.
+Onboarding state is shared by Console and `smith` provider-first gating.
 
 ### Endpoints
 

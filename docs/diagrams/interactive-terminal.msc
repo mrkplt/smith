@@ -1,7 +1,7 @@
 msc {
   hscale = "1.5";
 
-  client [label="smithctl / Console"],
+  client [label="smith / Console"],
   api [label="smith-api"],
   k8s [label="Kubernetes"],
   replica [label="smith-replica"];

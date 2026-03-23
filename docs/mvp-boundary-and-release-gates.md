@@ -7,7 +7,7 @@
 - Operator API + Console with live journal and audited overrides.
 - Helm-based deployment for control-plane services.
 - Single provider path (Codex) with secure credential references.
-- `smithctl` lifecycle control for create/get/logs/attach/cancel.
+- `smith` lifecycle control for create/get/logs/attach/cancel.
 
 ## Out of Scope (Post-MVP)
 

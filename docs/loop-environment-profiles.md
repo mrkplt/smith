@@ -28,7 +28,7 @@ Allow each loop to run in a deterministic, configurable execution environment. D
 
 ```json
 {
-  "title": "Build smithctl loop env support",
+  "title": "Build smith loop env support",
   "source_type": "prd_task",
   "source_ref": "docs/prd1.md#cli-task-1",
   "environment": {

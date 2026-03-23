@@ -108,7 +108,7 @@ func TestIngressModesLoopCreationAndExecution(t *testing.T) {
 		}
 		writeJSONFile(t, issuesPath, payload)
 
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "ingest-github", "--file", issuesPath)
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "ingest-github", "--file", issuesPath)
 		loopID := mustGetIngressLoopID(t, out)
 		assertLoopGet(t, server.URL, loopID, "github_issue", "acme/smith#12", "synced")
 	})
@@ -139,13 +139,13 @@ func TestIngressModesLoopCreationAndExecution(t *testing.T) {
 			t.Fatalf("write prd: %v", err)
 		}
 
-		out := runSmithctl(t, server.URL, "--output", "json", "prd", "submit", "--file", prdPath, "--source-ref", "docs/prd-ingress.md")
+		out := runSmithControl(t, server.URL, "--output", "json", "prd", "submit", "--file", prdPath, "--source-ref", "docs/prd-ingress.md")
 		loopID := mustGetIngressLoopID(t, out)
 		assertLoopGet(t, server.URL, loopID, "prd_story", "docs/prd-ingress.md#US-001", "synced")
 	})
 
 	t.Run("interactive ingress", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Interactive triage",
 			"--description", "Operator-driven loop",
 			"--source-type", "interactive",
@@ -182,9 +182,9 @@ func TestIngressModesLoopCreationAndExecution(t *testing.T) {
 		}
 
 		validateOut := runSmithValidate(t, prdPath)
-		submitOut, stderr, code := runSmithctlWithExitCode(server.URL, "--output", "json", "prd", "submit", "--file", prdPath)
+		submitOut, stderr, code := runSmithControlWithExitCode(server.URL, "--output", "json", "prd", "submit", "--file", prdPath)
 		if code != 1 {
-			t.Fatalf("expected smithctl submit to fail, got code=%d stderr=%s stdout=%s", code, stderr, string(submitOut))
+			t.Fatalf("expected smith prd submit to fail, got code=%d stderr=%s stdout=%s", code, stderr, string(submitOut))
 		}
 
 		var cliReport map[string]any
@@ -193,7 +193,7 @@ func TestIngressModesLoopCreationAndExecution(t *testing.T) {
 		}
 		var apiBody map[string]any
 		if err := json.Unmarshal(submitOut, &apiBody); err != nil {
-			t.Fatalf("decode smithctl submit output: %v\n%s", err, string(submitOut))
+			t.Fatalf("decode smith submit output: %v\n%s", err, string(submitOut))
 		}
 		report, ok := apiBody["report"]
 		if !ok {
@@ -349,7 +349,7 @@ func (h *ingressHarness) handleLoopGet(w http.ResponseWriter, r *http.Request) {
 
 func assertLoopGet(t *testing.T, serverURL, loopID, wantSourceType, wantSourceRef, wantState string) {
 	t.Helper()
-	out := runSmithctl(t, serverURL, "--output", "json", "loop", "get", loopID)
+	out := runSmithControl(t, serverURL, "--output", "json", "loop", "get", loopID)
 	var body map[string]any
 	if err := json.Unmarshal(out, &body); err != nil {
 		t.Fatalf("decode loop get response: %v\n%s", err, string(out))
@@ -428,18 +428,18 @@ func writeJSONResponse(t *testing.T, w http.ResponseWriter, status int, payload 
 	}
 }
 
-func runSmithctl(t *testing.T, serverURL string, args ...string) []byte {
+func runSmithControl(t *testing.T, serverURL string, args ...string) []byte {
 	t.Helper()
-	stdout, stderr, code := runSmithctlWithExitCode(serverURL, args...)
+	stdout, stderr, code := runSmithControlWithExitCode(serverURL, args...)
 	if code != 0 {
-		fullArgs := append([]string{"run", "./cmd/smithctl", "--server", serverURL}, args...)
-		t.Fatalf("smithctl failed: code=%d\nargs: %v\nstderr:\n%s\nstdout:\n%s", code, fullArgs, stderr, string(stdout))
+		fullArgs := append([]string{"run", "./cmd/smith", "--server", serverURL}, args...)
+		t.Fatalf("smith failed: code=%d\nargs: %v\nstderr:\n%s\nstdout:\n%s", code, fullArgs, stderr, string(stdout))
 	}
 	return stdout
 }
 
-func runSmithctlWithExitCode(serverURL string, args ...string) ([]byte, string, int) {
-	fullArgs := append([]string{"run", "./cmd/smithctl", "--server", serverURL}, args...)
+func runSmithControlWithExitCode(serverURL string, args ...string) ([]byte, string, int) {
+	fullArgs := append([]string{"run", "./cmd/smith", "--server", serverURL}, args...)
 	cmd := exec.Command("go", fullArgs...)
 	cmd.Dir = filepath.Clean(filepath.Join(filepath.Dir(mustCallerFile()), "../../.."))
 	cmd.Env = append(os.Environ(), "SMITHCTL_SKIP_PROVIDER_FIRST=1")
