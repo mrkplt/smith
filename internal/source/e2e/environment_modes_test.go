@@ -40,7 +40,7 @@ func TestLoopEnvironmentModes(t *testing.T) {
 	defer server.Close()
 
 	t.Run("preset default", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Default env",
 			"--description", "No env flags",
 			"--source-type", "interactive",
@@ -51,7 +51,7 @@ func TestLoopEnvironmentModes(t *testing.T) {
 	})
 
 	t.Run("mise mode", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Mise env",
 			"--description", "Toolchain pin",
 			"--source-type", "interactive",
@@ -64,7 +64,7 @@ func TestLoopEnvironmentModes(t *testing.T) {
 	})
 
 	t.Run("container image mode", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Image env",
 			"--description", "Image override",
 			"--source-type", "interactive",
@@ -77,7 +77,7 @@ func TestLoopEnvironmentModes(t *testing.T) {
 	})
 
 	t.Run("dockerfile mode", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Dockerfile env",
 			"--description", "Build override",
 			"--source-type", "interactive",
@@ -154,7 +154,7 @@ func (h *envHarness) handleLoopGet(w http.ResponseWriter, r *http.Request) {
 
 func assertEnvironmentMode(t *testing.T, serverURL, loopID, wantMode string) {
 	t.Helper()
-	out := runSmithctl(t, serverURL, "--output", "json", "loop", "get", loopID)
+	out := runSmithControl(t, serverURL, "--output", "json", "loop", "get", loopID)
 	var body map[string]any
 	if err := json.Unmarshal(out, &body); err != nil {
 		t.Fatalf("decode loop get response: %v\n%s", err, string(out))

@@ -1,4 +1,4 @@
-package main
+package smithreplica
 
 import (
 	"context"
@@ -57,7 +57,7 @@ type loopExecutionConfig struct {
 	IssueWorkflowEnabled bool
 }
 
-func main() {
+func Run() {
 
 	loopID := strings.TrimSpace(os.Getenv("SMITH_LOOP_ID"))
 	if loopID == "" {

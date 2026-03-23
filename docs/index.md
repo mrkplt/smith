@@ -32,7 +32,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [Contributing to Smith](contributing.md)
 - [Local Development Reference](local-dev-make-workflow.md)
 - [Local Integration Environment](local-integration-environment.md)
-- [smithctl Installation and Usage](smithctl-installation-and-usage.md)
+- [Smith CLI Installation and Usage](smithctl-installation-and-usage.md)
 - [Git History Policy](git-history-policy.md)
 - Required repo `mise.toml` runtime bootstrap is documented in the contributor guide.
 
@@ -48,7 +48,7 @@ Smith is a distributed runtime designed to execute autonomous development loops 
 - [ADR 0005 - Completion Saga for Code and State Sync](adrs/0005-completion-saga-for-code-and-state-sync.md)
 - [ADR 0006 - Provider Credentials in Kubernetes Secrets](adrs/0006-provider-credentials-in-kubernetes-secrets.md)
 - [ADR 0007 - Dedicated Chat Service Boundary](adrs/0007-dedicated-chat-service-boundary.md)
-- [ADR 0008 - smithctl as Primary Operator Interface](adrs/0008-smithctl-as-primary-operator-interface.md)
+- [ADR 0008 - Primary Operator Interface](adrs/0008-smithctl-as-primary-operator-interface.md)
 - [ADR 0009 - Contract-First API, gRPC, Client, and MCP](adrs/0009-contract-first-api-grpc-client-and-mcp.md)
 - [ADR 0010 - Helm Chart as Deployment Contract](adrs/0010-helm-chart-as-deployment-contract.md)
 - [ADR 0011 - Mount PRD into Runtime via ConfigMap](adrs/0011-mount-prd-into-runtime-via-configmap.md)

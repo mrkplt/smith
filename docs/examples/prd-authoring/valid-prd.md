@@ -44,6 +44,6 @@ As a maintainer, I want invalid PRDs rejected before autonomous execution starts
 
 #### Acceptance Criteria
 
-- `smithctl prd submit` accepts a valid canonical PRD and returns loop IDs.
+- `smith prd submit` accepts a valid canonical PRD and returns loop IDs.
 - Invalid PRDs return machine-readable diagnostics.
 - No loop is created when readiness validation fails.

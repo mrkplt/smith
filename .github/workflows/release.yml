@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  release-smithctl:
+  release-smith:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -22,18 +22,18 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build smithctl binaries
+      - name: Build smith binaries
         run: make dist GO=go
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/smithctl-linux-amd64
-            dist/smithctl-linux-arm64
-            dist/smithctl-darwin-amd64
-            dist/smithctl-darwin-arm64
-            dist/smithctl-windows-amd64.exe
+            dist/smith-linux-amd64
+            dist/smith-linux-arm64
+            dist/smith-darwin-amd64
+            dist/smith-darwin-arm64
+            dist/smith-windows-amd64.exe
           draft: false
           prerelease: false
           generate_release_notes: true

@@ -19,7 +19,7 @@ Smith's design and terminology are inspired by *The Matrix* and related cyberpun
 - **Anomaly:** A unit of work, bug, or unfinished feature. An anomaly is any state in the repository that deviates from the desired requirements (the PRD).
 - **Replica:** A homogeneous worker instance. Replicas are spawned to resolve specific anomalies, echoing Agent Smith's ability to replicate himself to handle multiple tasks.
 - **The Matrix:** The collective state of all loops and anomalies stored in `etcd`, representing the shared reality that all components observe.
-- **Operator:** The human controller (you) who manages the system from outside the "Matrix" using `smithctl` or the Console.
+- **Operator:** The human controller (you) who manages the system from outside the "Matrix" using `smith` or the Console.
 
 ### Lifecycle States
 

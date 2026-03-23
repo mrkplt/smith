@@ -13,7 +13,6 @@ ARG TARGETARCH=amd64
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith-replica ./cmd/smith-replica && \
     go build -trimpath -ldflags "-s -w -buildid=" -o /out/smith ./cmd/smith && \
     go build -trimpath -ldflags "-s -w -buildid=" -o /out/task ./cmd/task
 
@@ -42,7 +41,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 RUN mkdir -p /home/node/.codex /home/node/.claude
-COPY --from=builder /out/smith-replica /bin/smith-replica
 COPY --from=builder /out/smith /bin/smith
 COPY --from=builder /out/task /usr/local/bin/task
 COPY --from=codex-downloader /out/codex /usr/local/bin/codex
@@ -51,4 +49,4 @@ COPY docker/replica.AGENTS.md /home/node/.claude/CLAUDE.md
 WORKDIR /workspace
 RUN mkdir -p /workspace && chown -R node:node /workspace /home/node/.codex /home/node/.claude
 USER node
-ENTRYPOINT ["/bin/smith-replica"]
+ENTRYPOINT ["/bin/smith", "replica", "run"]

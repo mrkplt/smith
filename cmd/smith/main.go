@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	smithreplica "smith/cmd/smith-replica"
+	smithctl "smith/cmd/smithctl"
 	"smith/internal/source/model"
 )
 
@@ -30,15 +32,19 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "agent-chat" {
+		return runAgentChat(args[1:], stdin, stdout, stderr)
+	}
+
+	if code, handled := runUnifiedCommand(args, stdin, stdout, stderr); handled {
+		return code
+	}
+
 	args = normalizeCLIArgs(args)
 
 	if wantsHelp(args) {
 		printHelp(stdout)
 		return 0
-	}
-
-	if len(args) > 0 && args[0] == "agent-chat" {
-		return runAgentChat(args[1:], stdin, stdout, stderr)
 	}
 
 	hasPRDMode := hasFlag(args, "--prd") || hasFlag(args, "--prompt")
@@ -176,6 +182,139 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "PRD generation completed; expected output under %s\n", absOutPath)
 	return 0
+}
+
+func runUnifiedCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) (int, bool) {
+	if len(args) == 0 {
+		return 0, false
+	}
+
+	globalFlags, remaining, err := splitDelegatedRootFlags(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "%v\n", err)
+		return 2, true
+	}
+	if len(remaining) == 0 {
+		return 0, false
+	}
+
+	primary := strings.ToLower(strings.TrimSpace(remaining[0]))
+	switch primary {
+	case "ctl":
+		forwarded := append(globalFlags, remaining[1:]...)
+		return runSmithctlCommand(forwarded, stdout, stderr), true
+	case "replica":
+		return runReplicaSubcommand(remaining[1:], stdin, stdout, stderr), true
+	case "loop", "provider", "project", "config":
+		forwarded := append(globalFlags, remaining...)
+		return runSmithctlCommand(forwarded, stdout, stderr), true
+	case "prd":
+		return runPRDSubcommand(globalFlags, remaining[1:], stdin, stdout, stderr), true
+	default:
+		return 0, false
+	}
+}
+
+func splitDelegatedRootFlags(args []string) ([]string, []string, error) {
+	valueFlags := map[string]struct{}{
+		"--server":  {},
+		"--token":   {},
+		"--config":  {},
+		"--context": {},
+		"--output":  {},
+	}
+
+	flags := make([]string, 0, len(args))
+	index := 0
+	for index < len(args) {
+		current := strings.TrimSpace(args[index])
+		if current == "" {
+			index++
+			continue
+		}
+		if _, ok := valueFlags[current]; ok {
+			if index+1 >= len(args) {
+				return nil, nil, fmt.Errorf("%s requires a value", current)
+			}
+			flags = append(flags, current, args[index+1])
+			index += 2
+			continue
+		}
+		matchedPrefix := false
+		for key := range valueFlags {
+			if strings.HasPrefix(current, key+"=") {
+				flags = append(flags, current)
+				index++
+				matchedPrefix = true
+				break
+			}
+		}
+		if matchedPrefix {
+			continue
+		}
+		break
+	}
+
+	return flags, args[index:], nil
+}
+
+func runReplicaSubcommand(args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 || wantsHelp(args) {
+		printReplicaHelp(stdout)
+		return 0
+	}
+
+	if !strings.EqualFold(strings.TrimSpace(args[0]), "run") {
+		fmt.Fprintf(stderr, "unknown replica command %q\n", args[0])
+		printReplicaHelp(stderr)
+		return 2
+	}
+	if len(args) > 1 {
+		fmt.Fprintln(stderr, "usage: smith replica run")
+		return 2
+	}
+	smithreplica.Run()
+	return 0
+}
+
+func runPRDSubcommand(globalFlags, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 || wantsHelp(args) {
+		printPRDSubcommandHelp(stdout)
+		return 0
+	}
+
+	subcommand := strings.ToLower(strings.TrimSpace(args[0]))
+	switch subcommand {
+	case "create", "submit":
+		forwarded := append([]string{}, globalFlags...)
+		forwarded = append(forwarded, "prd")
+		forwarded = append(forwarded, args...)
+		return runSmithctlCommand(forwarded, stdout, stderr)
+	case "validate":
+		localArgs := append([]string{"--prd", "validate"}, args[1:]...)
+		return run(localArgs, stdin, stdout, stderr)
+	case "import":
+		if len(args) < 2 || strings.TrimSpace(args[1]) == "" {
+			fmt.Fprintln(stderr, "usage: smith prd import <path> [--out .agents/tasks/prd.json]")
+			return 2
+		}
+		localArgs := []string{"--prd", "--from-markdown", strings.TrimSpace(args[1])}
+		if len(args) > 2 {
+			localArgs = append(localArgs, args[2:]...)
+		}
+		return run(localArgs, stdin, stdout, stderr)
+	case "export":
+		localArgs := append([]string{"--prd"}, args[1:]...)
+		return run(localArgs, stdin, stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "unknown prd command %q\n", args[0])
+		printPRDSubcommandHelp(stderr)
+		return 2
+	}
+}
+
+func runSmithctlCommand(args []string, stdout, stderr io.Writer) int {
+	return smithctl.Run(args, stdout, stderr)
 }
 
 func validatePRDWorkflowFlags(promptFile, fromMarkdown, fromJSON, toMarkdown string) error {
@@ -569,9 +708,15 @@ func wantsHelp(args []string) bool {
 }
 
 func printHelp(w io.Writer) {
-	fmt.Fprintln(w, "smith - local PRD launcher")
+	fmt.Fprintln(w, "smith - unified Smith CLI")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  smith ctl <resource> <command> [flags]")
+	fmt.Fprintln(w, "  smith <resource> <command> [flags]")
+	fmt.Fprintln(w, "  smith prd <create|submit|validate|import|export> [flags]")
+	fmt.Fprintln(w, "  smith replica run [flags]")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Local PRD workflows (legacy flags):")
 	fmt.Fprintln(w, "  smith --prd \"<feature request>\" [--out path] [--stories N] [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "  smith --prompt <prompt-file> [--out path] [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "  smith --prd --from-markdown <path> [--out .agents/tasks/prd.json]")
@@ -580,10 +725,30 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  smith agent-chat [--agent-cmd \"...\"]")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Notes:")
+	fmt.Fprintln(w, "  ctl is an alias for the top-level resource commands.")
+	fmt.Fprintln(w, "  replica run starts the in-cluster runtime worker mode.")
 	fmt.Fprintln(w, "  --prd selects PRD workflows and composes a upstream tooling-style prompt for generation.")
 	fmt.Fprintln(w, "  --prompt sends an existing prompt file directly to the agent command.")
 	fmt.Fprintln(w, "  validate prints machine-readable JSON diagnostics and exits non-zero when the PRD is not ready.")
 	fmt.Fprintln(w, "  agent-chat provides a structured JSON bridge for API integration.")
+}
+
+func printPRDSubcommandHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: smith prd <command>")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Commands:")
+	fmt.Fprintln(w, "  create               Scaffold a PRD template")
+	fmt.Fprintln(w, "  submit               Submit a PRD to Smith API ingress")
+	fmt.Fprintln(w, "  validate [path]      Validate PRD markdown or json locally")
+	fmt.Fprintln(w, "  import <path>        Import markdown to canonical json")
+	fmt.Fprintln(w, "  export --from-json <path> --to-markdown <path>")
+}
+
+func printReplicaHelp(w io.Writer) {
+	fmt.Fprintln(w, "Usage: smith replica run [flags]")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Notes:")
+	fmt.Fprintln(w, "  This is the runtime worker mode used in loop pods.")
 }
 
 func runAgentChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

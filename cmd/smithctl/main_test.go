@@ -1,4 +1,4 @@
-package main
+package smith
 
 import (
 	"bytes"
@@ -195,7 +195,7 @@ func TestHelpListsConfigResource(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run failed code=%d stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "config  Manage smithctl configuration") {
+	if !strings.Contains(stdout.String(), "config  Manage smith configuration") {
 		t.Fatalf("expected config resource in help, got %q", stdout.String())
 	}
 }
@@ -208,7 +208,7 @@ func TestConfigWithoutSubcommandPrintsHelp(t *testing.T) {
 	}
 	output := stdout.String()
 	for _, want := range []string{
-		"Usage: smithctl config <command>",
+		"Usage: smith config <command>",
 		"view",
 		"get-contexts",
 		"use-context",
@@ -232,7 +232,7 @@ func TestConfigUnknownCommandFails(t *testing.T) {
 	if !strings.Contains(errOutput, `unknown config command "unknown"`) {
 		t.Fatalf("expected unknown command error, got %q", errOutput)
 	}
-	if !strings.Contains(errOutput, "Usage: smithctl config <command>") {
+	if !strings.Contains(errOutput, "Usage: smith config <command>") {
 		t.Fatalf("expected config help in stderr, got %q", errOutput)
 	}
 }
@@ -612,7 +612,7 @@ func TestConfigSetContextRequiresName(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("expected no stdout, got %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: smithctl config set-context <name> [--server URL] [--token TOKEN]") {
+	if !strings.Contains(stderr.String(), "usage: smith config set-context <name> [--server URL] [--token TOKEN]") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
@@ -706,7 +706,7 @@ func TestConfigUseContextRequiresSingleNameAndDoesNotWriteFile(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("expected no stdout, got %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: smithctl config use-context <name>") {
+	if !strings.Contains(stderr.String(), "usage: smith config use-context <name>") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
@@ -824,7 +824,7 @@ func TestConfigDeleteContextRequiresSingleNameAndDoesNotWriteFile(t *testing.T) 
 	if stdout.Len() != 0 {
 		t.Fatalf("expected no stdout, got %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: smithctl config delete-context <name>") {
+	if !strings.Contains(stderr.String(), "usage: smith config delete-context <name>") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
@@ -919,7 +919,7 @@ func TestConfigRenameContextRequiresTwoNamesAndDoesNotWriteFile(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("expected no stdout, got %q", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: smithctl config rename-context <old> <new>") {
+	if !strings.Contains(stderr.String(), "usage: smith config rename-context <old> <new>") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 	if _, err := os.Stat(cfgPath); !errors.Is(err, os.ErrNotExist) {
@@ -1829,7 +1829,7 @@ func TestProjectAddEnforcesProviderFirstOnboarding(t *testing.T) {
 	if out["status"] != "error" || out["operation"] != "project.add" {
 		t.Fatalf("expected provider-first error envelope, got %#v", out)
 	}
-	if !strings.Contains(fmt.Sprint(out["suggested_command"]), "smithctl provider add") {
+	if !strings.Contains(fmt.Sprint(out["suggested_command"]), "smith provider add") {
 		t.Fatalf("expected provider setup suggestion, got %#v", out)
 	}
 }
@@ -1861,7 +1861,7 @@ func TestLoopCreateEnforcesProviderFirstOnboarding(t *testing.T) {
 	if out["status"] != "error" || out["operation"] != "loop.create" {
 		t.Fatalf("expected loop create provider-first error envelope, got %#v", out)
 	}
-	if !strings.Contains(fmt.Sprint(out["suggested_command"]), "smithctl provider add") {
+	if !strings.Contains(fmt.Sprint(out["suggested_command"]), "smith provider add") {
 		t.Fatalf("expected provider setup suggestion, got %#v", out)
 	}
 }

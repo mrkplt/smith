@@ -47,7 +47,7 @@ func BuildReplicaJob(req JobRequest) (JobManifest, error) {
 							Name:            "replica",
 							Image:           req.Image,
 							ImagePullPolicy: req.ImagePullPolicy,
-							Command:         []string{"/bin/smith-replica"},
+							Command:         []string{"/bin/smith", "replica", "run"},
 							Env:             env,
 							VolumeMounts:    volumeMounts,
 						},

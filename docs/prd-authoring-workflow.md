@@ -82,7 +82,7 @@ smith --prd --from-json .agents/tasks/prd.json --to-markdown /tmp/prd-roundtrip.
 Ingress the canonical PRD when it is ready for autonomous execution:
 
 ```bash
-smithctl --output json prd submit --file .agents/tasks/prd.json --source-ref .agents/tasks/prd.json
+smith --output json prd submit --file .agents/tasks/prd.json --source-ref .agents/tasks/prd.json
 ```
 
 When the response contains loop IDs and `source_ref` values like `.agents/tasks/prd.json#US-001`, the PRD is eligible for autonomous execution.
@@ -121,7 +121,7 @@ Expected diagnostics:
 Submitting the same file through ingress stays blocked:
 
 ```bash
-smithctl --output json prd submit --file docs/examples/prd-authoring/invalid-prd.json
+smith --output json prd submit --file docs/examples/prd-authoring/invalid-prd.json
 ```
 
 The API returns the same validation report and no loops are created.

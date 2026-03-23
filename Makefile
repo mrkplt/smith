@@ -122,28 +122,27 @@ bootstrap: ## Install required mise runtimes and optional k3d/vcluster prerequis
 	  echo "bootstrap: preserved existing $$HOME/.smith/config.json"; \
 	fi
 
-build: build-smithctl build-services ## Build all binaries
+build: build-services ## Build all binaries
 
-build-smithctl: ## Build smithctl binary for current platform
+build-smith: ## Build smith CLI binary for current platform
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -ldflags "-X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT)" -o $(BIN_DIR)/smithctl ./cmd/smithctl
+	$(GO) build -o $(BIN_DIR)/smith ./cmd/smith
 
 build-services: ## Build all service binaries
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/smith-api ./cmd/smith-api
 	$(GO) build -o $(BIN_DIR)/smith-core ./cmd/smith-core
 	$(GO) build -o $(BIN_DIR)/smith-daemon ./cmd/smith-daemon
-	$(GO) build -o $(BIN_DIR)/smith-replica ./cmd/smith-replica
 	$(GO) build -o $(BIN_DIR)/smith ./cmd/smith
 	$(GO) build -o $(BIN_DIR)/task ./cmd/task
 
-dist: ## Build cross-platform smithctl binaries
+dist: ## Build cross-platform smith binaries
 	@mkdir -p dist
-	GOOS=linux GOARCH=amd64 $(GO) build -o dist/smithctl-linux-amd64 ./cmd/smithctl
-	GOOS=linux GOARCH=arm64 $(GO) build -o dist/smithctl-linux-arm64 ./cmd/smithctl
-	GOOS=darwin GOARCH=amd64 $(GO) build -o dist/smithctl-darwin-amd64 ./cmd/smithctl
-	GOOS=darwin GOARCH=arm64 $(GO) build -o dist/smithctl-darwin-arm64 ./cmd/smithctl
-	GOOS=windows GOARCH=amd64 $(GO) build -o dist/smithctl-windows-amd64.exe ./cmd/smithctl
+	GOOS=linux GOARCH=amd64 $(GO) build -o dist/smith-linux-amd64 ./cmd/smith
+	GOOS=linux GOARCH=arm64 $(GO) build -o dist/smith-linux-arm64 ./cmd/smith
+	GOOS=darwin GOARCH=amd64 $(GO) build -o dist/smith-darwin-amd64 ./cmd/smith
+	GOOS=darwin GOARCH=arm64 $(GO) build -o dist/smith-darwin-arm64 ./cmd/smith
+	GOOS=windows GOARCH=amd64 $(GO) build -o dist/smith-windows-amd64.exe ./cmd/smith
 
 cluster: cluster-up ## Alias for cluster-up
 

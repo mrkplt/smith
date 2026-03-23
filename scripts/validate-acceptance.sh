@@ -223,15 +223,15 @@ section "td-366583 | Core and replica Dockerfiles"
 expect_file "docker/core.Dockerfile" "Core Dockerfile exists"
 expect_file "docker/replica.Dockerfile" "Replica Dockerfile exists"
 expect_file "cmd/smith-core/main.go" "Core entrypoint exists"
-expect_file "cmd/smith-replica/main.go" "Replica entrypoint exists"
+expect_file "cmd/smith/main.go" "Replica runtime mode entrypoint exists"
 
 expect_rg "distroless/static-debian12:nonroot" "docker/core.Dockerfile" "Core runtime image runs as non-root"
 expect_rg "go build .*./cmd/smith-core" "docker/core.Dockerfile" "Core Dockerfile builds the smith-core binary"
-expect_rg "go build .*./cmd/smith-replica" "docker/replica.Dockerfile" "Replica Dockerfile builds the smith-replica binary"
+expect_rg "go build .*./cmd/smith" "docker/replica.Dockerfile" "Replica Dockerfile builds the smith binary"
 
 if check_command go "Go toolchain is available for binary build validation"; then
   run_check "smith-core binary builds" go build -o /tmp/smith-core-bin ./cmd/smith-core
-  run_check "smith-replica binary builds" go build -o /tmp/smith-replica-bin ./cmd/smith-replica
+  run_check "smith binary builds" go build -o /tmp/smith-bin ./cmd/smith
 fi
 
 if command -v docker >/dev/null 2>&1; then
@@ -389,7 +389,7 @@ section "td-98b5f7 | provider-first onboarding flow in smithctl"
 expect_rg "ensureProviderFirstOnboarding" "cmd/smithctl/main.go" "smithctl enforces provider-first onboarding precheck"
 expect_rg "/v1/onboarding/readiness" "cmd/smithctl/main.go" "smithctl checks API onboarding readiness contract"
 expect_rg "provider_catalog" "cmd/smithctl/main.go" "smithctl gates project/loop workflows on provider catalog readiness"
-expect_rg "smithctl provider add --id codex-default --type codex --credential-id" "cmd/smithctl/main.go" "smithctl prints actionable provider setup suggestion"
+expect_rg "smith provider add --id codex-default --type codex --credential-id" "cmd/smithctl/main.go" "smith CLI prints actionable provider setup suggestion"
 expect_rg "TestProjectAddEnforcesProviderFirstOnboarding" "cmd/smithctl/main_test.go" "smithctl project provider-first enforcement test exists"
 expect_rg "TestLoopCreateEnforcesProviderFirstOnboarding" "cmd/smithctl/main_test.go" "smithctl loop provider-first enforcement test exists"
 
@@ -413,7 +413,7 @@ expect_rg "skillFlag" "cmd/smithctl/main.go" "smithctl implements skill flag par
 expect_rg "--skill" "cmd/smithctl/main.go" "smithctl exposes --skill flag"
 expect_rg "provider defaults apply \(codex: /workspace/.agents/skills/<name>, claude: /workspace/.claude/skills/<name>\)" "cmd/smithctl/main.go" "smithctl help documents provider-specific default mountpoints"
 expect_rg "TestLoopCreateWithSkillFlags" "cmd/smithctl/main_test.go" "smithctl skill flag payload test exists"
-expect_rg "## smithctl Skill Flags" "docs/skill-volume-mounts.md" "Skill mount doc includes smithctl usage"
+expect_rg "## smith Skill Flags" "docs/skill-volume-mounts.md" "Skill mount doc includes smith usage"
 
 section "td-bafce8 | e2e coverage for loop skill mount behavior"
 expect_file "internal/source/e2e/skill_mounts_test.go" "Skill mount e2e test exists"
@@ -440,7 +440,7 @@ expect_rg "Canonical JSON Contract" "docs/prd-authoring-workflow.md" "Doc explai
 expect_rg "Markdown Authoring Rules" "docs/prd-authoring-workflow.md" "Doc explains markdown authoring rules"
 expect_rg "smith --prd --from-markdown" "docs/prd-authoring-workflow.md" "Doc includes markdown import CLI example"
 expect_rg "smith --prd validate" "docs/prd-authoring-workflow.md" "Doc includes validation CLI example"
-expect_rg "smithctl --output json prd submit" "docs/prd-authoring-workflow.md" "Doc includes ingress CLI example"
+expect_rg "smith --output json prd submit" "docs/prd-authoring-workflow.md" "Doc includes ingress CLI example"
 expect_rg "prd_missing_quality_gates" "docs/prd-authoring-workflow.md" "Doc includes exact invalid PRD diagnostic code"
 expect_rg "TestPRDAuthoringWorkflowEndToEnd" "internal/source/e2e/prd_authoring_workflow_test.go" "PRD workflow e2e test case is defined"
 expect_rg "e2e-prd-authoring.sh" "scripts/test/run-matrix.sh" "PRD authoring e2e included in run-matrix"
@@ -469,7 +469,7 @@ section "td-1f619b | quickstart for local deploy and loop execution with make"
 expect_file "docs/make-local-quickstart.md" "Local make quickstart doc exists"
 expect_rg "make doctor" "docs/make-local-quickstart.md" "Quickstart includes prerequisite check"
 expect_rg "make deploy-local" "docs/make-local-quickstart.md" "Quickstart includes local deploy step"
-expect_rg "smithctl .* loop create" "docs/make-local-quickstart.md" "Quickstart includes sample loop execution"
+expect_rg "smith .* loop create" "docs/make-local-quickstart.md" "Quickstart includes sample loop execution"
 expect_rg "make undeploy-local" "docs/make-local-quickstart.md" "Quickstart includes cleanup workflow"
 expect_rg "Troubleshooting" "docs/make-local-quickstart.md" "Quickstart includes troubleshooting notes"
 

@@ -72,7 +72,7 @@ kubectl -n smith-system port-forward svc/smith-smith-chat 8081:8081
 kubectl -n smith-system port-forward svc/smith-smith-console 3000:3000
 ```
 
-Keep this running while issuing `smithctl` commands.
+Keep this running while issuing `smith` commands.
 
 Verify control-plane deployments (including retention daemon):
 
@@ -101,7 +101,7 @@ curl -sS -X POST http://127.0.0.1:3000/chat/v1/chat/sessions \
 ## 4. Create and Inspect a Sample Loop
 
 ```bash
-smithctl --server http://127.0.0.1:8080 --output json loop create \
+smith --server http://127.0.0.1:8080 --output json loop create \
   --title "Quickstart loop" \
   --description "Validate local make workflow" \
   --source-type interactive \
@@ -111,8 +111,8 @@ smithctl --server http://127.0.0.1:8080 --output json loop create \
 Capture the returned `loop_id`, then:
 
 ```bash
-smithctl --server http://127.0.0.1:8080 --output json loop get <loop_id>
-smithctl --server http://127.0.0.1:8080 --output json loop logs <loop_id>
+smith --server http://127.0.0.1:8080 --output json loop get <loop_id>
+smith --server http://127.0.0.1:8080 --output json loop logs <loop_id>
 ```
 
 ## 5. Run Local Validation Suites

@@ -334,3 +334,39 @@ func TestRunRequiresPRDModeFlag(t *testing.T) {
 		t.Fatalf("unexpected stderr: %s", stderr.String())
 	}
 }
+
+func TestRunCtlAliasShowsHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"ctl", "help"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected code=0, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "smith - Smith operator CLI") {
+		t.Fatalf("expected smith control help output, got %s", stdout.String())
+	}
+}
+
+func TestRunReplicaRunRejectsExtraArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"replica", "run", "--stage", "prd"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code=2, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "usage: smith replica run") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestRunPRDCreateWithGlobalFlags(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "feature.md")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--output", "json", "prd", "create", "Auth Flow", "--template", "feature", "--out", outPath}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected code=0, got %d stderr=%s", code, stderr.String())
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("expected PRD file at %s: %v", outPath, err)
+	}
+}

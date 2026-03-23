@@ -49,7 +49,7 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 	defer server.Close()
 
 	t.Run("explicit mount path", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Skill explicit",
 			"--description", "Skill test",
 			"--source-type", "interactive",
@@ -64,7 +64,7 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 	})
 
 	t.Run("default codex mount path", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Skill default",
 			"--description", "Skill test",
 			"--source-type", "interactive",
@@ -79,7 +79,7 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 	})
 
 	t.Run("default claude mount path", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Skill claude default",
 			"--description", "Skill test",
 			"--source-type", "interactive",
@@ -95,7 +95,7 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 	})
 
 	t.Run("missing skill failure", func(t *testing.T) {
-		out, errOut, code := runSmithctlWithExitCode(server.URL,
+		out, errOut, code := runSmithControlWithExitCode(server.URL,
 			"--output", "json", "loop", "create",
 			"--title", "Skill invalid",
 			"--description", "Skill test",
@@ -112,7 +112,7 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 	})
 
 	t.Run("journal metadata", func(t *testing.T) {
-		out := runSmithctl(t, server.URL, "--output", "json", "loop", "create",
+		out := runSmithControl(t, server.URL, "--output", "json", "loop", "create",
 			"--title", "Skill journal",
 			"--description", "Skill test",
 			"--source-type", "interactive",
@@ -120,7 +120,7 @@ func TestLoopSkillMountBehavior(t *testing.T) {
 			"--skill", "name=commit,source=local://skills/commit",
 		)
 		loopID := mustGetTopLevelLoopID(t, out)
-		logs := runSmithctl(t, server.URL, "--output", "json", "loop", "logs", loopID)
+		logs := runSmithControl(t, server.URL, "--output", "json", "loop", "logs", loopID)
 		var entries []map[string]any
 		if err := json.Unmarshal(logs, &entries); err != nil {
 			t.Fatalf("decode loop logs: %v\n%s", err, string(logs))
@@ -237,7 +237,7 @@ func (h *skillHarness) handleLoopJournal(w http.ResponseWriter, r *http.Request)
 
 func getLoopSkills(t *testing.T, serverURL, loopID string) []any {
 	t.Helper()
-	out := runSmithctl(t, serverURL, "--output", "json", "loop", "get", loopID)
+	out := runSmithControl(t, serverURL, "--output", "json", "loop", "get", loopID)
 	var body map[string]any
 	if err := json.Unmarshal(out, &body); err != nil {
 		t.Fatalf("decode loop get response: %v\n%s", err, string(out))

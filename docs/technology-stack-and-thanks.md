@@ -4,7 +4,7 @@ This page captures the core technologies Smith currently depends on, and acknowl
 
 ## Core Runtime and Control Plane Technologies
 
-- Go (`go 1.25.0`) for core services and CLI (`smith-api`, `smith-chat`, `smith-core`, `smith-replica`, `smithctl`).
+- Go (`go 1.25.0`) for core services and CLI (`smith-api`, `smith-chat`, `smith-core`, `smith-replica`, `smith`).
 - etcd (`go.etcd.io/etcd/client/v3`) as the authoritative store for loop state, locks, journals, handoffs, overrides, and audit records.
 - PostgreSQL (`github.com/jackc/pgx/v5`) for document metadata in `postgres-garage` document backend mode.
 - Garage S3-compatible object storage (`github.com/aws/aws-sdk-go-v2/service/s3`) for document content blobs in `postgres-garage` mode.
@@ -23,7 +23,7 @@ This page captures the core technologies Smith currently depends on, and acknowl
 
 - HTTP/JSON API (`cmd/smith-api`) for loop ingress, control, auth lifecycle, and reporting.
 - Chat API (`cmd/smith-chat`) for chat sessions, SSE streaming responses, and action commits.
-- CLI (`cmd/smithctl`) for operator automation and scripting.
+- CLI (`cmd/smith`) for operator automation and scripting.
 - Console web shell (`console/`) for operator-facing runtime configuration and UI surface.
 
 ## Testing and Verification Tooling
