@@ -78,7 +78,10 @@
           "properties": {
             "gitPat": { "type": "string" },
             "runtimeCredentials": { "type": "string" },
-            "runtimeCredentialsClaude": { "type": "string" }
+            "runtimeCredentialsClaude": { "type": "string" },
+            "runtimeCredentialsClaudeMaxCredentialsJson": { "type": "string" },
+            "runtimeCredentialsClaudeMaxClaudeJson": { "type": "string" },
+            "runtimeCredentialsClaudeMaxSettingsJson": { "type": "string" }
           },
           "required": ["gitPat", "runtimeCredentials"]
         },
@@ -88,7 +91,10 @@
           "properties": {
             "gitPat": { "type": "string", "minLength": 1 },
             "runtimeCredentials": { "type": "string", "minLength": 1 },
-            "runtimeCredentialsClaude": { "type": "string", "minLength": 1 }
+            "runtimeCredentialsClaude": { "type": "string", "minLength": 1 },
+            "claudeMaxCredentialsJson": { "type": "string", "minLength": 1 },
+            "claudeMaxClaudeJson": { "type": "string", "minLength": 1 },
+            "claudeMaxSettingsJson": { "type": "string", "minLength": 1 }
           },
           "required": ["gitPat", "runtimeCredentials"]
         }
