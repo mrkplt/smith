@@ -3,6 +3,9 @@ global:
   featureFlags:
     interactiveAttach: true
 
+ingress:
+  enabled: true
+
 etcd:
   endpoints:
     - http://smith-etcd.smith-system.svc.cluster.local:2379

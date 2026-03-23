@@ -130,10 +130,18 @@
       },
       "required": ["create"]
     },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["enabled"]
+    },
     "nameOverride": { "type": "string" },
     "fullnameOverride": { "type": "string" }
   },
-  "required": ["global", "etcd", "secrets", "core", "api", "console", "chat", "daemon", "rbac", "nameOverride", "fullnameOverride"],
+  "required": ["global", "etcd", "secrets", "core", "api", "console", "chat", "daemon", "rbac", "ingress", "nameOverride", "fullnameOverride"],
   "definitions": {
     "componentImage": {
       "type": "object",

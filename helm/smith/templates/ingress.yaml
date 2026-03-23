@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "smith.fullname" . }}-api-strip
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - {{ .Values.console.apiBaseUrl | quote }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "smith.fullname" . }}-chat-strip
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - {{ .Values.console.chatBaseUrl | default "/chat" | quote }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "smith.fullname" . }}
+  labels:
+    {{- include "smith.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`{{ .Values.console.apiBaseUrl }}`)
+      kind: Rule
+      priority: 20
+      services:
+        - name: {{ include "smith.fullname" . }}-api
+          port: {{ .Values.api.service.port }}
+      middlewares:
+        - name: {{ include "smith.fullname" . }}-api-strip
+    - match: PathPrefix(`{{ .Values.console.chatBaseUrl | default "/chat" }}`)
+      kind: Rule
+      priority: 20
+      services:
+        - name: {{ include "smith.fullname" . }}-chat
+          port: {{ .Values.chat.service.port }}
+      middlewares:
+        - name: {{ include "smith.fullname" . }}-chat-strip
+    - match: PathPrefix(`/`)
+      kind: Rule
+      priority: 10
+      services:
+        - name: {{ include "smith.fullname" . }}-console
+          port: {{ .Values.console.service.port }}
+{{- end }}

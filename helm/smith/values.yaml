@@ -277,6 +277,9 @@ daemon:
   resources: {}
   env: []
 
+ingress:
+  enabled: false
+
 rbac:
   create: true
 
