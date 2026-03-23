@@ -20,7 +20,7 @@ For both profiles, the gate requires:
 
 - matrix/e2e suite pass (`scripts/test/run-matrix.sh` via profile wrapper);
 - recovery path pass (`scripts/test/failure-injection.sh`);
-- override path pass (`go test ./cmd/smithctl -run TestLoopCancelBatchPostsOverride -count=1`).
+- override path pass (`go test ./internal/cli/control -run TestLoopCancelBatchPostsOverride -count=1`).
 
 For `vcluster`, the gate also requires watch/reconcile integration against live vCluster APIs:
 

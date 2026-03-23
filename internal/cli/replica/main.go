@@ -1,4 +1,4 @@
-package smithreplica
+package replica
 
 import (
 	"context"
@@ -57,11 +57,12 @@ type loopExecutionConfig struct {
 	IssueWorkflowEnabled bool
 }
 
-func Run() {
+func Run() int {
 
 	loopID := strings.TrimSpace(os.Getenv("SMITH_LOOP_ID"))
 	if loopID == "" {
-		log.Fatal("SMITH_LOOP_ID is required")
+		log.Printf("SMITH_LOOP_ID is required")
+		return 2
 	}
 	correlationID := strings.TrimSpace(os.Getenv("SMITH_CORRELATION_ID"))
 
@@ -73,7 +74,8 @@ func Run() {
 	ctx := context.Background()
 	storeClient, err := store.New(ctx, splitCSV(os.Getenv("SMITH_ETCD_ENDPOINTS")), 5*time.Second)
 	if err != nil {
-		log.Fatalf("failed to connect etcd: %v", err)
+		log.Printf("failed to connect etcd: %v", err)
+		return 1
 	}
 	defer func() { _ = storeClient.Close() }()
 
@@ -89,7 +91,8 @@ func Run() {
 	startup, startupErr := loadStartupContext(ctx, storeClient, loopID)
 	if startupErr != nil {
 		recordStartupFailure(ctx, storeClient, loopID, correlationID, startupErr)
-		log.Fatalf("startup context load failed: %v", startupErr)
+		log.Printf("startup context load failed: %v", startupErr)
+		return 1
 	}
 	if startup.PriorHandoff != nil {
 		log.Printf("loaded prior handoff sequence=%d for loop_id=%s", startup.PriorHandoff.Sequence, loopID)
@@ -134,7 +137,8 @@ func Run() {
 			return current, nil
 		})
 		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "environment-setup-failed")
-		log.Fatalf("environment setup failed: %v", setupErr)
+		log.Printf("environment setup failed: %v", setupErr)
+		return 1
 	}
 	loopMeta := loopExecutionMetadata(loopCfg)
 	_ = storeClient.AppendJournal(ctx, model.JournalEntry{
@@ -174,7 +178,8 @@ func Run() {
 		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica runtime failed: "+runErr.Error()))
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, runErr)
 		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "replica-runtime-failed")
-		log.Fatalf("replica loop failed: %v", runErr)
+		log.Printf("replica loop failed: %v", runErr)
+		return 1
 	}
 
 	finalState := desiredState
@@ -241,7 +246,8 @@ func Run() {
 		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica finalize failed: "+finalizeErr.Error()))
 		recordRuntimeFailure(ctx, storeClient, loopID, correlationID, finalizeErr)
 		syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, model.LoopStateFlatline, "replica-runtime-failed")
-		log.Fatalf("failed to finalize state: %v", finalizeErr)
+		log.Printf("failed to finalize state: %v", finalizeErr)
+		return 1
 	}
 	syncTaskContractStatusFromAnomaly(ctx, storeClient, startup.Anomaly, finalState, finalizeReason)
 
@@ -302,6 +308,7 @@ func Run() {
 	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, finalMessage))
 
 	log.Printf("smith-replica startup complete for loop_id=%s final_state=%s", loopID, finalState)
+	return 0
 }
 
 func loadLoopExecutionConfigFromEnv() loopExecutionConfig {

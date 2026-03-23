@@ -64,6 +64,13 @@ Current repository for release artifacts: [https://github.com/callmeradical/smit
 
 ### Commands
 
+Command taxonomy:
+
+- Preferred form: `smith <resource> <command>`
+- Alias form: `smith ctl <resource> <command>`
+
+`smith ctl` is a compatibility alias. Use top-level resources for docs, scripts, and examples.
+
 Provider/project onboarding sequence:
 
 1. Configure provider profiles first

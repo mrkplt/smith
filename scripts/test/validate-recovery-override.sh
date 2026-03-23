@@ -18,7 +18,7 @@ run() {
 run "recovery-failure-injection" ./scripts/test/failure-injection.sh
 
 # Override-path validation: ensure operator cancel/override request path remains wired.
-run "override-cli-path" go test ./cmd/smithctl -run TestLoopCancelBatchPostsOverride -count=1
+run "override-cli-path" go test ./internal/cli/control -run TestLoopCancelBatchPostsOverride -count=1
 
 {
   echo "recovery_override_validation:pass"
