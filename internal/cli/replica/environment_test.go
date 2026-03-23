@@ -1,4 +1,4 @@
-package smithreplica
+package replica
 
 import (
 	"context"

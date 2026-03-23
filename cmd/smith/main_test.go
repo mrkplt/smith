@@ -357,6 +357,16 @@ func TestRunReplicaRunRejectsExtraArgs(t *testing.T) {
 	}
 }
 
+func TestRunReplicaRunRequiresLoopID(t *testing.T) {
+	t.Setenv("SMITH_LOOP_ID", "")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"replica", "run"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("expected code=2, got %d", code)
+	}
+}
+
 func TestRunPRDCreateWithGlobalFlags(t *testing.T) {
 	dir := t.TempDir()
 	outPath := filepath.Join(dir, "feature.md")

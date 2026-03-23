@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	smithreplica "smith/cmd/smith-replica"
-	smithctl "smith/cmd/smithctl"
+	"smith/internal/cli/control"
+	"smith/internal/cli/replica"
 	"smith/internal/source/model"
 )
 
@@ -202,12 +202,12 @@ func runUnifiedCommand(args []string, stdin io.Reader, stdout, stderr io.Writer)
 	switch primary {
 	case "ctl":
 		forwarded := append(globalFlags, remaining[1:]...)
-		return runSmithctlCommand(forwarded, stdout, stderr), true
+		return runControlCommand(forwarded, stdout, stderr), true
 	case "replica":
 		return runReplicaSubcommand(remaining[1:], stdin, stdout, stderr), true
 	case "loop", "provider", "project", "config":
 		forwarded := append(globalFlags, remaining...)
-		return runSmithctlCommand(forwarded, stdout, stderr), true
+		return runControlCommand(forwarded, stdout, stderr), true
 	case "prd":
 		return runPRDSubcommand(globalFlags, remaining[1:], stdin, stdout, stderr), true
 	default:
@@ -273,8 +273,18 @@ func runReplicaSubcommand(args []string, _ io.Reader, stdout, stderr io.Writer) 
 		fmt.Fprintln(stderr, "usage: smith replica run")
 		return 2
 	}
-	smithreplica.Run()
-	return 0
+	return runReplicaMode(stderr)
+}
+
+func runReplicaMode(stderr io.Writer) (exitCode int) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			fmt.Fprintf(stderr, "replica panic: %v\n", recovered)
+			exitCode = 1
+		}
+	}()
+
+	return replica.Run()
 }
 
 func runPRDSubcommand(globalFlags, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -289,7 +299,7 @@ func runPRDSubcommand(globalFlags, args []string, stdin io.Reader, stdout, stder
 		forwarded := append([]string{}, globalFlags...)
 		forwarded = append(forwarded, "prd")
 		forwarded = append(forwarded, args...)
-		return runSmithctlCommand(forwarded, stdout, stderr)
+		return runControlCommand(forwarded, stdout, stderr)
 	case "validate":
 		localArgs := append([]string{"--prd", "validate"}, args[1:]...)
 		return run(localArgs, stdin, stdout, stderr)
@@ -313,8 +323,8 @@ func runPRDSubcommand(globalFlags, args []string, stdin io.Reader, stdout, stder
 	}
 }
 
-func runSmithctlCommand(args []string, stdout, stderr io.Writer) int {
-	return smithctl.Run(args, stdout, stderr)
+func runControlCommand(args []string, stdout, stderr io.Writer) int {
+	return control.Run(args, stdout, stderr)
 }
 
 func validatePRDWorkflowFlags(promptFile, fromMarkdown, fromJSON, toMarkdown string) error {

@@ -1,4 +1,4 @@
-package smith
+package control
 
 import (
 	"bytes"
