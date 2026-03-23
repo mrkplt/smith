@@ -21,6 +21,23 @@
 - Provider profiles cannot reference missing secrets, and referenced secrets/profiles cannot be deleted until dependencies are removed.
 - Pods list defaults to healthy-state filtering; destructive cleanup is policy/API-driven rather than tile-level UI actions.
 
+## v0.6.0
+
+Release date: 2026-03-23
+
+This minor release refactors CLI architecture to consolidate operator and replica command surfaces under the `smith` binary and aligns release/version metadata to the `0.6.x` line.
+
+### Highlights
+
+- Consolidated control and replica runtime flows under `internal/cli` and wired command entrypoints through `cmd/smith`.
+- Migrated release artifacts from `smithctl-*` binaries to `smith-*` binaries in the release workflow.
+- Updated CLI/runtime docs and acceptance scripts to reflect the unified `smith` command surface.
+- Bumped chart/image/frontend/docs defaults to `v0.6.0` for release consistency.
+
+### Notes
+
+- `v0.6.0` is a minor release because it delivers structural CLI consolidation and coordinated release packaging changes in addition to version-line advancement.
+
 ## v0.5.0
 
 Release date: 2026-03-22

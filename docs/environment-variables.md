@@ -77,7 +77,7 @@ Helm note: when `documentDependencies.postgres.enabled` and/or `documentDependen
 | --- | --- | --- |
 | `SMITH_CORE_PORT` | `8083` | Core health/metrics server port. |
 | `SMITH_CORE_HOLDER_ID` | hostname-derived | Leader/lock holder identity for state transitions. |
-| `SMITH_REPLICA_IMAGE` | `ghcr.io/smith/replica:v0.5.0` | Runtime replica image used for loop Jobs. |
+| `SMITH_REPLICA_IMAGE` | `ghcr.io/smith/replica:v0.6.0` | Runtime replica image used for loop Jobs. |
 | `SMITH_REPLICA_IMAGE_PULL_POLICY` | `IfNotPresent` | Pull policy for replica image. |
 | `SMITH_RUNTIME_SECRET_NAME` | empty | Secret name used by core when wiring runtime credentials into replica jobs. |
 | `SMITH_RUNTIME_CREDENTIALS_KEY` | `runtime_credentials` | Secret key field used for runtime credential lookup in replica jobs. |
