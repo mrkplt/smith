@@ -281,6 +281,9 @@ func TestBuildReplicaJobIncludesWorkspaceSeedInitContainer(t *testing.T) {
 	if len(seed.Command) == 0 {
 		t.Fatal("expected seed init command")
 	}
+	if len(seed.Command) < 3 || !strings.Contains(seed.Command[2], "chown -R 1000:1000 /workspace") {
+		t.Fatalf("expected seed init command to normalize workspace ownership, got %+v", seed.Command)
+	}
 	hasWorkspaceMount := false
 	for _, mount := range seed.VolumeMounts {
 		if mount.Name == "workspace" && mount.MountPath == "/workspace" && !mount.ReadOnly {

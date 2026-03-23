@@ -87,6 +87,20 @@ func TestHandleIngressPRDAcceptsCanonicalPRD(t *testing.T) {
 	if anomaly.Metadata["prd_story_id"] != "US-001" {
 		t.Fatalf("expected prd_story_id metadata, got %#v", anomaly.Metadata)
 	}
+	taskID := strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+	if taskID == "" {
+		t.Fatalf("expected task_contract_id metadata, got %#v", anomaly.Metadata)
+	}
+	task, found, err := ms.GetTaskContract(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected task contract %q", taskID)
+	}
+	if task.Status != model.TaskContractStatusRunning {
+		t.Fatalf("expected running task contract, got %q", task.Status)
+	}
 }
 
 func TestHandleIngressPRDPropagatesBindingMetadata(t *testing.T) {
@@ -97,6 +111,8 @@ func TestHandleIngressPRDPropagatesBindingMetadata(t *testing.T) {
 			Name:              "Smith",
 			RepoURL:           "https://github.com/callmeradical/smith",
 			ProviderProfileID: "codex-default",
+			SkillsImage:       "ghcr.io/callmeradical/smith-skills:v1",
+			SkillsPullPolicy:  "IfNotPresent",
 		},
 	}}
 	s := newPRDValidationTestServer(ms)
@@ -152,6 +168,12 @@ func TestHandleIngressPRDPropagatesBindingMetadata(t *testing.T) {
 	}
 	if anomaly.Metadata["github_repository"] != "https://github.com/callmeradical/smith" {
 		t.Fatalf("expected github_repository metadata, got %#v", anomaly.Metadata)
+	}
+	if anomaly.Metadata["workspace_seed_image"] != "ghcr.io/callmeradical/smith-skills:v1" {
+		t.Fatalf("expected workspace_seed_image metadata, got %#v", anomaly.Metadata)
+	}
+	if anomaly.Metadata["workspace_seed_pull_policy"] != "IfNotPresent" {
+		t.Fatalf("expected workspace_seed_pull_policy metadata, got %#v", anomaly.Metadata)
 	}
 }
 
@@ -706,6 +728,56 @@ func TestHandleDocumentBuildRejectsInvalidPRD(t *testing.T) {
 	}
 	if len(states) != 0 {
 		t.Fatalf("expected no created loops, got %d", len(states))
+	}
+}
+
+func TestHandleDocumentBuildCreatesTaskBackedLoops(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	if err := ms.PutDocument(context.Background(), model.Document{
+		ID:        "doc-build-1",
+		ProjectID: "proj-1",
+		Title:     "Valid PRD",
+		Content:   `{"version":1,"project":"Validation","overview":"Canonical PRD validation","qualityGates":["go test ./..."],"stories":[{"id":"US-001","title":"Define validation contract","status":"open","description":"As a maintainer, I want shared validation.","acceptanceCriteria":["Validation report is shared."]}]}`,
+		Format:    "json",
+	}); err != nil {
+		t.Fatalf("put document: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/documents/doc-build-1/build", strings.NewReader(`{}`))
+	s.handleDocumentByID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 1 {
+		t.Fatalf("expected one created loop, got %d", len(states))
+	}
+	anomaly, found, err := ms.GetAnomaly(context.Background(), states[0].Record.LoopID)
+	if err != nil {
+		t.Fatalf("get anomaly: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected anomaly for loop %q", states[0].Record.LoopID)
+	}
+	taskID := strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+	if taskID == "" {
+		t.Fatalf("expected task_contract_id metadata, got %#v", anomaly.Metadata)
+	}
+	task, found, err := ms.GetTaskContract(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("get task contract: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected task contract %q", taskID)
+	}
+	if task.Status != model.TaskContractStatusRunning {
+		t.Fatalf("expected running task contract, got %q", task.Status)
 	}
 }
 

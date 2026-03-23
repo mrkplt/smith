@@ -25,6 +25,10 @@ core:
     repository: smith-replica
     tag: local
     pullPolicy: Never
+  workspaceSeedImage:
+    repository: smith-skills
+    tag: local
+    pullPolicy: Never
   loopPolicy:
     maxAttempts: 2
     backoffInitial: 2s
@@ -41,12 +45,18 @@ api:
     repository: smith-api
     tag: local
     pullPolicy: Never
+  featureFlags:
+    tasks: true
+    tasksKanban: true
 console:
   replicaCount: 1
   image:
     repository: smith-console
     tag: local
     pullPolicy: Never
+  featureFlags:
+    tasks: true
+    tasksKanban: true
 
 chat:
   replicaCount: 1

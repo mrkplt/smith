@@ -314,7 +314,7 @@ func buildReplicaInitContainers(req JobRequest, hasPRDConfig bool) []Container {
 			Command: []string{
 				"sh",
 				"-lc",
-				"set -eu; mkdir -p /workspace; if [ -d /seed ]; then cp -a /seed/. /workspace/; fi",
+				"set -eu; mkdir -p /workspace; if [ -d /seed ]; then cp -a /seed/. /workspace/; fi; chown -R 1000:1000 /workspace",
 			},
 			VolumeMounts: []VolumeMount{
 				{Name: "workspace", MountPath: "/workspace", ReadOnly: false},

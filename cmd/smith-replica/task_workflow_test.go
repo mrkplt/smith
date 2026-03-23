@@ -112,6 +112,9 @@ func TestTaskWorkflowClientCommands(t *testing.T) {
 	runner := &smithTDRunner{}
 	client := newTaskWorkflowClient(model.Anomaly{Metadata: map[string]string{"task_contract_id": "task-123"}}, "/workspace", runner)
 
+	if err := client.Session(context.Background()); err != nil {
+		t.Fatalf("session failed: %v", err)
+	}
 	if err := client.Start(context.Background()); err != nil {
 		t.Fatalf("start failed: %v", err)
 	}
@@ -122,17 +125,20 @@ func TestTaskWorkflowClientCommands(t *testing.T) {
 		t.Fatalf("handoff failed: %v", err)
 	}
 
-	if len(runner.calls) != 3 {
-		t.Fatalf("expected 3 commands, got %d", len(runner.calls))
+	if len(runner.calls) != 4 {
+		t.Fatalf("expected 4 commands, got %d", len(runner.calls))
 	}
-	if runner.calls[0].Name != "task" || !reflect.DeepEqual(runner.calls[0].Args, []string{"start", "task-123"}) {
+	if runner.calls[0].Name != "task" || !reflect.DeepEqual(runner.calls[0].Args, []string{"usage", "--new-session"}) {
+		t.Fatalf("unexpected session call: %+v", runner.calls[0])
+	}
+	if runner.calls[1].Name != "task" || !reflect.DeepEqual(runner.calls[1].Args, []string{"start", "task-123"}) {
 		t.Fatalf("unexpected start call: %+v", runner.calls[0])
 	}
-	if runner.calls[1].Name != "task" || !reflect.DeepEqual(runner.calls[1].Args, []string{"log", "task-123", "phase complete"}) {
-		t.Fatalf("unexpected log call: %+v", runner.calls[1])
+	if runner.calls[2].Name != "task" || !reflect.DeepEqual(runner.calls[2].Args, []string{"log", "task-123", "phase complete"}) {
+		t.Fatalf("unexpected log call: %+v", runner.calls[2])
 	}
-	if runner.calls[2].Name != "task" || !reflect.DeepEqual(runner.calls[2].Args, []string{"handoff", "task-123", "--done", "done a,done b", "--remaining", "next a"}) {
-		t.Fatalf("unexpected handoff call: %+v", runner.calls[2])
+	if runner.calls[3].Name != "task" || !reflect.DeepEqual(runner.calls[3].Args, []string{"handoff", "task-123", "--done", "done a,done b", "--remaining", "next a"}) {
+		t.Fatalf("unexpected handoff call: %+v", runner.calls[3])
 	}
 }
 
@@ -145,6 +151,9 @@ func TestTaskWorkflowClientCommandFailure(t *testing.T) {
 
 	runner := &smithTDRunner{err: errors.New("boom")}
 	client := newTaskWorkflowClient(model.Anomaly{Metadata: map[string]string{"task_contract_id": "task-123"}}, "/workspace", runner)
+	if err := client.Session(context.Background()); err == nil {
+		t.Fatal("expected session error")
+	}
 	if err := client.Start(context.Background()); err == nil {
 		t.Fatal("expected start error")
 	}
@@ -164,6 +173,9 @@ func TestTaskWorkflowClientNoopWhenDisabled(t *testing.T) {
 	}
 	if err := client.Start(context.Background()); err != nil {
 		t.Fatalf("expected no-op start, got %v", err)
+	}
+	if err := client.Session(context.Background()); err != nil {
+		t.Fatalf("expected no-op session, got %v", err)
 	}
 	if err := client.Log(context.Background(), "ignored"); err != nil {
 		t.Fatalf("expected no-op log, got %v", err)

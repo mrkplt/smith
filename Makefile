@@ -26,6 +26,7 @@ SMITH_LOCAL_REPLICA_IMAGE ?= smith-replica:local
 SMITH_LOCAL_CONSOLE_IMAGE ?= smith-console:local
 SMITH_LOCAL_CHAT_IMAGE ?= smith-chat:local
 SMITH_LOCAL_DAEMON_IMAGE ?= smith-daemon:local
+SMITH_LOCAL_SKILLS_IMAGE ?= smith-skills:local
 SMITH_LOCAL_GIT_PAT ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE ?=
@@ -50,6 +51,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
 	daemon-build-local daemon-load-local daemon-rollout-local daemon-deploy-local \
+	skills-build-local skills-load-local skills-deploy-local \
 	test test-unit test-frontend hook-fast-pre-commit hook-fast-pre-push \
 	\
 	teardown \
@@ -306,6 +308,15 @@ daemon-rollout-local: ## Restart only the smith-daemon deployment
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-daemon -n $(SMITH_NAMESPACE)
 	kubectl rollout status deployment/$(SMITH_RELEASE)-smith-daemon -n $(SMITH_NAMESPACE)
 daemon-deploy-local: daemon-build-local daemon-load-local daemon-rollout-local ## Build, load, and restart only the smith-daemon
+skills-build-local: ## Build only the smith-skills local image
+	docker build -f docker/skills.Dockerfile -t "$(SMITH_LOCAL_SKILLS_IMAGE)" .
+skills-load-local: ## Load only the smith-skills image when using k3d
+	@if [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "k3d" ]] || { [[ "$${SMITH_CLUSTER_PROVIDER:-auto}" == "auto" ]] && [[ "$$(kubectl config current-context 2>/dev/null)" == k3d-* ]]; }; then \
+	  k3d image import "$(SMITH_LOCAL_SKILLS_IMAGE)" -c "$(SMITH_K3D_CLUSTER_NAME)"; \
+	else \
+	  echo "skills-load-local: skipping image import for current-cluster provider"; \
+	fi
+skills-deploy-local: skills-build-local skills-load-local ## Build and load only the smith-skills image
 console-api-deploy-local: console-build-local console-load-local api-build-local api-load-local rollout-local ## Build, load, and restart console + api
 rollout-local: ## Force restart local deployments to pick up new images
 	kubectl rollout restart deployment/$(SMITH_RELEASE)-smith-api -n $(SMITH_NAMESPACE)
@@ -386,6 +397,7 @@ image-build-local: ## Build local Smith container images with deploy-local tags
 	docker build -f docker/console.Dockerfile -t "$(SMITH_LOCAL_CONSOLE_IMAGE)" .
 	docker build -f docker/chat.Dockerfile -t "$(SMITH_LOCAL_CHAT_IMAGE)" .
 	docker build -f docker/daemon.Dockerfile -t "$(SMITH_LOCAL_DAEMON_IMAGE)" .
+	docker build -f docker/skills.Dockerfile -t "$(SMITH_LOCAL_SKILLS_IMAGE)" .
 
 build-local: image-build-local ## Backward-compatible alias for local image builds
 
@@ -397,7 +409,8 @@ image-load-local: ## Import local Smith container images when using k3d
 	    "$(SMITH_LOCAL_REPLICA_IMAGE)" \
 	    "$(SMITH_LOCAL_CONSOLE_IMAGE)" \
 	    "$(SMITH_LOCAL_CHAT_IMAGE)" \
-	    "$(SMITH_LOCAL_DAEMON_IMAGE)"; \
+	    "$(SMITH_LOCAL_DAEMON_IMAGE)" \
+	    "$(SMITH_LOCAL_SKILLS_IMAGE)"; \
 	else \
 	  echo "image-load-local: skipping image import for current-cluster provider"; \
 	fi

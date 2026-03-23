@@ -106,6 +106,7 @@ func main() {
 	if warning := strings.TrimSpace(taskClient.Warning()); warning != "" {
 		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, errors.New(warning))
 	}
+	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Session(ctx))
 	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Start(ctx))
 	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica execution starting"))
 	loopCfg := loadLoopExecutionConfigFromEnv()
