@@ -127,12 +127,17 @@ func appendSkillMountEnv(env []EnvVar, skillMounts []SkillMount) []EnvVar {
 		return env
 	}
 	resolvedSkillNames := make([]string, 0, len(skillMounts))
+	mountPaths := make([]string, 0, len(skillMounts))
 	for _, skill := range skillMounts {
 		resolvedSkillNames = append(resolvedSkillNames, skill.Name)
+		if path := strings.TrimSpace(skill.MountPath); path != "" {
+			mountPaths = append(mountPaths, path)
+		}
 	}
 	return append(env,
 		EnvVar{Name: "SMITH_SKILL_MOUNT_COUNT", Value: fmt.Sprintf("%d", len(skillMounts))},
 		EnvVar{Name: "SMITH_SKILL_MOUNTS", Value: strings.Join(resolvedSkillNames, ",")},
+		EnvVar{Name: "SMITH_SKILL_MOUNT_PATHS", Value: strings.Join(mountPaths, ",")},
 	)
 }
 
