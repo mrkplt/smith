@@ -4343,13 +4343,17 @@ func deriveLoopID(projectID, idempotencyKey, sourceType, sourceRef string) strin
 		key = sourceType + ":" + sourceRef
 	}
 	key = strings.ToLower(strings.TrimSpace(key))
+	hashInput := key
+	if scopedProject := strings.ToLower(strings.TrimSpace(projectID)); scopedProject != "" {
+		hashInput = scopedProject + "|" + hashInput
+	}
 	replacer := strings.NewReplacer("/", "-", "_", "-", ".", "-", " ", "-", ":", "-")
 	key = replacer.Replace(key)
 	key = strings.Trim(key, "-")
 
 	// Generate a stable short hash for the "xxxxx" part
 	h := sha256.New()
-	h.Write([]byte(key))
+	h.Write([]byte(hashInput))
 	fullHash := hex.EncodeToString(h.Sum(nil))
 	hashPart := fullHash[:5]
 
@@ -5042,6 +5046,9 @@ func (s *server) ensurePRDStoryTaskContract(ctx context.Context, draft ingress.L
 		}
 		if seed == "" {
 			seed = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+		}
+		if projectID != "" {
+			seed = projectID + "|" + seed
 		}
 		taskID = deriveAutoTaskContractID(seed)
 	}

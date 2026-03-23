@@ -177,6 +177,111 @@ func TestHandleIngressPRDPropagatesBindingMetadata(t *testing.T) {
 	}
 }
 
+func TestHandleIngressPRDTaskContractsScopedByProject(t *testing.T) {
+	ms := store.NewMemStore()
+	s := newPRDValidationTestServer(ms)
+	s.projectStore = &memoryProjectStore{items: map[string]provider.Project{
+		"proj-a": {
+			ID:      "proj-a",
+			Name:    "Project A",
+			RepoURL: "https://github.com/acme/proj-a",
+		},
+		"proj-b": {
+			ID:      "proj-b",
+			Name:    "Project B",
+			RepoURL: "https://github.com/acme/proj-b",
+		},
+	}}
+
+	requestBody := func(projectID string) string {
+		return `{
+			"format":"json",
+			"source_ref":"docs/prd.json",
+			"metadata":{"project_id":"` + projectID + `"},
+			"prd":{
+				"version":1,
+				"project":"Validation",
+				"overview":"Canonical PRD validation",
+				"qualityGates":["go test ./..."],
+				"stories":[
+					{
+						"id":"US-001",
+						"title":"Define validation contract",
+						"status":"open",
+						"description":"As a maintainer, I want shared validation.",
+						"acceptanceCriteria":["Validation report is shared."]
+					}
+				]
+			}
+		}`
+	}
+
+	for _, projectID := range []string{"proj-a", "proj-b"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/ingress/prd", strings.NewReader(requestBody(projectID)))
+		s.handleIngressPRD(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for %s, got %d body=%s", projectID, rec.Code, rec.Body.String())
+		}
+	}
+
+	states, err := ms.ListStates(context.Background())
+	if err != nil {
+		t.Fatalf("list states: %v", err)
+	}
+	if len(states) != 2 {
+		t.Fatalf("expected two created loops, got %d", len(states))
+	}
+
+	taskByProject := map[string]string{}
+	for _, state := range states {
+		anomaly, found, err := ms.GetAnomaly(context.Background(), state.Record.LoopID)
+		if err != nil {
+			t.Fatalf("get anomaly: %v", err)
+		}
+		if !found {
+			t.Fatalf("missing anomaly for loop %q", state.Record.LoopID)
+		}
+		projectID := strings.TrimSpace(anomaly.Metadata["project_id"])
+		taskID := strings.TrimSpace(anomaly.Metadata["task_contract_id"])
+		if projectID == "" || taskID == "" {
+			t.Fatalf("expected project/task metadata, got %#v", anomaly.Metadata)
+		}
+		taskByProject[projectID] = taskID
+	}
+
+	taskA := taskByProject["proj-a"]
+	taskB := taskByProject["proj-b"]
+	if taskA == "" || taskB == "" {
+		t.Fatalf("expected task ids for both projects, got %#v", taskByProject)
+	}
+	if taskA == taskB {
+		t.Fatalf("expected different task IDs per project, got shared %q", taskA)
+	}
+
+	storedA, found, err := ms.GetTaskContract(context.Background(), taskA)
+	if err != nil {
+		t.Fatalf("get task %s: %v", taskA, err)
+	}
+	if !found {
+		t.Fatalf("expected task contract %q", taskA)
+	}
+	if storedA.ProjectID != "proj-a" {
+		t.Fatalf("expected proj-a task contract scope, got %q", storedA.ProjectID)
+	}
+
+	storedB, found, err := ms.GetTaskContract(context.Background(), taskB)
+	if err != nil {
+		t.Fatalf("get task %s: %v", taskB, err)
+	}
+	if !found {
+		t.Fatalf("expected task contract %q", taskB)
+	}
+	if storedB.ProjectID != "proj-b" {
+		t.Fatalf("expected proj-b task contract scope, got %q", storedB.ProjectID)
+	}
+}
+
 func TestHandleLoopsIncludesDisplayTitleAndProgress(t *testing.T) {
 	ms := store.NewMemStore()
 	s := newPRDValidationTestServer(ms)
@@ -2995,6 +3100,12 @@ func TestDeriveLoopIDDifferentInputs(t *testing.T) {
 	id4 := deriveLoopID("proj1", "", "type1", "ref2")
 	if id3 == id4 {
 		t.Fatalf("deriveLoopID collision for different source refs: %q", id3)
+	}
+
+	id5 := deriveLoopID("proj-a", "same-key", "prd_story", "docs/prd.json#US-001")
+	id6 := deriveLoopID("proj-b", "same-key", "prd_story", "docs/prd.json#US-001")
+	if id5 == id6 {
+		t.Fatalf("deriveLoopID collision across projects with matching prefix: %q", id5)
 	}
 }
 
