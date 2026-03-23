@@ -305,6 +305,10 @@ jobs:
   # ─── Stage 3: Build images ─────────────────────────────────────
   build-images:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      issues: write
     needs:
       - go-unit-tests
       - node-unit-tests
