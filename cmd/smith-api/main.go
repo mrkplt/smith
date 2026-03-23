@@ -1106,13 +1106,34 @@ func (s *server) handleIngressPRD(w http.ResponseWriter, r *http.Request) {
 
 	results := make([]ingressResult, 0, len(drafts))
 	for i, draft := range drafts {
+		idempotencyKey := strings.TrimSpace(draft.IdempotencyKey)
+		if idempotencyKey == "" {
+			idempotencyKey = fmt.Sprintf("%s#%d", strings.TrimSpace(draft.SourceRef), i)
+		}
+		metadata := copyStringMap(draft.Metadata)
+		taskContractID := ""
+		if strings.EqualFold(strings.TrimSpace(draft.SourceType), "prd_story") {
+			var bindErr error
+			taskContractID, metadata, bindErr = s.ensurePRDStoryTaskContract(r.Context(), draft, idempotencyKey)
+			if bindErr != nil {
+				results = append(results, ingressResult{
+					ItemIndex: i,
+					SourceRef: draft.SourceRef,
+					Status:    "error",
+					Created:   false,
+					Message:   bindErr.Error(),
+				})
+				continue
+			}
+		}
 		res := s.createOneLoop(r.Context(), loopCreateRequest{
-			IdempotencyKey: draft.IdempotencyKey,
+			IdempotencyKey: idempotencyKey,
+			TaskContractID: taskContractID,
 			Title:          draft.Title,
 			Description:    draft.Description,
 			SourceType:     draft.SourceType,
 			SourceRef:      draft.SourceRef,
-			Metadata:       draft.Metadata,
+			Metadata:       metadata,
 		})
 		results = append(results, ingressResult{
 			ItemIndex: i,
@@ -1316,6 +1337,12 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 			}
 			if strings.TrimSpace(req.Metadata["provider_profile_id"]) == "" && strings.TrimSpace(project.ProviderProfileID) != "" {
 				req.Metadata["provider_profile_id"] = strings.TrimSpace(project.ProviderProfileID)
+			}
+			if strings.TrimSpace(req.Metadata["workspace_seed_image"]) == "" && strings.TrimSpace(project.SkillsImage) != "" {
+				req.Metadata["workspace_seed_image"] = strings.TrimSpace(project.SkillsImage)
+			}
+			if strings.TrimSpace(req.Metadata["workspace_seed_pull_policy"]) == "" && strings.TrimSpace(project.SkillsPullPolicy) != "" {
+				req.Metadata["workspace_seed_pull_policy"] = strings.TrimSpace(project.SkillsPullPolicy)
 			}
 		}
 	}
@@ -4971,6 +4998,180 @@ func splitTaskRoute(path string) (taskID string, route string) {
 	return taskID, route
 }
 
+func (s *server) ensurePRDStoryTaskContract(ctx context.Context, draft ingress.LoopDraft, idempotencyKey string) (string, map[string]string, error) {
+	metadata := copyStringMap(draft.Metadata)
+	if metadata == nil {
+		metadata = map[string]string{}
+	}
+
+	projectID := strings.TrimSpace(metadata["project_id"])
+	providerProfileID := strings.TrimSpace(metadata["provider_profile_id"])
+	if projectID != "" && s.projectStore != nil {
+		project, found, err := s.projectStore.GetProject(ctx, projectID)
+		if err != nil {
+			return "", metadata, err
+		}
+		if !found {
+			return "", metadata, fmt.Errorf("project not found")
+		}
+		if providerProfileID == "" {
+			providerProfileID = strings.TrimSpace(project.ProviderProfileID)
+		}
+	}
+	if providerProfileID != "" && s.providers != nil {
+		_, found, err := s.providers.GetProviderProfile(ctx, providerProfileID)
+		if err != nil {
+			return "", metadata, err
+		}
+		if !found {
+			return "", metadata, fmt.Errorf("provider profile not found")
+		}
+	}
+	if providerProfileID != "" {
+		metadata["provider_profile_id"] = providerProfileID
+	}
+
+	taskID := strings.TrimSpace(metadata["task_contract_id"])
+	if taskID == "" {
+		seed := strings.TrimSpace(idempotencyKey)
+		if seed == "" {
+			seed = strings.TrimSpace(draft.SourceRef)
+		}
+		if seed == "" {
+			seed = strings.TrimSpace(draft.Title)
+		}
+		if seed == "" {
+			seed = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+		}
+		taskID = deriveAutoTaskContractID(seed)
+	}
+
+	objective := strings.TrimSpace(draft.Title)
+	if objective == "" {
+		objective = strings.TrimSpace(draft.Description)
+	}
+	if objective == "" {
+		objective = taskID
+	}
+	sourceDocument := strings.TrimSpace(metadata["document_id"])
+	if sourceDocument == "" {
+		sourceDocument = strings.TrimSpace(metadata["prd_source_ref"])
+	}
+	validation := taskValidationCommandsFromMetadata(metadata)
+	acceptanceCriteria := prdAcceptanceCriteriaFromMetadata(metadata)
+
+	task, found, err := s.store.GetTaskContract(ctx, taskID)
+	if err != nil {
+		return "", metadata, err
+	}
+	if !found {
+		task = model.TaskContract{
+			Kind:               "smith.task",
+			ID:                 taskID,
+			ProjectID:          projectID,
+			ProviderProfileID:  providerProfileID,
+			SourceDocument:     sourceDocument,
+			Objective:          objective,
+			AcceptanceCriteria: acceptanceCriteria,
+			Validation:         validation,
+			Metadata:           map[string]string{},
+			CorrelationID:      fmt.Sprintf("task-corr-%d", time.Now().UTC().UnixNano()),
+		}
+	} else {
+		if task.ProjectID == "" {
+			task.ProjectID = projectID
+		}
+		if task.ProviderProfileID == "" {
+			task.ProviderProfileID = providerProfileID
+		}
+		if task.Objective == "" {
+			task.Objective = objective
+		}
+		if task.SourceDocument == "" {
+			task.SourceDocument = sourceDocument
+		}
+		if len(task.Validation) == 0 {
+			task.Validation = validation
+		}
+		if len(task.AcceptanceCriteria) == 0 {
+			task.AcceptanceCriteria = acceptanceCriteria
+		}
+		if strings.TrimSpace(task.CorrelationID) == "" {
+			task.CorrelationID = fmt.Sprintf("task-corr-%d", time.Now().UTC().UnixNano())
+		}
+	}
+
+	if task.Metadata == nil {
+		task.Metadata = map[string]string{}
+	}
+	for key, value := range metadata {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		task.Metadata[key] = trimmed
+	}
+	task.Metadata["task_origin"] = "prd_story"
+	task.Metadata["task_auto_generated"] = "true"
+	if strings.TrimSpace(draft.SourceRef) != "" {
+		task.Metadata["source_ref"] = strings.TrimSpace(draft.SourceRef)
+	}
+	if strings.TrimSpace(draft.ID) != "" {
+		task.Metadata["prd_story_id"] = strings.TrimSpace(draft.ID)
+	}
+
+	model.ApplyTaskStatusTransition(&task, model.TaskContractStatusApproved, "", time.Now().UTC())
+	if err := s.store.PutTaskContract(ctx, task); err != nil {
+		return "", metadata, err
+	}
+
+	metadata["task_contract_id"] = task.ID
+	if task.ProjectID != "" {
+		metadata["project_id"] = task.ProjectID
+	}
+	if task.ProviderProfileID != "" {
+		metadata["provider_profile_id"] = task.ProviderProfileID
+	}
+
+	return task.ID, metadata, nil
+}
+
+func deriveAutoTaskContractID(seed string) string {
+	hash := sha256.Sum256([]byte(strings.TrimSpace(seed)))
+	return "task-" + hex.EncodeToString(hash[:8])
+}
+
+func taskValidationCommandsFromMetadata(metadata map[string]string) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	if raw := strings.TrimSpace(metadata["task_validation_commands_json"]); raw != "" {
+		var parsed []string
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			return normalizeTaskList(parsed)
+		}
+	}
+	if raw := strings.TrimSpace(metadata["task_validation_commands"]); raw != "" {
+		return normalizeTaskList(strings.Split(raw, "\n"))
+	}
+	return nil
+}
+
+func prdAcceptanceCriteriaFromMetadata(metadata map[string]string) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	raw := strings.TrimSpace(metadata["prd_story_acceptance_criteria_json"])
+	if raw == "" {
+		return nil
+	}
+	var parsed []string
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil
+	}
+	return normalizeTaskList(parsed)
+}
+
 func splitProviderRoute(path string) (providerID string, route string) {
 	remainder := strings.TrimPrefix(path, "/v1/providers/")
 	if remainder == path {
@@ -5334,13 +5535,30 @@ func (s *server) handleDocumentByID(w http.ResponseWriter, r *http.Request) {
 				idempotencyKey = fmt.Sprintf("%s#%d", strings.TrimSpace(draft.SourceRef), i)
 			}
 			idempotencyKey = fmt.Sprintf("%s|%s", idempotencyKey, buildRunID)
+			metadata := copyStringMap(draft.Metadata)
+			taskContractID := ""
+			if strings.EqualFold(strings.TrimSpace(draft.SourceType), "prd_story") {
+				var bindErr error
+				taskContractID, metadata, bindErr = s.ensurePRDStoryTaskContract(r.Context(), draft, idempotencyKey)
+				if bindErr != nil {
+					results = append(results, ingressResult{
+						ItemIndex: i,
+						SourceRef: draft.SourceRef,
+						Status:    "error",
+						Created:   false,
+						Message:   bindErr.Error(),
+					})
+					continue
+				}
+			}
 			res := s.createOneLoop(r.Context(), loopCreateRequest{
 				IdempotencyKey: idempotencyKey,
+				TaskContractID: taskContractID,
 				Title:          title,
 				Description:    draft.Description,
 				SourceType:     draft.SourceType,
 				SourceRef:      draft.SourceRef,
-				Metadata:       draft.Metadata,
+				Metadata:       metadata,
 			})
 			results = append(results, ingressResult{
 				ItemIndex: i,

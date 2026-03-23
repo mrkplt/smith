@@ -1,6 +1,7 @@
 package ingress
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -211,6 +212,11 @@ func CanonicalPRDToDrafts(prd *model.PRD, sourceRef string, baseMetadata map[str
 		}
 		if strings.TrimSpace(story.Status) != "" {
 			metadata["prd_story_status"] = strings.TrimSpace(story.Status)
+		}
+		if len(story.AcceptanceCriteria) > 0 {
+			if raw, err := json.Marshal(story.AcceptanceCriteria); err == nil {
+				metadata["prd_story_acceptance_criteria_json"] = string(raw)
+			}
 		}
 		if len(story.DependsOn) > 0 {
 			metadata["prd_story_dependencies"] = strings.Join(story.DependsOn, ",")

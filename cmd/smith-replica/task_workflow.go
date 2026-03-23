@@ -50,6 +50,16 @@ func (c taskWorkflowClient) Warning() string {
 	return c.warning
 }
 
+func (c taskWorkflowClient) Session(ctx context.Context) error {
+	if !c.enabled {
+		return nil
+	}
+	if _, err := c.runner.Run(ctx, c.workspace, c.command, "usage", "--new-session"); err != nil {
+		return fmt.Errorf("task usage --new-session: %w", err)
+	}
+	return nil
+}
+
 func (c taskWorkflowClient) Start(ctx context.Context) error {
 	if !c.enabled {
 		return nil

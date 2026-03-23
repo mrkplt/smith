@@ -76,6 +76,22 @@ Supported `--skill` fields:
 - K8s Job spec includes volume + volumeMount entries for resolved skills.
 - Missing or invalid skills fail fast with actionable error state.
 
+### Skills seed container
+
+Smith also supports a workspace seed image that preloads skill bundles into provider-default paths at loop startup:
+
+- Codex path: `/workspace/.agents/skills/`
+- Claude path: `/workspace/.claude/skills/`
+
+Repository Dockerfile: `docker/skills.Dockerfile`
+
+Bundled skills currently include:
+
+- `task`
+- `tdd` (from `mattpocock/skills/tdd`)
+
+For local deployments, `helm/smith/values/local.yaml` points `core.workspaceSeedImage` at `smith-skills:local`.
+
 ## Validation and Security
 
 - Restrict allowed skill sources via allowlist policy.
