@@ -11,6 +11,12 @@ This page describes the current make-first local development workflow. For the c
 
 ## Standard Entry Points
 
+### One-Shot Bootstrap (Recommended for New Contributors)
+
+- `./scripts/setup.sh`
+  - End-to-end local bootstrap: installs all prerequisites, brings up a k3d cluster, deploys Smith, and activates Claude Max OAuth if credentials are available. See [make-local-quickstart.md](make-local-quickstart.md) for a full description of each phase.
+  - Set `SMITH_SKIP_CLUSTER=true` to run only the prerequisite checks without touching the cluster.
+
 ### Environment and Tooling
 
 - `make doctor`

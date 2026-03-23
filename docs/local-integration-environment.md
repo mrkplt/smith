@@ -46,9 +46,10 @@ Default configurable vars:
 - `SMITH_NAMESPACE` (default `smith-system`)
 - `SMITH_RELEASE` (default `smith`)
 - `SMITH_VALUES` (default `helm/smith/values/local.yaml`)
-- `SMITH_LOCAL_GIT_PAT` (required when `secrets.create=true` for local overlay)
+- `SMITH_LOCAL_GIT_PAT` (required when `secrets.create=true` for local overlay) — GitHub Personal Access Token used by replica jobs for `git push` and `gh pr create`. Requires **Contents: Read and write** and **Pull requests: Read and write** on the target repositories. A classic PAT with the `repo` scope also works.
 - `SMITH_LOCAL_RUNTIME_CREDENTIALS` (required when `secrets.create=true` for local overlay)
 - `SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE` (optional Claude runtime credential for `ANTHROPIC_API_KEY` injection)
+- `SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR` (optional, default `~/.claude`) — directory containing Claude Max OAuth credential files for `make bootstrap-claude-max-local`
 - `SMITH_VCLUSTER_VERSION` (default `0.32.1`, used by `scripts/integration/prereqs.sh`)
 - `SMITH_TEST_ARTIFACTS_DIR` (default `/tmp/smith-test-artifacts`)
 - `SMITH_FIXTURE_DIR` (default `/tmp/smith-test-repo`)
@@ -81,11 +82,19 @@ docker system prune -af
 
 Before `make deploy-local`, set local credential values in your shell (instead of committing them in values files):
 
+**Anthropic API key mode:**
 ```bash
 export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
-export SMITH_LOCAL_RUNTIME_CREDENTIALS="<runtime-credential>"
-export SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE="<anthropic-api-key>"
+export SMITH_LOCAL_RUNTIME_CREDENTIALS="<anthropic-api-key>"
 ```
+
+**Claude Max (OAuth) mode** — uses your Claude Max subscription instead of an API key:
+```bash
+export SMITH_LOCAL_GIT_PAT="<your-github-pat>"
+export SMITH_LOCAL_RUNTIME_CREDENTIALS="placeholder"  # not used for Claude loops in OAuth mode
+```
+
+`SMITH_LOCAL_GIT_PAT` requires **Contents: Read and write** and **Pull requests: Read and write** on the target repositories (or a classic PAT with the `repo` scope).
 
 ```bash
 make cluster-up
@@ -93,6 +102,15 @@ make cluster-health
 make build-local
 make deploy-local
 ```
+
+To activate Claude Max (OAuth) after deploy:
+
+```bash
+make bootstrap-claude-max-local          # seeds OAuth credentials from ~/.claude into the cluster Secret
+kubectl rollout restart deployment/smith-smith-core -n smith-system
+```
+
+On macOS, credentials are read from the system Keychain (populated by `claude login`). Override the source directory with `SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR` if your credentials are stored elsewhere. Re-run `make bootstrap-claude-max-local` any time your OAuth tokens are refreshed.
 
 Default mode deploys into the current `kubectl` context, which is a good fit for Docker Desktop Kubernetes.
 

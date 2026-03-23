@@ -46,7 +46,17 @@ install_vcluster() {
   fi
 
   if command -v brew >/dev/null 2>&1; then
-    brew install loft-sh/tap/vcluster
+    # brew may exit non-zero if a dependency (kubernetes-cli) conflicts with an
+    # existing kubectl symlink (e.g. from Docker Desktop). vcluster itself is
+    # still poured successfully in that case, so tolerate the link failure and
+    # verify the binary is reachable before continuing.
+    brew install loft-sh/tap/vcluster || {
+      if ! command -v vcluster >/dev/null 2>&1; then
+        echo "vcluster brew install failed and vcluster binary not found" >&2
+        exit 1
+      fi
+      echo "brew install exited non-zero (likely a symlink conflict with kubectl) but vcluster is available — continuing" >&2
+    }
     vcluster upgrade --version "$desired_tag"
     return
   fi

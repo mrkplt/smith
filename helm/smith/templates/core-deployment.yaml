@@ -75,6 +75,16 @@ spec:
               value: {{ .Values.secrets.keys.runtimeCredentials | quote }}
             - name: SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY
               value: {{ .Values.secrets.keys.runtimeCredentialsClaude | quote }}
+            {{- if ne (trim .Values.secrets.managed.runtimeCredentialsClaudeMaxCredentialsJson) "" }}
+            - name: SMITH_CLAUDE_MAX_SECRET_NAME
+              value: {{ $runtimeSecretName | quote }}
+            - name: SMITH_CLAUDE_MAX_CREDENTIALS_JSON_KEY
+              value: {{ .Values.secrets.keys.claudeMaxCredentialsJson | quote }}
+            - name: SMITH_CLAUDE_MAX_CLAUDE_JSON_KEY
+              value: {{ .Values.secrets.keys.claudeMaxClaudeJson | quote }}
+            - name: SMITH_CLAUDE_MAX_SETTINGS_JSON_KEY
+              value: {{ .Values.secrets.keys.claudeMaxSettingsJson | quote }}
+            {{- end }}
             {{- end }}
             {{- with .Values.core.env }}
             {{- toYaml . | nindent 12 }}

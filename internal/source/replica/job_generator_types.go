@@ -78,6 +78,10 @@ type JobRequest struct {
 	RuntimeCredentialsValue       string
 	RuntimeCredentialsClaudeKey   string
 	RuntimeCredentialsClaudeValue string
+	ClaudeMaxSecretName           string
+	ClaudeMaxCredentialsJsonKey   string
+	ClaudeMaxClaudeJsonKey        string
+	ClaudeMaxSettingsJsonKey      string
 	BackoffLimit                  int32
 	ActiveDeadlineSeconds         int64
 	TTLSecondsAfterFinished       int32
@@ -116,9 +120,16 @@ type PodSpec struct {
 	Containers         []Container
 }
 
+type KeyToPath struct {
+	Key  string
+	Path string
+}
+
 type Volume struct {
 	Name          string
 	ConfigMapName string
+	SecretName    string
+	Items         []KeyToPath
 	Optional      bool
 	EmptyDir      bool
 }

@@ -2,6 +2,50 @@
 
 This quickstart is copy/paste oriented for a fresh local machine.
 
+## Option A: One-Shot Setup (Recommended)
+
+`scripts/setup.sh` is the recommended entry point for new contributors. It handles everything in a single run:
+
+```bash
+./scripts/setup.sh
+```
+
+**What it does, in order:**
+
+| Phase | Step | Details |
+| --- | --- | --- |
+| Prerequisites | `mise` | Installs if missing (brew or curl) |
+| Prerequisites | Container runtime | Accepts Docker or Podman; warns if daemon is not running |
+| Prerequisites | `kubectl` | Installs or upgrades to ≥ 1.29 |
+| Prerequisites | `helm` | Installs or upgrades to ≥ 3.13 |
+| Prerequisites | `act` | Installs if missing (required for CI hooks) |
+| Prerequisites | Go + Node | Installs pinned versions via `mise install` |
+| Prerequisites | `k3d` + `vcluster` | Installs via `scripts/integration/prereqs.sh` |
+| Prerequisites | `~/.smith/config.json` | Creates default smith CLI config if absent |
+| Prerequisites | Claude Max credentials | On macOS: reads from system Keychain (`claude login` populates it). On Linux or if not found: spins up a container so you can run `claude login` interactively. Non-fatal if skipped — API key mode still works. |
+| Cluster | Bring up k3d | Starts a local k3d + etcd cluster if no cluster is reachable |
+| Deploy | `make deploy-local` | Prompts for `SMITH_LOCAL_GIT_PAT`; uses `placeholder` for `SMITH_LOCAL_RUNTIME_CREDENTIALS` when Claude Max is active |
+| Deploy | Seed Claude Max | Patches the runtime Kubernetes Secret with OAuth credentials and restarts smith-core |
+
+**Environment variables** (all optional — the script prompts or uses defaults):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SMITH_LOCAL_GIT_PAT` | _(prompted)_ | GitHub PAT for replica git operations |
+| `SMITH_LOCAL_RUNTIME_CREDENTIALS` | `placeholder` (Claude Max) or _(prompted)_ | AI provider credential |
+| `SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR` | `~/.claude` | Directory containing Claude OAuth credential files |
+| `SMITH_SKIP_CLUSTER` | `false` | Set to `true` to run only prerequisite checks without touching the cluster |
+
+To skip the cluster and deploy phases (prerequisites only):
+
+```bash
+SMITH_SKIP_CLUSTER=true ./scripts/setup.sh
+```
+
+---
+
+## Option B: Manual Step-by-Step
+
 ## 1. Prerequisites and Bootstrap
 
 ```bash

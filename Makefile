@@ -30,6 +30,7 @@ SMITH_LOCAL_SKILLS_IMAGE ?= smith-skills:local
 SMITH_LOCAL_GIT_PAT ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE ?=
+SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR ?= $(HOME)/.claude
 SMITH_LOCAL_OVERLAY ?=
 SMITH_BOOTSTRAP_DOCUMENT_STORAGE ?= false
 SMITH_BOOTSTRAP_ENV_FILE ?= $(HOME)/.smith/.env
@@ -454,6 +455,11 @@ hook-fast-pre-push: ## Run fast local checks for pre-push
 hooks-run-pre-commit: hook-fast-pre-commit ## Backward-compatible alias for pre-commit hook workload
 
 hooks-run-pre-push: hook-fast-pre-push ## Backward-compatible alias for pre-push hook workload
+
+bootstrap-claude-max-local: ## Seed Kubernetes Secret with Claude Max OAuth credentials from SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR
+	SMITH_NAMESPACE="$(SMITH_NAMESPACE)" SMITH_RELEASE="$(SMITH_RELEASE)" \
+	  SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR="$(SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR)" \
+	  ./scripts/bootstrap-claude-max.sh
 
 hooks-install: ## Install repository git hooks from .githooks
 	git config core.hooksPath .githooks

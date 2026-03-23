@@ -136,6 +136,8 @@ func appendSkillMountEnv(env []EnvVar, skillMounts []SkillMount) []EnvVar {
 	)
 }
 
+const claudeConfigMountPath = "/root/.claude"
+
 func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 	if strings.TrimSpace(req.RuntimeSecretName) != "" {
 		env = append(env,
@@ -154,18 +156,24 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 				},
 			},
 		)
-		claudeKey := strings.TrimSpace(req.RuntimeCredentialsClaudeKey)
-		if claudeKey == "" {
-			claudeKey = strings.TrimSpace(req.RuntimeCredentialsKey)
-		}
-		if providerUsesAnthropicKey(req.ProviderID) && claudeKey != "" {
-			env = append(env, EnvVar{
-				Name: "ANTHROPIC_API_KEY",
-				SecretKeyRef: &SecretKeyRef{
-					Name: req.RuntimeSecretName,
-					Key:  claudeKey,
-				},
-			})
+		if providerUsesAnthropicKey(req.ProviderID) {
+			if strings.TrimSpace(req.ClaudeMaxSecretName) != "" {
+				env = append(env, EnvVar{Name: "CLAUDE_CONFIG_DIR", Value: claudeConfigMountPath})
+			} else {
+				claudeKey := strings.TrimSpace(req.RuntimeCredentialsClaudeKey)
+				if claudeKey == "" {
+					claudeKey = strings.TrimSpace(req.RuntimeCredentialsKey)
+				}
+				if claudeKey != "" {
+					env = append(env, EnvVar{
+						Name: "ANTHROPIC_API_KEY",
+						SecretKeyRef: &SecretKeyRef{
+							Name: req.RuntimeSecretName,
+							Key:  claudeKey,
+						},
+					})
+				}
+			}
 		}
 		return env
 	}
@@ -175,12 +183,18 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 			EnvVar{Name: "OPENAI_API_KEY", Value: req.RuntimeCredentialsValue},
 		)
 	}
-	claudeValue := strings.TrimSpace(req.RuntimeCredentialsClaudeValue)
-	if claudeValue == "" {
-		claudeValue = strings.TrimSpace(req.RuntimeCredentialsValue)
-	}
-	if providerUsesAnthropicKey(req.ProviderID) && claudeValue != "" {
-		env = append(env, EnvVar{Name: "ANTHROPIC_API_KEY", Value: claudeValue})
+	if providerUsesAnthropicKey(req.ProviderID) {
+		if strings.TrimSpace(req.ClaudeMaxSecretName) != "" {
+			env = append(env, EnvVar{Name: "CLAUDE_CONFIG_DIR", Value: claudeConfigMountPath})
+		} else {
+			claudeValue := strings.TrimSpace(req.RuntimeCredentialsClaudeValue)
+			if claudeValue == "" {
+				claudeValue = strings.TrimSpace(req.RuntimeCredentialsValue)
+			}
+			if claudeValue != "" {
+				env = append(env, EnvVar{Name: "ANTHROPIC_API_KEY", Value: claudeValue})
+			}
+		}
 	}
 	return env
 }
@@ -282,6 +296,22 @@ func buildReplicaVolumes(req JobRequest) ([]Volume, []VolumeMount, bool) {
 			Name:          "workspace-prd",
 			ConfigMapName: req.PRDConfigMapName,
 			Optional:      false,
+		})
+	}
+	if strings.TrimSpace(req.ClaudeMaxSecretName) != "" {
+		volumes = append(volumes, Volume{
+			Name:       "claude-config",
+			SecretName: req.ClaudeMaxSecretName,
+			Items: []KeyToPath{
+				{Key: req.ClaudeMaxCredentialsJsonKey, Path: ".credentials.json"},
+				{Key: req.ClaudeMaxClaudeJsonKey, Path: ".claude.json"},
+				{Key: req.ClaudeMaxSettingsJsonKey, Path: "settings.json"},
+			},
+		})
+		volumeMounts = append(volumeMounts, VolumeMount{
+			Name:      "claude-config",
+			MountPath: claudeConfigMountPath,
+			ReadOnly:  true,
 		})
 	}
 	for i, skill := range req.SkillMounts {

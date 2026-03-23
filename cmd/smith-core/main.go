@@ -53,11 +53,15 @@ type config struct {
 	replicaPullPolicy        string
 	workspaceSeedImage       string
 	workspaceSeedPolicy      string
-	runtimeCredentials       string
-	runtimeCredentialsClaude string
-	runtimeSecretName        string
-	runtimeSecretKey         string
-	runtimeSecretClaudeKey   string
+	runtimeCredentials            string
+	runtimeCredentialsClaude      string
+	runtimeSecretName             string
+	runtimeSecretKey              string
+	runtimeSecretClaudeKey        string
+	claudeMaxSecretName           string
+	claudeMaxCredentialsJsonKey   string
+	claudeMaxClaudeJsonKey        string
+	claudeMaxSettingsJsonKey      string
 	gitPATSecretName         string
 	gitPATSecretKey          string
 	dockerfileRepo           string
@@ -443,6 +447,10 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		RuntimeSecretName:           strings.TrimSpace(o.cfg.runtimeSecretName),
 		RuntimeCredentialsKey:       strings.TrimSpace(o.cfg.runtimeSecretKey),
 		RuntimeCredentialsClaudeKey: strings.TrimSpace(o.cfg.runtimeSecretClaudeKey),
+		ClaudeMaxSecretName:         strings.TrimSpace(o.cfg.claudeMaxSecretName),
+		ClaudeMaxCredentialsJsonKey: strings.TrimSpace(o.cfg.claudeMaxCredentialsJsonKey),
+		ClaudeMaxClaudeJsonKey:      strings.TrimSpace(o.cfg.claudeMaxClaudeJsonKey),
+		ClaudeMaxSettingsJsonKey:    strings.TrimSpace(o.cfg.claudeMaxSettingsJsonKey),
 		BackoffLimit:                o.jobBackoff,
 		ActiveDeadlineSeconds:       int64(o.cfg.defaultPolicy.Timeout.Seconds()),
 		TTLSecondsAfterFinished:     o.jobTTL,
@@ -1082,6 +1090,20 @@ func toK8sVolumes(volumes []replica.Volume) []corev1.Volume {
 			out = append(out, volume)
 			continue
 		}
+		if strings.TrimSpace(v.SecretName) != "" {
+			sv := &corev1.SecretVolumeSource{
+				SecretName: v.SecretName,
+			}
+			for _, item := range v.Items {
+				sv.Items = append(sv.Items, corev1.KeyToPath{
+					Key:  item.Key,
+					Path: item.Path,
+				})
+			}
+			volume.VolumeSource = corev1.VolumeSource{Secret: sv}
+			out = append(out, volume)
+			continue
+		}
 		optional := v.Optional
 		volume.VolumeSource = corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -1178,11 +1200,15 @@ func loadConfig() (config, error) {
 		replicaPullPolicy:        envString("SMITH_REPLICA_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
 		workspaceSeedImage:       strings.TrimSpace(os.Getenv("SMITH_WORKSPACE_SEED_IMAGE")),
 		workspaceSeedPolicy:      envString("SMITH_WORKSPACE_SEED_IMAGE_PULL_POLICY", string(corev1.PullIfNotPresent)),
-		runtimeCredentials:       strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
-		runtimeCredentialsClaude: strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE")),
-		runtimeSecretName:        strings.TrimSpace(os.Getenv("SMITH_RUNTIME_SECRET_NAME")),
-		runtimeSecretKey:         envString("SMITH_RUNTIME_CREDENTIALS_KEY", "runtime_credentials"),
-		runtimeSecretClaudeKey:   envString("SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY", "runtime_credentials_claude"),
+		runtimeCredentials:          strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS")),
+		runtimeCredentialsClaude:    strings.TrimSpace(os.Getenv("SMITH_RUNTIME_CREDENTIALS_CLAUDE")),
+		runtimeSecretName:           strings.TrimSpace(os.Getenv("SMITH_RUNTIME_SECRET_NAME")),
+		runtimeSecretKey:            envString("SMITH_RUNTIME_CREDENTIALS_KEY", "runtime_credentials"),
+		runtimeSecretClaudeKey:      envString("SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY", "runtime_credentials_claude"),
+		claudeMaxSecretName:         strings.TrimSpace(os.Getenv("SMITH_CLAUDE_MAX_SECRET_NAME")),
+		claudeMaxCredentialsJsonKey: envString("SMITH_CLAUDE_MAX_CREDENTIALS_JSON_KEY", "claude_max_credentials_json"),
+		claudeMaxClaudeJsonKey:      envString("SMITH_CLAUDE_MAX_CLAUDE_JSON_KEY", "claude_max_claude_json"),
+		claudeMaxSettingsJsonKey:    envString("SMITH_CLAUDE_MAX_SETTINGS_JSON_KEY", "claude_max_settings_json"),
 		gitPATSecretName:         strings.TrimSpace(os.Getenv("SMITH_GIT_PAT_SECRET_NAME")),
 		gitPATSecretKey:          envString("SMITH_GIT_PAT_SECRET_KEY", "git_pat"),
 		dockerfileRepo:           strings.TrimSpace(os.Getenv("SMITH_DOCKERFILE_IMAGE_REPOSITORY")),

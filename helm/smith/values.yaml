@@ -23,10 +23,18 @@ secrets:
     gitPat: ""
     runtimeCredentials: ""
     runtimeCredentialsClaude: ""
+    # Claude Max (OAuth) credential file contents. When all three are set,
+    # replica jobs for the Claude provider will use OAuth rather than ANTHROPIC_API_KEY.
+    runtimeCredentialsClaudeMaxCredentialsJson: ""
+    runtimeCredentialsClaudeMaxClaudeJson: ""
+    runtimeCredentialsClaudeMaxSettingsJson: ""
   keys:
     gitPat: git_pat
     runtimeCredentials: runtime_credentials
     runtimeCredentialsClaude: runtime_credentials_claude
+    claudeMaxCredentialsJson: claude_max_credentials_json
+    claudeMaxClaudeJson: claude_max_claude_json
+    claudeMaxSettingsJson: claude_max_settings_json
 
 core:
   replicaCount: 1
