@@ -1336,6 +1336,9 @@ func (s *server) createOneLoop(ctx context.Context, req loopCreateRequest) loopC
 			if strings.TrimSpace(req.Metadata["github_repository"]) == "" && strings.TrimSpace(project.RepoURL) != "" {
 				req.Metadata["github_repository"] = strings.TrimSpace(project.RepoURL)
 			}
+			if strings.TrimSpace(req.Metadata["git_branch"]) == "" && strings.TrimSpace(project.DefaultBranch) != "" {
+				req.Metadata["git_branch"] = strings.TrimSpace(project.DefaultBranch)
+			}
 			if strings.TrimSpace(req.Metadata["provider_profile_id"]) == "" && strings.TrimSpace(project.ProviderProfileID) != "" {
 				req.Metadata["provider_profile_id"] = strings.TrimSpace(project.ProviderProfileID)
 			}
@@ -3293,6 +3296,7 @@ func (s *server) handleOnboardingRepository(w http.ResponseWriter, r *http.Reque
 		ID:                projectID,
 		Name:              strings.TrimSpace(req.Name),
 		RepoURL:           repoURL,
+		DefaultBranch:     strings.TrimSpace(req.DefaultBranch),
 		ProviderProfileID: strings.TrimSpace(req.ProviderProfileID),
 		GitHubUser:        strings.TrimSpace(req.GitHubUser),
 	}
@@ -3306,6 +3310,9 @@ func (s *server) handleOnboardingRepository(w http.ResponseWriter, r *http.Reque
 		}
 		if strings.TrimSpace(project.GitHubUser) == "" {
 			project.GitHubUser = existing.GitHubUser
+		}
+		if strings.TrimSpace(project.DefaultBranch) == "" {
+			project.DefaultBranch = existing.DefaultBranch
 		}
 		if strings.TrimSpace(existing.RuntimeImage) != "" {
 			project.RuntimeImage = existing.RuntimeImage

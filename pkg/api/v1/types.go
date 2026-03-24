@@ -299,6 +299,7 @@ type OnboardingRepositoryRequest struct {
 	ProjectID         string `json:"project_id"`
 	Name              string `json:"name,omitempty"`
 	RepoURL           string `json:"repo_url"`
+	DefaultBranch     string `json:"default_branch,omitempty"`
 	ProviderProfileID string `json:"provider_profile_id,omitempty"`
 	GitHubUser        string `json:"github_user,omitempty"`
 }
