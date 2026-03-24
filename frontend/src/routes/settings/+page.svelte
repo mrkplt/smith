@@ -309,8 +309,9 @@
   }
 
   function providerStatus(providerProfile: any): string {
+    const providerType = String(providerProfile?.provider_type || '').trim().toLowerCase();
     const secretRef = String(providerProfile?.secret_ref || '').trim();
-    if (secretRef === '') {
+    if (secretRef === '' && providerType !== 'claude-max') {
       return 'needs secret';
     }
     return 'configured';
