@@ -48,7 +48,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-up-local cluster-up-k3d cluster-up-vcluster cluster-down cluster-down-local cluster-down-k3d cluster-down-vcluster cluster-reset cluster-health \
-	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-local-document-storage deploy-staging deploy-prod upgrade-local rollout-local undeploy undeploy-local \
+	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-local-document-storage deploy-staging deploy-prod upgrade-local redeploy-local rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
 	daemon-build-local daemon-load-local daemon-rollout-local daemon-deploy-local \
@@ -338,6 +338,14 @@ deploy-prod: ## Deploy Smith via Helm using production values profile
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  -f "$(SMITH_PROD_VALUES)"
+redeploy-local: ## Re-run deploy-local by reading credentials from the existing cluster secret
+	@pat=$$(kubectl get secret "$(SMITH_RELEASE)-smith-runtime" -n "$(SMITH_NAMESPACE)" -o jsonpath='{.data.git_pat}' 2>/dev/null | base64 -d); \
+	if [[ -z "$$pat" ]]; then echo "redeploy-local: could not read git_pat from secret $(SMITH_RELEASE)-runtime"; exit 1; fi; \
+	creds=$$(kubectl get secret "$(SMITH_RELEASE)-smith-runtime" -n "$(SMITH_NAMESPACE)" -o jsonpath='{.data.runtime_credentials}' 2>/dev/null | base64 -d); \
+	if [[ -z "$$creds" ]]; then echo "redeploy-local: could not read runtime_credentials from secret $(SMITH_RELEASE)-runtime"; exit 1; fi; \
+	$(MAKE) --no-print-directory deploy-local \
+	  SMITH_LOCAL_GIT_PAT="$$pat" \
+	  SMITH_LOCAL_RUNTIME_CREDENTIALS="$$creds"
 upgrade-local: ## Upgrade Helm chart in place reusing stored values, then restart all deployments
 	@helm upgrade "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
