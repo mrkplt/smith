@@ -179,7 +179,7 @@
 		const existingSecretRef = String(provider?.secret_ref || '').trim();
 		const normalizedSecretRef = secretRef.trim();
 		const normalizedAPIKey = apiKey.trim();
-		if (normalizedAPIKey === '' && (!isEditing || existingSecretRef === '' || existingSecretRef !== normalizedSecretRef)) {
+		if (requiresSecretRef && normalizedAPIKey === '' && (!isEditing || existingSecretRef === '' || existingSecretRef !== normalizedSecretRef)) {
 			pushToast('API key is required when creating a new credential label', 'err');
 			return;
 		}
