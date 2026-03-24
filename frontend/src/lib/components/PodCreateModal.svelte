@@ -72,7 +72,9 @@
 			chatProviderProfiles = Array.isArray(profiles)
 				? profiles.filter((profile) => {
 					const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
-					const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+					const hasSecretRef = String(profile?.secret_ref || '').trim() !== '';
+					const providerType = String(profile?.provider_type || '').trim();
+					const isAddedProfile = hasSecretRef || providerType === 'claude-max';
 					return providerTypeEnabled && isAddedProfile;
 				})
 				: [];
