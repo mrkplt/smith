@@ -63,6 +63,8 @@ spec:
               value: "tokens.json"
             - name: SMITH_PROVIDER_CLAUDE_ENABLED
               value: {{ .Values.api.featureFlags.providerClaude | quote }}
+            - name: SMITH_PROVIDER_CLAUDE_MAX_ENABLED
+              value: {{ .Values.api.featureFlags.providerClaudeMax | quote }}
             - name: SMITH_PROVIDER_GEMINI_ENABLED
               value: {{ .Values.api.featureFlags.providerGemini | quote }}
             - name: SMITH_DOCUMENT_STORE_BACKEND

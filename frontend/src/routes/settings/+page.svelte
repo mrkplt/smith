@@ -144,9 +144,12 @@
       const profiles = await fetchJSON('/v1/providers');
       providerProfiles = Array.isArray(profiles)
         ? profiles.filter((profile) => {
-            const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
-            const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
-            return providerTypeEnabled && isAddedProfile;
+            const providerType = String(profile?.provider_type || profile?.id || '').trim().toLowerCase();
+            const providerTypeEnabled = isProviderTypeEnabled(providerType);
+            const hasSecretRef = String(profile?.secret_ref || '').trim() !== '';
+            // claude-max uses cluster-wide OAuth credentials — no per-profile secret_ref needed.
+            const isConfigured = hasSecretRef || providerType === 'claude-max';
+            return providerTypeEnabled && isConfigured;
           })
         : [];
     } catch (err: any) {

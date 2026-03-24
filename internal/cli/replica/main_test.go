@@ -472,10 +472,16 @@ func TestResolveAgentCommandUsesNonInteractiveProviderDefaults(t *testing.T) {
 	t.Setenv("SMITH_AGENT_CLI_CMD_CLAUDE", "")
 	t.Setenv("SMITH_AGENT_CLI_CMD_GEMINI", "")
 
-	if got := resolveAgentCommand("claude"); got != "claude -p --dangerously-skip-permissions" {
+	if got := resolveAgentCommand("claude", ""); got != "claude -p --dangerously-skip-permissions" {
 		t.Fatalf("unexpected claude default command: %q", got)
 	}
-	if got := resolveAgentCommand("gemini"); got != "gemini -p --yolo" {
+	if got := resolveAgentCommand("claude", "claude-sonnet-4-6"); got != "claude -p --dangerously-skip-permissions --model claude-sonnet-4-6" {
+		t.Fatalf("unexpected claude command with model: %q", got)
+	}
+	if got := resolveAgentCommand("claude-max", "claude-opus-4-6"); got != "claude -p --dangerously-skip-permissions --model claude-opus-4-6" {
+		t.Fatalf("unexpected claude-max command with model: %q", got)
+	}
+	if got := resolveAgentCommand("gemini", ""); got != "gemini -p --yolo" {
 		t.Fatalf("unexpected gemini default command: %q", got)
 	}
 }

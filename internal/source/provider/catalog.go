@@ -22,6 +22,12 @@ func SupportedProviderCatalog() []CatalogEntry {
 			RequiredConfigFields: []string{"id", "provider_type", "secret_ref"},
 		},
 		{
+			ID:                   ProviderClaudeMax,
+			DisplayName:          "Claude Subscription",
+			DefaultModel:         DefaultClaudeMaxModel,
+			RequiredConfigFields: []string{"id", "provider_type"},
+		},
+		{
 			ID:                   ProviderGemini,
 			DisplayName:          "Gemini",
 			DefaultModel:         DefaultGeminiModel,

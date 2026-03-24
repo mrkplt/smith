@@ -2309,7 +2309,7 @@ func TestHandleProviderCatalogReturnsSupportedProviderSet(t *testing.T) {
 }
 
 func TestHandleProviderCatalogIncludesFlaggedProvidersWhenEnabled(t *testing.T) {
-	s := &server{cfg: config{providerClaudeEnabled: true, providerGeminiEnabled: true}}
+	s := &server{cfg: config{providerClaudeEnabled: true, providerClaudeMaxEnabled: true, providerGeminiEnabled: true}}
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/providers/catalog", nil)
@@ -2318,9 +2318,9 @@ func TestHandleProviderCatalogIncludesFlaggedProvidersWhenEnabled(t *testing.T) 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var out []provider.CatalogEntry
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
-	require.Len(t, out, 3)
-	ids := []string{out[0].ID, out[1].ID, out[2].ID}
-	assert.Equal(t, []string{provider.ProviderCodex, provider.ProviderClaude, provider.ProviderGemini}, ids)
+	require.Len(t, out, 4)
+	ids := []string{out[0].ID, out[1].ID, out[2].ID, out[3].ID}
+	assert.Equal(t, []string{provider.ProviderCodex, provider.ProviderClaude, provider.ProviderClaudeMax, provider.ProviderGemini}, ids)
 }
 
 func TestHandleProjectsAssignsDefaultProviderProfile(t *testing.T) {

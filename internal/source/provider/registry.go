@@ -8,16 +8,20 @@ import (
 )
 
 const (
-	ProviderCodex      = "codex"
-	ProviderClaude     = "claude"
-	ProviderGemini     = "gemini"
-	DefaultProviderID  = ProviderCodex
-	DefaultCodexModel  = "gpt-5-codex"
-	CodexMiniModel     = "gpt-5-codex-mini"
-	DefaultClaudeModel = "claude-sonnet-4-5"
-	ClaudeHaikuModel   = "claude-haiku-4-5"
-	DefaultGeminiModel = "gemini-2.5-pro"
-	GeminiFlashModel   = "gemini-2.5-flash"
+	ProviderCodex         = "codex"
+	ProviderClaude        = "claude"
+	ProviderClaudeMax     = "claude-max"
+	ProviderGemini        = "gemini"
+	DefaultProviderID     = ProviderCodex
+	DefaultCodexModel     = "gpt-5-codex"
+	CodexMiniModel        = "gpt-5-codex-mini"
+	DefaultClaudeModel    = "claude-sonnet-4-5"
+	ClaudeHaikuModel      = "claude-haiku-4-5"
+	ClaudeOpusModel       = "claude-opus-4-6"
+	DefaultClaudeMaxModel = "claude-sonnet-4-6"
+	ClaudeMaxHaikuModel   = "claude-haiku-4-6"
+	DefaultGeminiModel    = "gemini-2.5-pro"
+	GeminiFlashModel      = "gemini-2.5-flash"
 )
 
 var (
@@ -42,6 +46,7 @@ func NewDefaultRegistry() *Registry {
 	registry := NewRegistry(DefaultProviderID)
 	_ = registry.Register(NewCodexRegistration())
 	_ = registry.Register(NewClaudeRegistration())
+	_ = registry.Register(NewClaudeMaxRegistration())
 	_ = registry.Register(NewGeminiRegistration())
 	return registry
 }

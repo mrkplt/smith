@@ -241,7 +241,7 @@ func NormalizeProviderProfile(profile ProviderProfile) (ProviderProfile, error) 
 	}
 	normalizedProviderType, ok := canonicalProviderType(rawProviderType)
 	if !ok {
-		return ProviderProfile{}, errors.New("unsupported provider_type; supported values: codex, claude, gemini")
+		return ProviderProfile{}, errors.New("unsupported provider_type; supported values: codex, claude, claude-max, gemini")
 	}
 	profile.ProviderType = normalizedProviderType
 	profile.Endpoint = strings.TrimSpace(profile.Endpoint)
@@ -318,6 +318,8 @@ func defaultModelForProviderType(providerType string) string {
 		return DefaultCodexModel
 	case ProviderClaude:
 		return DefaultClaudeModel
+	case ProviderClaudeMax:
+		return DefaultClaudeMaxModel
 	case ProviderGemini:
 		return DefaultGeminiModel
 	default:
@@ -327,7 +329,7 @@ func defaultModelForProviderType(providerType string) string {
 
 func defaultCapabilities(providerType string) []string {
 	switch strings.ToLower(strings.TrimSpace(providerType)) {
-	case ProviderCodex, ProviderClaude, ProviderGemini:
+	case ProviderCodex, ProviderClaude, ProviderClaudeMax, ProviderGemini:
 		return []string{"chat", "tools", "loops"}
 	default:
 		return []string{"chat"}
@@ -341,6 +343,8 @@ func canonicalProviderType(raw string) (string, bool) {
 		return ProviderCodex, true
 	case ProviderClaude, "anthropic":
 		return ProviderClaude, true
+	case ProviderClaudeMax:
+		return ProviderClaudeMax, true
 	case ProviderGemini, "google":
 		return ProviderGemini, true
 	default:

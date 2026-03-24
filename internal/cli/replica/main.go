@@ -322,7 +322,7 @@ func loadLoopExecutionConfigFromEnv() loopExecutionConfig {
 	sourceRef := strings.TrimSpace(os.Getenv("SMITH_LOOP_SOURCE_REF"))
 	stage := strings.TrimSpace(os.Getenv("SMITH_LOOP_STAGE"))
 	maxIterations, iterationWait := defaultLoopProfileForMethod(method)
-	codexCommand := resolveAgentCommand(providerID)
+	codexCommand := resolveAgentCommand(providerID, modelID)
 	prdPath := strings.TrimSpace(os.Getenv("SMITH_LOOP_PRD_PATH"))
 	if prdPath == "" {
 		prdPath = defaultPRDPath
@@ -1944,12 +1944,19 @@ func normalizeInvocationMethod(raw string) string {
 var agentCommandMap = map[string]string{
 	"codex":            "codex exec --yolo --skip-git-repo-check -",
 	"claude":           "claude -p --dangerously-skip-permissions",
+	"claude-max":       "claude -p --dangerously-skip-permissions",
 	"gemini":           "gemini -p --yolo",
 	"upstream-tooling": "upstream-tooling build --yolo -",
 	"openai":           "openai-agent exec -",
 }
 
-func resolveAgentCommand(providerID string) string {
+// claudeProviders is the set of provider IDs that use the Claude CLI and support --model.
+var claudeProviders = map[string]struct{}{
+	"claude":     {},
+	"claude-max": {},
+}
+
+func resolveAgentCommand(providerID, modelID string) string {
 	// 1. Global override via environment variable
 	if command := strings.TrimSpace(os.Getenv("SMITH_AGENT_CLI_CMD")); command != "" {
 		return command
@@ -1968,12 +1975,20 @@ func resolveAgentCommand(providerID string) string {
 	}
 
 	// 3. Resolve from internal agent map
-	if cmd, ok := agentCommandMap[providerID]; ok {
-		return cmd
+	cmd, ok := agentCommandMap[providerID]
+	if !ok {
+		// 4. Final fallback to Codex for backward compatibility
+		cmd = agentCommandMap["codex"]
 	}
 
-	// 4. Final fallback to Codex for backward compatibility
-	return agentCommandMap["codex"]
+	// Append --model for Claude-family providers when a model is explicitly set.
+	if modelID = strings.TrimSpace(modelID); modelID != "" {
+		if _, isClaude := claudeProviders[providerID]; isClaude {
+			cmd = cmd + " --model " + modelID
+		}
+	}
+
+	return cmd
 }
 
 func providerCommandEnvVar(providerID string) string {

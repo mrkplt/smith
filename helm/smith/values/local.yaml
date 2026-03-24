@@ -51,6 +51,7 @@ api:
   featureFlags:
     tasks: true
     tasksKanban: true
+    providerClaudeMax: true
 console:
   replicaCount: 1
   image:
@@ -60,6 +61,7 @@ console:
   featureFlags:
     tasks: true
     tasksKanban: true
+    providerClaudeMax: true
 
 chat:
   replicaCount: 1

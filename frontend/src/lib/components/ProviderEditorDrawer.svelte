@@ -31,6 +31,7 @@
 	const fallbackProviderCatalog = [
 		{ id: 'codex', display_name: 'Codex', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
 		{ id: 'claude', display_name: 'Claude', required_config_fields: ['id', 'provider_type', 'secret_ref'] },
+		{ id: 'claude-max', display_name: 'Claude Subscription', required_config_fields: ['id', 'provider_type'] },
 		{ id: 'gemini', display_name: 'Gemini', required_config_fields: ['id', 'provider_type', 'secret_ref'] }
 	];
 

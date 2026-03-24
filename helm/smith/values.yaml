@@ -104,6 +104,7 @@ api:
     tasksKanban: false
     featureCapability: false
     providerClaude: true
+    providerClaudeMax: false
     providerGemini: false
   documents:
     backend: etcd
@@ -203,6 +204,7 @@ console:
     integrations: false
     secrets: false
     providerClaude: true
+    providerClaudeMax: false
     providerGemini: false
     prdDiagnosticResolve: false
   autoscaling:

@@ -10,6 +10,9 @@ function canonicalProviderType(raw: string): string {
 	if (normalized === 'claude' || normalized === 'anthropic') {
 		return 'claude';
 	}
+	if (normalized === 'claude-max') {
+		return 'claude-max';
+	}
 	if (normalized === 'gemini' || normalized === 'google') {
 		return 'gemini';
 	}
@@ -37,6 +40,8 @@ export function staticModelsForProviderType(providerType: string): string[] {
 	switch (canonicalProviderType(providerType)) {
 	case 'claude':
 		return ['claude-sonnet-4-5', 'claude-haiku-4-5'];
+	case 'claude-max':
+		return ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-6'];
 	case 'gemini':
 		return ['gemini-2.5-pro', 'gemini-2.5-flash'];
 	case 'codex':

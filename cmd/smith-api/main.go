@@ -85,6 +85,7 @@ type config struct {
 	runtimeNamespace                    string
 	runtimeContainerName                string
 	providerClaudeEnabled               bool
+	providerClaudeMaxEnabled            bool
 	providerGeminiEnabled               bool
 	documentStoreBackend                string
 	documentsPostgresDSN                string
@@ -4038,6 +4039,8 @@ func (s *server) isProviderTypeEnabled(providerType string) bool {
 		return true
 	case provider.ProviderClaude:
 		return s.cfg.providerClaudeEnabled
+	case provider.ProviderClaudeMax:
+		return s.cfg.providerClaudeMaxEnabled
 	case provider.ProviderGemini:
 		return s.cfg.providerGeminiEnabled
 	default:
@@ -4080,6 +4083,8 @@ func canonicalProviderType(raw string) string {
 		return provider.ProviderCodex
 	case provider.ProviderClaude, "anthropic":
 		return provider.ProviderClaude
+	case provider.ProviderClaudeMax:
+		return provider.ProviderClaudeMax
 	case provider.ProviderGemini, "google":
 		return provider.ProviderGemini
 	default:
@@ -4109,6 +4114,10 @@ func (s *server) ensureProviderSecretRefRequired(profile provider.ProviderProfil
 	providerType := canonicalProviderType(profile.ProviderType)
 	if providerType == "" {
 		return fmt.Errorf("unsupported provider_type %q", profile.ProviderType)
+	}
+	// claude-max uses OAuth credentials mounted cluster-wide; no per-profile API key needed.
+	if providerType == provider.ProviderClaudeMax {
+		return nil
 	}
 	if strings.TrimSpace(profile.SecretRef) == "" {
 		return fmt.Errorf("provider profile %q requires secret_ref", profile.ID)
@@ -4312,6 +4321,7 @@ func loadConfig() (config, error) {
 		runtimeNamespace:                    strings.TrimSpace(envString("SMITH_RUNTIME_NAMESPACE", envString("SMITH_NAMESPACE", authStoreK8sNamespace))),
 		runtimeContainerName:                strings.TrimSpace(envString("SMITH_RUNTIME_CONTAINER_NAME", "replica")),
 		providerClaudeEnabled:               envBool("SMITH_PROVIDER_CLAUDE_ENABLED", true),
+		providerClaudeMaxEnabled:            envBool("SMITH_PROVIDER_CLAUDE_MAX_ENABLED", false),
 		providerGeminiEnabled:               envBool("SMITH_PROVIDER_GEMINI_ENABLED", false),
 		documentStoreBackend:                documentStoreBackend,
 		documentsPostgresDSN:                strings.TrimSpace(envString("SMITH_DOCUMENTS_POSTGRES_DSN", "")),

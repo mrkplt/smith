@@ -91,6 +91,11 @@ spec:
                 configMapKeyRef:
                   name: {{ $consoleConfigName }}
                   key: SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED
+            - name: SMITH_FEATURE_PROVIDER_CLAUDE_MAX_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ $consoleConfigName }}
+                  key: SMITH_FEATURE_PROVIDER_CLAUDE_MAX_ENABLED
             - name: SMITH_FEATURE_PROVIDER_GEMINI_ENABLED
               valueFrom:
                 configMapKeyRef:

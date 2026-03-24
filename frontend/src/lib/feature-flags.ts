@@ -6,6 +6,7 @@ type RuntimeConfig = {
   featureIntegrationsEnabled?: boolean | string;
   featureSecretsEnabled?: boolean | string;
   featureProviderClaudeEnabled?: boolean | string;
+  featureProviderClaudeMaxEnabled?: boolean | string;
   featureProviderGeminiEnabled?: boolean | string;
   featurePRDDiagnosticResolveEnabled?: boolean | string;
 };
@@ -119,6 +120,9 @@ export function isProviderTypeEnabled(providerType: string, config = getRuntimeC
   }
   if (normalized === 'claude' || normalized === 'anthropic') {
     return parseFlag(config.featureProviderClaudeEnabled, true);
+  }
+  if (normalized === 'claude-max') {
+    return parseFlag(config.featureProviderClaudeMaxEnabled, false);
   }
   if (normalized === 'gemini' || normalized === 'google') {
     return parseFlag(config.featureProviderGeminiEnabled, false);

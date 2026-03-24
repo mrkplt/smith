@@ -201,7 +201,7 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 
 func providerUsesAnthropicKey(providerID string) bool {
 	switch strings.ToLower(strings.TrimSpace(providerID)) {
-	case "claude", "anthropic":
+	case "claude", "anthropic", "claude-max":
 		return true
 	default:
 		return false

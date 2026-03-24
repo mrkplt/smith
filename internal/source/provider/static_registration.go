@@ -19,6 +19,10 @@ func NewClaudeRegistration() Registration {
 	return newStaticRegistration(ProviderClaude, DefaultClaudeModel, []string{DefaultClaudeModel, ClaudeHaikuModel})
 }
 
+func NewClaudeMaxRegistration() Registration {
+	return newStaticRegistration(ProviderClaudeMax, DefaultClaudeMaxModel, []string{ClaudeOpusModel, DefaultClaudeMaxModel, ClaudeMaxHaikuModel})
+}
+
 func NewGeminiRegistration() Registration {
 	return newStaticRegistration(ProviderGemini, DefaultGeminiModel, []string{DefaultGeminiModel, GeminiFlashModel})
 }
