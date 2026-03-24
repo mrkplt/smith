@@ -48,7 +48,7 @@ GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 .PHONY: help \
 	doctor bootstrap \
 	cluster cluster-up cluster-up-local cluster-up-k3d cluster-up-vcluster cluster-down cluster-down-local cluster-down-k3d cluster-down-vcluster cluster-reset cluster-health \
-	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-local-document-storage deploy-staging deploy-prod rollout-local undeploy undeploy-local \
+	build build-local image-build-local image-load-local images-local deploy deploy-local deploy-local-document-storage deploy-staging deploy-prod upgrade-local rollout-local undeploy undeploy-local \
 	console-build-local console-load-local console-rollout-local console-deploy-local \
 	chat-build-local chat-load-local chat-deploy-local \
 	daemon-build-local daemon-load-local daemon-rollout-local daemon-deploy-local \
@@ -338,6 +338,11 @@ deploy-prod: ## Deploy Smith via Helm using production values profile
 	  --namespace "$(SMITH_NAMESPACE)" \
 	  --create-namespace \
 	  -f "$(SMITH_PROD_VALUES)"
+upgrade-local: ## Upgrade Helm chart in place reusing stored values, then restart all deployments
+	@helm upgrade "$(SMITH_RELEASE)" ./helm/smith \
+	  --namespace "$(SMITH_NAMESPACE)" \
+	  --reuse-values
+	$(MAKE) --no-print-directory rollout-local
 undeploy: ## Remove Helm release from cluster
 	-helm uninstall "$(SMITH_RELEASE)" -n "$(SMITH_NAMESPACE)"
 undeploy-local: ## Remove local Helm deployment

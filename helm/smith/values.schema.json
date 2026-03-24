@@ -544,6 +544,7 @@
             "integrations": { "type": "boolean" },
             "secrets": { "type": "boolean" },
             "providerClaude": { "type": "boolean" },
+            "providerClaudeMax": { "type": "boolean" },
             "providerGemini": { "type": "boolean" },
             "prdDiagnosticResolve": { "type": "boolean" }
           },
