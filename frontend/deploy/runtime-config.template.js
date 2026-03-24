@@ -12,6 +12,7 @@ window.__SMITH_CONFIG__ = {
   featureSecretsEnabled: "${SMITH_FEATURE_SECRETS_ENABLED}",
   featureCapabilityAccess: "${SMITH_FEATURE_CAPABILITY_ACCESS}",
   featureProviderClaudeEnabled: "${SMITH_FEATURE_PROVIDER_CLAUDE_ENABLED}",
+  featureProviderClaudeMaxEnabled: "${SMITH_FEATURE_PROVIDER_CLAUDE_MAX_ENABLED}",
   featureProviderGeminiEnabled: "${SMITH_FEATURE_PROVIDER_GEMINI_ENABLED}",
   featurePRDDiagnosticResolveEnabled: "${SMITH_FEATURE_PRD_DIAGNOSTIC_RESOLVE_ENABLED}",
   showComingSoonProviders: "${SMITH_SHOW_COMING_SOON_PROVIDERS}"
