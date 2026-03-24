@@ -67,6 +67,7 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 		"SMITH_HANDOFF_PATH",
 		"SMITH_SKILL_MOUNT_COUNT",
 		"SMITH_SKILL_MOUNTS",
+		"SMITH_SKILL_MOUNT_PATHS",
 	}
 	for _, key := range required {
 		if _, ok := env[key]; !ok {
@@ -116,6 +117,9 @@ func TestBuildReplicaJobIncludesRequiredContext(t *testing.T) {
 	}
 	if env["SMITH_SKILL_MOUNTS"].Value != "commit,lint" {
 		t.Fatalf("expected resolved skill names, got %q", env["SMITH_SKILL_MOUNTS"].Value)
+	}
+	if env["SMITH_SKILL_MOUNT_PATHS"].Value != "/smith/skills/commit,/smith/skills/lint" {
+		t.Fatalf("expected resolved skill mount paths, got %q", env["SMITH_SKILL_MOUNT_PATHS"].Value)
 	}
 	if volumes["skill-0-commit"].ConfigMapName != "skill-commit" {
 		t.Fatalf("unexpected configmap for commit skill: %+v", volumes["skill-0-commit"])

@@ -14,7 +14,7 @@ sequenceDiagram
 
     Note over replica: Success detected
     replica->>replica: git config user.name/email
-    replica->>replica: git add -A
+    replica->>replica: git add -A (exclude runtime skill mounts)
     replica->>replica: git commit -m "chore(loop): sync..."
     
     replica->>github: git push origin
@@ -45,7 +45,7 @@ sequenceDiagram
 ## Detailed Walkthrough
 
 ### 1. Identity & Staging
-Before committing, Smith configures the local Git environment using either default values (`SMITH <smith@cromleylabs.com>`) or custom values provided via `SMITH_GIT_USER_NAME` and `SMITH_GIT_USER_EMAIL`. It then runs `git add -A` to capture all workspace changes, including implementation code and PRD updates.
+Before committing, Smith configures the local Git environment using either default values (`SMITH <smith@cromleylabs.com>`) or custom values provided via `SMITH_GIT_USER_NAME` and `SMITH_GIT_USER_EMAIL`. It then stages workspace changes with skill-mount exclusions so runtime-mounted skill paths (for example `.agents/skills/**`, `.claude/skills/**`) are not included in loop commits.
 
 ### 2. Local Commit
 A local commit is created with a structured and traceable message, for example: `feat(loop): US-001: Feature-gated Kanban visibility`, with body metadata that links back to loop and PRD/story context.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 )
 
@@ -44,8 +45,8 @@ func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff st
 		return "", err
 	}
 
-	// 2. Add all changes
-	if err := g.run(ctx, "add", "-A"); err != nil {
+	// 2. Add workspace changes while excluding runtime skill mount paths.
+	if err := g.run(ctx, gitAddAllArgsExcludingSkillMounts()...); err != nil {
 		return "", err
 	}
 
@@ -67,6 +68,56 @@ func (g *RealGit) CommitAndPush(ctx context.Context, loopID string, finalDiff st
 	}
 
 	return g.headSHA(ctx)
+}
+
+func gitAddAllArgsExcludingSkillMounts() []string {
+	args := []string{"add", "-A", "--", "."}
+	excludes := map[string]struct{}{
+		":(exclude).agents/skills":    {},
+		":(exclude).agents/skills/**": {},
+		":(exclude).claude/skills":    {},
+		":(exclude).claude/skills/**": {},
+	}
+	for _, spec := range skillMountExcludePathspecs(os.Getenv("SMITH_SKILL_MOUNT_PATHS")) {
+		excludes[spec] = struct{}{}
+	}
+	ordered := make([]string, 0, len(excludes))
+	for spec := range excludes {
+		ordered = append(ordered, spec)
+	}
+	sort.Strings(ordered)
+	args = append(args, ordered...)
+	return args
+}
+
+func skillMountExcludePathspecs(rawMountPaths string) []string {
+	const workspacePrefix = "/workspace/"
+	if strings.TrimSpace(rawMountPaths) == "" {
+		return nil
+	}
+	out := map[string]struct{}{}
+	for _, item := range strings.Split(rawMountPaths, ",") {
+		mountPath := strings.TrimSpace(item)
+		if !strings.HasPrefix(mountPath, workspacePrefix) {
+			continue
+		}
+		rel := strings.Trim(strings.TrimPrefix(mountPath, workspacePrefix), "/")
+		if rel == "" {
+			continue
+		}
+		rel = strings.ReplaceAll(rel, "\\", "/")
+		out[":(exclude)"+rel] = struct{}{}
+		out[":(exclude)"+rel+"/**"] = struct{}{}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	ordered := make([]string, 0, len(out))
+	for spec := range out {
+		ordered = append(ordered, spec)
+	}
+	sort.Strings(ordered)
+	return ordered
 }
 
 func buildCommitMessage(loopID, finalDiff string) string {
