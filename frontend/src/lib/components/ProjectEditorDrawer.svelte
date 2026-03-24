@@ -25,6 +25,7 @@
 	let id = $state('');
 	let name = $state('');
 	let repoUrl = $state('');
+	let defaultBranch = $state('');
 	let githubUser = $state('');
 	let githubCredential = $state('');
 	let providerProfileID = $state('codex-default');
@@ -53,6 +54,7 @@
 				id = projectToEdit.id || '';
 				name = projectToEdit.name || '';
 				repoUrl = projectToEdit.repo_url || '';
+				defaultBranch = projectToEdit.default_branch || '';
 				providerProfileID = projectToEdit.provider_profile_id || 'codex-default';
 				githubUser = projectToEdit.github_user || '';
 				runtimeImage = projectToEdit.runtime_image || '';
@@ -62,6 +64,7 @@
 				id = '';
 				name = '';
 				repoUrl = '';
+				defaultBranch = '';
 				providerProfileID = 'codex-default';
 				githubUser = '';
 				githubCredential = '';
@@ -77,7 +80,9 @@
 			providerProfiles = Array.isArray(profiles)
 				? profiles.filter((profile) => {
 					const providerTypeEnabled = isProviderTypeEnabled(String(profile?.provider_type || profile?.id || ''));
-					const isAddedProfile = String(profile?.secret_ref || '').trim() !== '';
+					const hasSecretRef = String(profile?.secret_ref || '').trim() !== '';
+					const providerType = String(profile?.provider_type || '').trim();
+					const isAddedProfile = hasSecretRef || providerType === 'claude-max';
 					return providerTypeEnabled && isAddedProfile;
 				})
 				: [];
@@ -97,6 +102,7 @@
 			id: projectId,
 			name,
 			repo_url: repoUrl,
+			default_branch: defaultBranch || '',
 			provider_profile_id: providerProfileID || 'codex-default',
 			github_user: githubUser,
 			runtime_image: runtimeImage,
@@ -214,9 +220,11 @@
         <ProjectBasicsSection
           {name}
           {repoUrl}
+          {defaultBranch}
           {busy}
           onNameChange={(value) => name = value}
           onRepoUrlChange={(value) => repoUrl = value}
+          onDefaultBranchChange={(value) => defaultBranch = value}
         />
 
 				<div>

@@ -5,12 +5,14 @@
   interface Props {
     name: string;
     repoUrl: string;
+    defaultBranch: string;
     busy: boolean;
     onNameChange: (value: string) => void;
     onRepoUrlChange: (value: string) => void;
+    onDefaultBranchChange: (value: string) => void;
   }
 
-  let { name, repoUrl, busy, onNameChange, onRepoUrlChange }: Props = $props();
+  let { name, repoUrl, defaultBranch, busy, onNameChange, onRepoUrlChange, onDefaultBranchChange }: Props = $props();
 </script>
 
 <div class="space-y-6">
@@ -46,5 +48,19 @@
         class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]"
       />
     </div>
+  </div>
+
+  <div>
+    <Label for="defaultBranch" class="mb-2 text-gray-400 uppercase font-bold text-[10px] tracking-widest">Default Branch</Label>
+    <Input
+      type="text"
+      id="defaultBranch"
+      placeholder="main"
+      value={defaultBranch}
+      oninput={(event) => onDefaultBranchChange((event.currentTarget as HTMLInputElement).value)}
+      disabled={busy}
+      class="bg-black border-gray-800 text-white font-mono text-sm rounded-none focus:border-[#86BC25]"
+    />
+    <Helper class="mt-2 text-gray-600 text-[10px] uppercase font-bold">The branch to check out (e.g. main or master). Defaults to main.</Helper>
   </div>
 </div>
