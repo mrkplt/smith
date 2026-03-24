@@ -134,7 +134,7 @@ func defaultSkillMountRoot(providerID string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(providerID)) {
 	case "codex":
 		return CodexDefaultSkillMountRoot, true
-	case "claude":
+	case "claude", "claude-max":
 		return ClaudeDefaultSkillMountRoot, true
 	default:
 		return "", false
