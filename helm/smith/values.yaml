@@ -28,6 +28,9 @@ secrets:
     runtimeCredentialsClaudeMaxCredentialsJson: ""
     runtimeCredentialsClaudeMaxClaudeJson: ""
     runtimeCredentialsClaudeMaxSettingsJson: ""
+  # Set to true when claude-max credentials were written to the secret via bootstrap-claude-max.sh
+  # rather than via Helm managed values. Enables SMITH_CLAUDE_MAX_SECRET_NAME on the core deployment.
+  claudeMaxEnabled: false
   keys:
     gitPat: git_pat
     runtimeCredentials: runtime_credentials

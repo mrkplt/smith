@@ -75,7 +75,7 @@ spec:
               value: {{ .Values.secrets.keys.runtimeCredentials | quote }}
             - name: SMITH_RUNTIME_CREDENTIALS_CLAUDE_KEY
               value: {{ .Values.secrets.keys.runtimeCredentialsClaude | quote }}
-            {{- if ne (trim .Values.secrets.managed.runtimeCredentialsClaudeMaxCredentialsJson) "" }}
+            {{- if or (ne (trim .Values.secrets.managed.runtimeCredentialsClaudeMaxCredentialsJson) "") (.Values.secrets.claudeMaxEnabled) }}
             - name: SMITH_CLAUDE_MAX_SECRET_NAME
               value: {{ $runtimeSecretName | quote }}
             - name: SMITH_CLAUDE_MAX_CREDENTIALS_JSON_KEY

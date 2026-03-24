@@ -72,6 +72,7 @@
       "properties": {
         "existingSecret": { "type": "string" },
         "create": { "type": "boolean" },
+        "claudeMaxEnabled": { "type": "boolean" },
         "managed": {
           "type": "object",
           "additionalProperties": false,

@@ -30,6 +30,7 @@ SMITH_LOCAL_SKILLS_IMAGE ?= smith-skills:local
 SMITH_LOCAL_GIT_PAT ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS ?=
 SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE ?=
+SMITH_LOCAL_CLAUDE_MAX_ENABLED ?=
 SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR ?= $(HOME)/.claude
 SMITH_LOCAL_OVERLAY ?=
 SMITH_BOOTSTRAP_DOCUMENT_STORAGE ?= false
@@ -240,6 +241,7 @@ deploy-local: ## Deploy Smith via Helm using local values profile
 	  --set-string secrets.managed.gitPat="$(SMITH_LOCAL_GIT_PAT)" \
 	  --set-string secrets.managed.runtimeCredentials="$(SMITH_LOCAL_RUNTIME_CREDENTIALS)" \
 	  --set-string secrets.managed.runtimeCredentialsClaude="$(SMITH_LOCAL_RUNTIME_CREDENTIALS_CLAUDE)" \
+	  $(if $(filter true,$(SMITH_LOCAL_CLAUDE_MAX_ENABLED)),--set secrets.claudeMaxEnabled=true,) \
 	  $(if $(filter true,$(SMITH_FORCE_HELM_ROLLOUT_ID)),--set global.rolloutId="$(shell date +%s)",) \
 	  -f "$(SMITH_LOCAL_VALUES)" \
 	  $(if $(strip $(SMITH_LOCAL_OVERLAY)),-f "$(SMITH_LOCAL_OVERLAY)",)
@@ -343,9 +345,12 @@ redeploy-local: ## Re-run deploy-local by reading credentials from the existing 
 	if [[ -z "$$pat" ]]; then echo "redeploy-local: could not read git_pat from secret $(SMITH_RELEASE)-runtime"; exit 1; fi; \
 	creds=$$(kubectl get secret "$(SMITH_RELEASE)-smith-runtime" -n "$(SMITH_NAMESPACE)" -o jsonpath='{.data.runtime_credentials}' 2>/dev/null | base64 -d); \
 	if [[ -z "$$creds" ]]; then echo "redeploy-local: could not read runtime_credentials from secret $(SMITH_RELEASE)-runtime"; exit 1; fi; \
+	cm_enabled=false; \
+	if kubectl get secret "$(SMITH_RELEASE)-smith-runtime" -n "$(SMITH_NAMESPACE)" -o jsonpath='{.data.claude_max_credentials_json}' 2>/dev/null | base64 -d | grep -q .; then cm_enabled=true; fi; \
 	$(MAKE) --no-print-directory deploy-local \
 	  SMITH_LOCAL_GIT_PAT="$$pat" \
-	  SMITH_LOCAL_RUNTIME_CREDENTIALS="$$creds"
+	  SMITH_LOCAL_RUNTIME_CREDENTIALS="$$creds" \
+	  SMITH_LOCAL_CLAUDE_MAX_ENABLED="$$cm_enabled"
 upgrade-local: ## Upgrade Helm chart in place reusing stored values, then restart all deployments
 	@helm upgrade "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
