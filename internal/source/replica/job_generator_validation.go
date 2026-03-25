@@ -99,8 +99,8 @@ func validateGitAuth(auth *GitAuthConfig) error {
 	}
 	switch auth.Provider {
 	case GitAuthProviderPAT:
-		if strings.TrimSpace(auth.PATSecretName) == "" || strings.TrimSpace(auth.PATSecretKey) == "" {
-			return fmt.Errorf("%w: git auth provider pat requires pat secret name and key", ErrInvalidJobRequest)
+		if strings.TrimSpace(auth.PATValue) == "" && (strings.TrimSpace(auth.PATSecretName) == "" || strings.TrimSpace(auth.PATSecretKey) == "") {
+			return fmt.Errorf("%w: git auth provider pat requires either pat_value or pat secret name and key", ErrInvalidJobRequest)
 		}
 	case GitAuthProviderGitHubApp:
 		if !auth.EnableGitHubAppAuth {

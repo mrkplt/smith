@@ -800,8 +800,8 @@ func TestEnsureGitWorkspaceBootstrapsRepository(t *testing.T) {
 	if fetchCall.name != "git" || len(fetchCall.args) < 5 || fetchCall.args[0] != "fetch" {
 		t.Fatalf("expected git fetch call, got %#v", fetchCall)
 	}
-	if !strings.Contains(fetchCall.args[3], "pat123@github.com/acme/repo") {
-		t.Fatalf("expected authenticated fetch URL, got %#v", fetchCall)
+	if !strings.Contains(fetchCall.args[3], "x-access-token:pat123@github.com/acme/repo") {
+		t.Fatalf("expected authenticated fetch URL with x-access-token prefix, got %#v", fetchCall)
 	}
 	checkoutCall := runner.calls[5]
 	if checkoutCall.name != "git" || len(checkoutCall.args) < 4 || checkoutCall.args[0] != "checkout" {

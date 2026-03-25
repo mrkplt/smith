@@ -821,7 +821,7 @@ func ensureGitWorkspace(ctx context.Context, runner execRunner, workspace, repos
 	branchName := normalizeGitBranch(branch)
 	fetchURL := repo
 	if strings.TrimSpace(gitPAT) != "" && strings.HasPrefix(repo, "https://") {
-		fetchURL = "https://" + strings.TrimSpace(gitPAT) + "@" + strings.TrimPrefix(repo, "https://")
+		fetchURL = "https://x-access-token:" + strings.TrimSpace(gitPAT) + "@" + strings.TrimPrefix(repo, "https://")
 	}
 	if output, err := runner.Run(ctx, workspace, "git", "config", "--global", "--add", "safe.directory", workspace); err != nil {
 		return false, formatCommandError("git safe.directory config failed", output, err)

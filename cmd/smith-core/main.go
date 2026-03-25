@@ -32,6 +32,7 @@ import (
 	"smith/internal/source/journalpolicy"
 	"smith/internal/source/locking"
 	"smith/internal/source/model"
+	"smith/internal/source/provider"
 	"smith/internal/source/replica"
 	"smith/internal/source/store"
 )
@@ -79,12 +80,17 @@ type executionImageSelection struct {
 }
 
 type orchestrator struct {
-	store      store.StateStore
-	locks      *locking.Manager
-	kube       kubernetes.Interface
-	cfg        config
-	jobTTL     int32
-	jobBackoff int32
+	store       store.StateStore
+	locks       *locking.Manager
+	kube        kubernetes.Interface
+	cfg         config
+	projectCred projectCredentialReader
+	jobTTL      int32
+	jobBackoff  int32
+}
+
+type projectCredentialReader interface {
+	GetProjectCredential(ctx context.Context, projectID string) (provider.ProjectCredential, bool, error)
 }
 
 type intentQueue struct {
@@ -115,13 +121,24 @@ func main() {
 		log.Fatalf("smith-core kube init failed: %v", err)
 	}
 
+	projectCredStore, err := provider.NewSecretTokenStore(
+		kube,
+		cfg.namespace,
+		envString("SMITH_AUTH_STORE_K8S_SECRET", "smith-auth-store"),
+		envString("SMITH_AUTH_STORE_K8S_KEY", "tokens.json"),
+	)
+	if err != nil {
+		log.Printf("smith-core: project credential store unavailable: %v (falling back to static git PAT secret)", err)
+	}
+
 	orch := &orchestrator{
-		store:      es,
-		locks:      locking.NewManager(store.NewEtcdLeaseStore(es), 30*time.Second),
-		kube:       kube,
-		cfg:        cfg,
-		jobTTL:     3600,
-		jobBackoff: 0,
+		store:       es,
+		locks:       locking.NewManager(store.NewEtcdLeaseStore(es), 30*time.Second),
+		kube:        kube,
+		cfg:         cfg,
+		projectCred: projectCredStore,
+		jobTTL:      3600,
+		jobBackoff:  0,
 	}
 
 	watcher := core.NewUnresolvedWatcher(&intentQueue{orch: orch})
@@ -451,7 +468,7 @@ func (o *orchestrator) createReplicaJob(ctx context.Context, loopID, jobName, co
 		request.RuntimeCredentialsValue = strings.TrimSpace(o.cfg.runtimeCredentials)
 		request.RuntimeCredentialsClaudeValue = strings.TrimSpace(o.cfg.runtimeCredentialsClaude)
 	}
-	request.GitAuth = gitAuthFor(o.cfg)
+	request.GitAuth = o.resolveGitAuth(ctx, anomaly)
 	prdPayload, hasWorkspacePRD, err := workspacePRDPayload(anomaly.Metadata)
 	if err != nil {
 		return err
@@ -890,6 +907,27 @@ func loopProviderFor(anomaly model.Anomaly) string {
 		return provider
 	}
 	return model.DefaultProviderID
+}
+
+func (o *orchestrator) resolveGitAuth(ctx context.Context, anomaly model.Anomaly) *replica.GitAuthConfig {
+	projectID := projectIDFor(anomaly)
+	if projectID != "" && o.projectCred != nil {
+		cred, found, err := o.projectCred.GetProjectCredential(ctx, projectID)
+		if err == nil && found && strings.TrimSpace(cred.PAT) != "" {
+			return &replica.GitAuthConfig{
+				Provider: replica.GitAuthProviderPAT,
+				PATValue: strings.TrimSpace(cred.PAT),
+			}
+		}
+	}
+	return gitAuthFor(o.cfg)
+}
+
+func projectIDFor(anomaly model.Anomaly) string {
+	if len(anomaly.Metadata) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(anomaly.Metadata["project_id"])
 }
 
 func gitAuthFor(cfg config) *replica.GitAuthConfig {

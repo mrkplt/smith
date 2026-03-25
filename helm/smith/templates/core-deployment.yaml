@@ -64,6 +64,10 @@ spec:
               value: {{ .Values.core.replicaTemplate.tolerations | toJson | quote }}
             - name: SMITH_REPLICA_TEMPLATE_ENV
               value: {{ .Values.core.replicaTemplate.env | toJson | quote }}
+            - name: SMITH_AUTH_STORE_K8S_SECRET
+              value: "{{ include "smith.fullname" . }}-auth-store"
+            - name: SMITH_AUTH_STORE_K8S_KEY
+              value: "tokens.json"
             {{- if $runtimeSecretName }}
             - name: SMITH_GIT_PAT_SECRET_NAME
               value: {{ $runtimeSecretName | quote }}

@@ -32,6 +32,7 @@ type GitAuthConfig struct {
 	Provider            GitAuthProvider
 	PATSecretName       string
 	PATSecretKey        string
+	PATValue            string
 	GitHubApp           *GitHubAppAuth
 	SSH                 *SSHAuth
 	EnableGitHubAppAuth bool

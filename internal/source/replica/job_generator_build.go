@@ -250,6 +250,12 @@ func appendGitAuthEnv(env []EnvVar, req JobRequest) []EnvVar {
 	env = append(env, EnvVar{Name: "SMITH_GIT_AUTH_PROVIDER", Value: string(req.GitAuth.Provider)})
 	switch req.GitAuth.Provider {
 	case GitAuthProviderPAT:
+		if req.GitAuth.PATValue != "" {
+			return append(env, EnvVar{
+				Name:  "SMITH_GIT_PAT",
+				Value: req.GitAuth.PATValue,
+			})
+		}
 		return append(env, EnvVar{
 			Name: "SMITH_GIT_PAT",
 			SecretKeyRef: &SecretKeyRef{
