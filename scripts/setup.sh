@@ -4,8 +4,8 @@
 #
 # Environment variables (all optional — script will prompt or use defaults):
 #   SMITH_LOCAL_GIT_PAT                  GitHub PAT for replica git operations
-#   SMITH_LOCAL_RUNTIME_CREDENTIALS      AI provider credential (defaults to "placeholder" when using Claude Max)
-#   SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR    Claude OAuth config dir (default: ~/.claude)
+#   SMITH_LOCAL_RUNTIME_CREDENTIALS      AI provider credential (defaults to "placeholder"; Claude Max uses bootstrap-claude-max.sh)
+#   SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR    Claude OAuth config dir passed to bootstrap-claude-max.sh (default: ~/.claude)
 #   SMITH_SKIP_CLUSTER                   Set to "true" to skip cluster bring-up and deploy
 set -euo pipefail
 
@@ -228,119 +228,6 @@ ensure_smith_config() {
   fi
 }
 
-# ── Claude Max OAuth credentials ─────────────────────────────────────────────
-#
-# Checks SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR (default: ~/.claude) for OAuth
-# credential files produced by `claude login`.
-#
-# If credentials are missing, spins up a minimal container with the Claude CLI
-# installed, mounts SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR into it, and drops the
-# user into a shell to run `claude login`. Credentials written inside the
-# container are persisted via the bind-mount and picked up after exit.
-#
-# Non-fatal — the Anthropic API key path still works without these files.
-
-CLAUDE_MAX_AVAILABLE=false
-CLAUDE_LOGIN_IMAGE="smith-claude-login:local"
-
-claude_creds_exist() {
-  local dir="$1"
-  [[ -f "$dir/.credentials.json" && -f "$dir/.claude.json" ]]
-}
-
-container_runtime() {
-  if has docker && docker info >/dev/null 2>&1; then echo "docker"
-  elif has podman && podman info >/dev/null 2>&1; then echo "podman"
-  else echo ""
-  fi
-}
-
-extract_keychain_credentials() {
-  # macOS only: extract Claude OAuth credentials from the system Keychain and
-  # write them to the expected .credentials.json file.
-  [[ "$OS" == "darwin" ]] || return 1
-  has security || return 1
-
-  local payload
-  payload="$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)" || return 1
-  [[ -n "$payload" ]] || return 1
-
-  mkdir -p "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"
-  printf '%s' "$payload" > "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR/.credentials.json"
-  chmod 600 "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR/.credentials.json"
-
-  # Ensure .claude.json exists (Claude CLI expects it; create a minimal one if absent)
-  if [[ ! -f "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR/.claude.json" ]]; then
-    echo '{}' > "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR/.claude.json"
-  fi
-}
-
-ensure_claude_credentials() {
-  # 1. Credential files already present — nothing to do.
-  if claude_creds_exist "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"; then
-    CLAUDE_MAX_AVAILABLE=true
-    ok "Claude Max credentials found at $SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"
-    return
-  fi
-
-  # 2. macOS: extract from system Keychain.
-  if $IS_MAC; then
-    log "checking macOS Keychain for Claude Max credentials..."
-    if extract_keychain_credentials; then
-      CLAUDE_MAX_AVAILABLE=true
-      ok "Claude Max credentials extracted from Keychain to $SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"
-      return
-    fi
-    # Not in Keychain yet — fall through to container login below.
-    log "credentials not found in Keychain — will obtain via container"
-  fi
-
-  # 3. No credentials found — spin up a container to run claude login.
-  local runtime
-  runtime="$(container_runtime)"
-  if [[ -z "$runtime" ]]; then
-    warn "Claude Max credentials not found and no container runtime is running — skipping Claude Max setup"
-    return
-  fi
-
-  if [[ ! -t 0 ]]; then
-    warn "stdin is not a terminal — cannot run interactive claude login. Run setup manually then re-run."
-    return
-  fi
-
-  log "Building login container..."
-  "$runtime" build -q -t "$CLAUDE_LOGIN_IMAGE" \
-    -f "$SCRIPT_DIR/claude-login.Dockerfile" "$SCRIPT_DIR" >/dev/null
-
-  mkdir -p "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"
-
-  log "Launching container. Run 'claude login', then 'exit' when done."
-  echo
-  "$runtime" run --rm -it \
-    -v "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR:/home/claude/.claude" \
-    -e CLAUDE_CONFIG_DIR=/home/claude/.claude \
-    "$CLAUDE_LOGIN_IMAGE" \
-    bash -c '
-      rm -f "$HOME/.claude.json"
-      [[ -f "$CLAUDE_CONFIG_DIR/.claude.json" ]] || echo "{}" > "$CLAUDE_CONFIG_DIR/.claude.json"
-      ln -s "$CLAUDE_CONFIG_DIR/.claude.json" "$HOME/.claude.json"
-      exec bash
-    '
-  echo
-
-  # On macOS, re-attempt Keychain extraction in case login wrote there.
-  if $IS_MAC && ! claude_creds_exist "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"; then
-    extract_keychain_credentials || true
-  fi
-
-  if claude_creds_exist "$SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"; then
-    CLAUDE_MAX_AVAILABLE=true
-    ok "Claude Max credentials obtained at $SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR"
-  else
-    warn "claude login did not produce credentials — Claude Max mode will not be available"
-  fi
-}
-
 # ── cluster ──────────────────────────────────────────────────────────────────
 
 ensure_cluster() {
@@ -360,15 +247,11 @@ ensure_deployed() {
   # Prompt for required credentials if not already set.
   prompt_secret SMITH_LOCAL_GIT_PAT "GitHub PAT (repo scope, for replica git operations)"
 
-  # When using Claude Max, SMITH_LOCAL_RUNTIME_CREDENTIALS is not used for
-  # Claude loops but the Helm chart still requires a non-empty value.
+  # SMITH_LOCAL_RUNTIME_CREDENTIALS is required by the Helm chart but not used
+  # for Claude Max loops. Default to "placeholder" if not set — bootstrap-claude-max.sh
+  # handles the real credentials separately.
   if [[ -z "${SMITH_LOCAL_RUNTIME_CREDENTIALS:-}" ]]; then
-    if $CLAUDE_MAX_AVAILABLE; then
-      export SMITH_LOCAL_RUNTIME_CREDENTIALS="placeholder"
-      log "Claude Max mode active — using placeholder for SMITH_LOCAL_RUNTIME_CREDENTIALS"
-    else
-      prompt_secret SMITH_LOCAL_RUNTIME_CREDENTIALS "runtime credential (Anthropic API key or other provider key)"
-    fi
+    export SMITH_LOCAL_RUNTIME_CREDENTIALS="placeholder"
   fi
 
   log "deploying Smith into cluster..."
@@ -383,9 +266,6 @@ ensure_deployed() {
 # ── Claude Max credential seeding ─────────────────────────────────────────────
 
 ensure_claude_max_seeded() {
-  if ! $CLAUDE_MAX_AVAILABLE; then
-    return
-  fi
   log "seeding Claude Max credentials into cluster secret..."
   SMITH_NAMESPACE="$SMITH_NAMESPACE" \
   SMITH_RELEASE="$SMITH_RELEASE" \
@@ -412,7 +292,6 @@ main() {
   ensure_mise_runtimes
   ensure_k3d_vcluster
   ensure_smith_config
-  ensure_claude_credentials
 
   if [[ "$SMITH_SKIP_CLUSTER" == "true" ]]; then
     echo
@@ -421,7 +300,7 @@ main() {
     echo "  make cluster-up-k3d"
     echo "  make cluster-health"
     echo "  SMITH_LOCAL_GIT_PAT=<pat> make deploy-local"
-    $CLAUDE_MAX_AVAILABLE && echo "  make bootstrap-claude-max-local"
+    echo "  make bootstrap-claude-max-local"
     return
   fi
 

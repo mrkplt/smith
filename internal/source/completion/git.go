@@ -227,9 +227,9 @@ func (g *RealGit) headSHA(ctx context.Context) (string, error) {
 
 func (g *RealGit) authURL() string {
 	repo := g.Repository
-	// Basic URL rewrite for GitHub PAT: https://<pat>@github.com/org/repo.git
+	// Use x-access-token:<pat> format which works for both classic and fine-grained PATs.
 	if strings.HasPrefix(repo, "https://") {
-		return "https://" + g.PAT + "@" + strings.TrimPrefix(repo, "https://")
+		return "https://x-access-token:" + g.PAT + "@" + strings.TrimPrefix(repo, "https://")
 	}
 	return repo
 }
