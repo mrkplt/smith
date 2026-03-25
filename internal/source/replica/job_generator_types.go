@@ -78,10 +78,6 @@ type JobRequest struct {
 	RuntimeCredentialsValue       string
 	RuntimeCredentialsClaudeKey   string
 	RuntimeCredentialsClaudeValue string
-	ClaudeMaxSecretName           string
-	ClaudeMaxCredentialsJsonKey   string
-	ClaudeMaxClaudeJsonKey        string
-	ClaudeMaxSettingsJsonKey      string
 	BackoffLimit                  int32
 	ActiveDeadlineSeconds         int64
 	TTLSecondsAfterFinished       int32

@@ -3,15 +3,16 @@ package model
 import "fmt"
 
 const (
-	PrefixAnomalies = "/smith/v1/anomalies"
-	PrefixState     = "/smith/v1/state"
-	PrefixJournal   = "/smith/v1/journal"
-	PrefixHandoffs  = "/smith/v1/handoffs"
-	PrefixLocks     = "/smith/v1/locks"
-	PrefixOverrides = "/smith/v1/overrides"
-	PrefixAudit     = "/smith/v1/audit"
-	PrefixDocuments = "/smith/v1/documents"
-	PrefixTasks     = "/smith/v1/tasks"
+	PrefixAnomalies           = "/smith/v1/anomalies"
+	PrefixState               = "/smith/v1/state"
+	PrefixJournal             = "/smith/v1/journal"
+	PrefixHandoffs            = "/smith/v1/handoffs"
+	PrefixLocks               = "/smith/v1/locks"
+	PrefixOverrides           = "/smith/v1/overrides"
+	PrefixAudit               = "/smith/v1/audit"
+	PrefixDocuments           = "/smith/v1/documents"
+	PrefixTasks               = "/smith/v1/tasks"
+	PrefixProviderCredentials = "/smith/v1/provider_credentials"
 )
 
 func AnomalyKey(loopID string) string {
@@ -56,4 +57,8 @@ func OverridePrefix(loopID string) string {
 
 func OverrideKey(loopID string, sequence int64) string {
 	return fmt.Sprintf("%s/%020d", OverridePrefix(loopID), sequence)
+}
+
+func ProviderCredentialKey(providerID string) string {
+	return fmt.Sprintf("%s/%s", PrefixProviderCredentials, providerID)
 }

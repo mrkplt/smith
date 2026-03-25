@@ -9,7 +9,6 @@ ingress:
 etcd:
   endpoints:
     - http://smith-etcd.smith-system.svc.cluster.local:2379
-    - http://smith-etcd-x-smith-system-x-smith-vc.smith-vcluster.svc.cluster.local:2379
 
 secrets:
   create: true

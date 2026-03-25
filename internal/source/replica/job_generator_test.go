@@ -670,6 +670,39 @@ func TestSanitizeKubernetesLabelValueWithLongString(t *testing.T) {
 	}
 }
 
+func TestBuildReplicaJobWithClaudeMaxSetsCLAUDE_CONFIG_DIR(t *testing.T) {
+	req := validRequest()
+	req.ProviderID = "claude-max"
+
+	job, err := BuildReplicaJob(req)
+	if err != nil {
+		t.Fatalf("build failed: %v", err)
+	}
+
+	env := map[string]EnvVar{}
+	for _, e := range job.Spec.Template.Spec.Containers[0].Env {
+		env[e.Name] = e
+	}
+	if env["CLAUDE_CONFIG_DIR"].Value != claudeMaxConfigDir {
+		t.Fatalf("expected CLAUDE_CONFIG_DIR=%q, got %q", claudeMaxConfigDir, env["CLAUDE_CONFIG_DIR"].Value)
+	}
+	if _, hasKey := env["ANTHROPIC_API_KEY"]; hasKey {
+		t.Fatal("ANTHROPIC_API_KEY should not be set for claude-max provider")
+	}
+
+	// No K8s secret volumes or mounts for credentials.
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		if strings.HasPrefix(v.Name, "claude-config") {
+			t.Fatalf("unexpected claude-config volume %q: credentials are fetched from etcd at runtime", v.Name)
+		}
+	}
+	for _, ic := range job.Spec.Template.Spec.InitContainers {
+		if ic.Name == "claude-config-init" {
+			t.Fatal("unexpected claude-config-init init container: credentials are fetched from etcd at runtime")
+		}
+	}
+}
+
 func validRequest() JobRequest {
 	return JobRequest{
 		Namespace:          "smith-system",

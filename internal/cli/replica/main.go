@@ -113,6 +113,30 @@ func Run() int {
 	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Start(ctx))
 	appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "replica execution starting"))
 	loopCfg := loadLoopExecutionConfigFromEnv()
+	if authErr := ensureClaudeMaxAuth(ctx, storeClient, loopID, correlationID, loopCfg.ProviderID); authErr != nil {
+		_ = storeClient.AppendJournal(ctx, model.JournalEntry{
+			LoopID:        loopID,
+			Phase:         "auth",
+			Level:         "error",
+			ActorType:     "replica",
+			ActorID:       hostnameOr("smith-replica"),
+			Message:       "claude-max credential setup failed",
+			CorrelationID: correlationID,
+			Metadata: map[string]string{
+				"error": authErr.Error(),
+			},
+		})
+		_, _ = storeClient.PutStateFromCurrent(ctx, loopID, func(current model.StateRecord) (model.StateRecord, error) {
+			if current.State == model.LoopStateSynced || current.State == model.LoopStateFlatline || current.State == model.LoopStateCancelled {
+				return current, nil
+			}
+			current.State = model.LoopStateFlatline
+			current.Reason = "provider-auth-setup-failed"
+			return current, nil
+		})
+		log.Printf("claude-max auth setup failed: %v", authErr)
+		return 1
+	}
 	envMeta, setupErr := setupLoopEnvironment(ctx, startup.Anomaly.Environment, workspace, runner)
 	if setupErr != nil {
 		appendTaskWorkflowWarning(ctx, storeClient, loopID, correlationID, taskClient.Log(ctx, "environment setup failed: "+setupErr.Error()))
@@ -989,6 +1013,49 @@ func shouldUseInteractivePRDGate(cfg loopExecutionConfig, anomaly model.Anomaly)
 		return false
 	}
 	return true
+}
+
+func isClaudeMaxProvider(providerID string) bool {
+	return strings.ToLower(strings.TrimSpace(providerID)) == "claude-max"
+}
+
+func ensureClaudeMaxAuth(ctx context.Context, storeClient store.StateStore, loopID, correlationID, providerID string) error {
+	if !isClaudeMaxProvider(providerID) {
+		return nil
+	}
+	cred, found, err := storeClient.GetProviderCredential(ctx, providerID)
+	if err != nil {
+		return fmt.Errorf("read provider credential: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("no credential found for provider %q: run 'smith provider set-claude-credentials --provider-id %s'", providerID, providerID)
+	}
+	claudeConfigDir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
+	if claudeConfigDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("determine home directory: %w", err)
+		}
+		claudeConfigDir = filepath.Join(home, ".claude")
+	}
+	if err := os.MkdirAll(claudeConfigDir, 0o700); err != nil {
+		return fmt.Errorf("create claude config dir %s: %w", claudeConfigDir, err)
+	}
+	files := map[string]string{
+		".credentials.json": cred.CredentialsJSON,
+		".claude.json":      cred.ClaudeJSON,
+		"settings.json":     cred.SettingsJSON,
+	}
+	for name, content := range files {
+		p := filepath.Join(claudeConfigDir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			return fmt.Errorf("write %s: %w", name, err)
+		}
+	}
+	appendWorkflowStep(ctx, storeClient, loopID, correlationID, "auth", "claude-max credentials written", map[string]string{
+		"claude_config_dir": claudeConfigDir,
+	})
+	return nil
 }
 
 func ensureCodexLogin(

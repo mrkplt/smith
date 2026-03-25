@@ -192,7 +192,7 @@ cluster-health: ## Verify current cluster API, node readiness, and etcd readines
 	  echo "[cluster-health] HINT: run 'make cluster-up' and review env-up output"; \
 	  exit 1; \
 	fi; \
-	if [[ "$${ETCD_MODE}" == "helm" ]]; then \
+	if kubectl -n "$${ETCD_NS}" get statefulset "$${ETCD_RELEASE}" >/dev/null 2>&1; then \
 	  echo "[cluster-health] checking etcd statefulset readiness"; \
 	  if ! kubectl -n "$${ETCD_NS}" rollout status statefulset/"$${ETCD_RELEASE}" --timeout=120s >/dev/null 2>&1; then \
 	    echo "[cluster-health] ERROR: etcd statefulset '$${ETCD_RELEASE}' is not ready"; \
@@ -345,12 +345,9 @@ redeploy-local: ## Re-run deploy-local by reading credentials from the existing 
 	if [[ -z "$$pat" ]]; then echo "redeploy-local: could not read git_pat from secret $(SMITH_RELEASE)-runtime"; exit 1; fi; \
 	creds=$$(kubectl get secret "$(SMITH_RELEASE)-smith-runtime" -n "$(SMITH_NAMESPACE)" -o jsonpath='{.data.runtime_credentials}' 2>/dev/null | base64 -d); \
 	if [[ -z "$$creds" ]]; then echo "redeploy-local: could not read runtime_credentials from secret $(SMITH_RELEASE)-runtime"; exit 1; fi; \
-	cm_enabled=false; \
-	if kubectl get secret "$(SMITH_RELEASE)-smith-runtime" -n "$(SMITH_NAMESPACE)" -o jsonpath='{.data.claude_max_credentials_json}' 2>/dev/null | base64 -d | grep -q .; then cm_enabled=true; fi; \
 	$(MAKE) --no-print-directory deploy-local \
 	  SMITH_LOCAL_GIT_PAT="$$pat" \
-	  SMITH_LOCAL_RUNTIME_CREDENTIALS="$$creds" \
-	  SMITH_LOCAL_CLAUDE_MAX_ENABLED="$$cm_enabled"
+	  SMITH_LOCAL_RUNTIME_CREDENTIALS="$$creds"
 upgrade-local: ## Upgrade Helm chart in place reusing stored values, then restart all deployments
 	@helm upgrade "$(SMITH_RELEASE)" ./helm/smith \
 	  --namespace "$(SMITH_NAMESPACE)" \
@@ -474,9 +471,8 @@ hooks-run-pre-commit: hook-fast-pre-commit ## Backward-compatible alias for pre-
 
 hooks-run-pre-push: hook-fast-pre-push ## Backward-compatible alias for pre-push hook workload
 
-bootstrap-claude-max-local: ## Seed Kubernetes Secret with Claude Max OAuth credentials from SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR
-	SMITH_NAMESPACE="$(SMITH_NAMESPACE)" SMITH_RELEASE="$(SMITH_RELEASE)" \
-	  SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR="$(SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR)" \
+bootstrap-claude-max-local: build-smith ## Store Claude Max OAuth credentials into etcd via smith provider set-claude-credentials
+	SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR="$(SMITH_LOCAL_CLAUDE_MAX_CONFIG_DIR)" \
 	  ./scripts/bootstrap-claude-max.sh
 
 hooks-install: ## Install repository git hooks from .githooks

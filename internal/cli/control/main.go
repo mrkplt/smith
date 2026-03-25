@@ -671,6 +671,8 @@ func runProvider(client *client.Client, output string, args []string, stdout, st
 		return cmdProviderAdd(client, output, args[1:], stdout, stderr)
 	case "configure":
 		return cmdProviderConfigure(client, output, args[1:], stdout, stderr)
+	case "set-claude-credentials":
+		return cmdProviderSetClaudeCredentials(client, output, args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printProviderHelp(stdout)
 		return 0
@@ -853,6 +855,51 @@ func cmdProviderConfigure(client *client.Client, output string, args []string, s
 	var out any
 	err = client.Do(context.Background(), http.MethodPut, "/v1/providers/"+providerID, payload, &out)
 	return writeOperationResult(output, stdout, stderr, "provider.configure", out, err)
+}
+
+func cmdProviderSetClaudeCredentials(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("provider set-claude-credentials", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		providerID string
+		configDir  string
+	)
+	fs.StringVar(&providerID, "provider-id", "", "Provider profile ID")
+	fs.StringVar(&configDir, "config-dir", "", "Path to Claude config directory (default: ~/.claude)")
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		fmt.Fprintln(stderr, "provider set-claude-credentials requires --provider-id")
+		return 2
+	}
+	if strings.TrimSpace(configDir) == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintf(stderr, "could not determine home directory: %v\n", err)
+			return 1
+		}
+		configDir = filepath.Join(home, ".claude")
+	}
+	files := map[string]string{
+		"credentials_json": filepath.Join(configDir, ".credentials.json"),
+		"claude_json":      filepath.Join(configDir, ".claude.json"),
+		"settings_json":    filepath.Join(configDir, "settings.json"),
+	}
+	payload := map[string]string{}
+	for key, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(stderr, "read %s: %v\n", path, err)
+			return 1
+		}
+		payload[key] = string(data)
+	}
+	var out any
+	err := client.Do(context.Background(), http.MethodPut, "/v1/providers/"+providerID+"/credentials/claude-max", payload, &out)
+	return writeOperationResult(output, stdout, stderr, "provider.set-claude-credentials", out, err)
 }
 
 func runProject(client *client.Client, output string, args []string, stdout, stderr io.Writer) int {
@@ -2411,9 +2458,10 @@ func printConfigHelp(w io.Writer) {
 
 func printProviderHelp(w io.Writer) {
 	fmt.Fprintln(w, "Usage: smith provider <command>")
-	fmt.Fprintln(w, "Commands: list, add, configure")
+	fmt.Fprintln(w, "Commands: list, add, configure, set-claude-credentials")
 	fmt.Fprintln(w, "  add --id <id> --credential-id <label> --api-key <key> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--endpoint <url>] [--capabilities c1,c2]")
 	fmt.Fprintln(w, "  configure <id> [--name <name>] [--type codex|claude|gemini] [--default-model <model>] [--credential-id <label>] [--api-key <key>] [--endpoint <url>] [--capabilities c1,c2]")
+	fmt.Fprintln(w, "  set-claude-credentials --provider-id <id> [--config-dir ~/.claude]")
 }
 
 func printProjectHelp(w io.Writer) {

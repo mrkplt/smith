@@ -3523,6 +3523,10 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 			s.handleProviderModels(w, r, id)
 			return
 		}
+		if route == "credentials/claude-max" {
+			s.handleProviderClaudeMaxCredential(w, r, id)
+			return
+		}
 		writeErr(w, http.StatusNotFound, "provider route not found")
 		return
 	}
@@ -3611,6 +3615,87 @@ func (s *server) handleProviderByID(w http.ResponseWriter, r *http.Request) {
 			Action: "delete-provider-profile",
 			Metadata: map[string]string{
 				"provider_id": id,
+			},
+		})
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+type providerClaudeMaxCredentialRequest struct {
+	CredentialsJSON string `json:"credentials_json"`
+	ClaudeJSON      string `json:"claude_json"`
+	SettingsJSON    string `json:"settings_json"`
+}
+
+func (s *server) handleProviderClaudeMaxCredential(w http.ResponseWriter, r *http.Request, providerID string) {
+	switch r.Method {
+	case http.MethodGet:
+		cred, found, err := s.store.GetProviderCredential(r.Context(), providerID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !found {
+			writeErr(w, http.StatusNotFound, "claude-max credential not found")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"provider_id": providerID,
+			"updated_at":  formatRFC3339OrEmpty(cred.UpdatedAt),
+			"set":         true,
+		})
+	case http.MethodPut:
+		var req providerClaudeMaxCredentialRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if strings.TrimSpace(req.CredentialsJSON) == "" {
+			writeErr(w, http.StatusBadRequest, "credentials_json is required")
+			return
+		}
+		if strings.TrimSpace(req.ClaudeJSON) == "" {
+			writeErr(w, http.StatusBadRequest, "claude_json is required")
+			return
+		}
+		if strings.TrimSpace(req.SettingsJSON) == "" {
+			writeErr(w, http.StatusBadRequest, "settings_json is required")
+			return
+		}
+		cred := model.ProviderCredential{
+			CredentialsJSON: req.CredentialsJSON,
+			ClaudeJSON:      req.ClaudeJSON,
+			SettingsJSON:    req.SettingsJSON,
+			UpdatedAt:       time.Now().UTC(),
+		}
+		if err := s.store.PutProviderCredential(r.Context(), providerID, cred); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "put-provider-claude-max-credential",
+			Metadata: map[string]string{
+				"provider_id": providerID,
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"provider_id": providerID,
+			"updated_at":  formatRFC3339OrEmpty(cred.UpdatedAt),
+			"set":         true,
+		})
+	case http.MethodDelete:
+		if err := s.store.DeleteProviderCredential(r.Context(), providerID); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		_ = s.appendAudit(r.Context(), store.AuditRecord{
+			Actor:  "operator",
+			Action: "delete-provider-claude-max-credential",
+			Metadata: map[string]string{
+				"provider_id": providerID,
 			},
 		})
 		w.WriteHeader(http.StatusNoContent)

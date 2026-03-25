@@ -85,6 +85,11 @@ type StateStore interface {
 	ListAudit(ctx context.Context, loopID string, limit int64) ([]AuditRecord, error)
 	WatchAudit(ctx context.Context) <-chan AuditRecord
 
+	// Provider Credentials
+	GetProviderCredential(ctx context.Context, providerID string) (model.ProviderCredential, bool, error)
+	PutProviderCredential(ctx context.Context, providerID string, cred model.ProviderCredential) error
+	DeleteProviderCredential(ctx context.Context, providerID string) error
+
 	// Sequences
 	NextSequence(ctx context.Context, prefix string) (int64, error)
 

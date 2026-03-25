@@ -141,7 +141,7 @@ func appendSkillMountEnv(env []EnvVar, skillMounts []SkillMount) []EnvVar {
 	)
 }
 
-const claudeConfigMountPath = "/root/.claude"
+const claudeMaxConfigDir = "/home/node/.claude"
 
 func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 	if strings.TrimSpace(req.RuntimeSecretName) != "" {
@@ -162,8 +162,8 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 			},
 		)
 		if providerUsesAnthropicKey(req.ProviderID) {
-			if strings.TrimSpace(req.ClaudeMaxSecretName) != "" {
-				env = append(env, EnvVar{Name: "CLAUDE_CONFIG_DIR", Value: claudeConfigMountPath})
+			if isClaudeMaxProvider(req.ProviderID) {
+				env = append(env, EnvVar{Name: "CLAUDE_CONFIG_DIR", Value: claudeMaxConfigDir})
 			} else {
 				claudeKey := strings.TrimSpace(req.RuntimeCredentialsClaudeKey)
 				if claudeKey == "" {
@@ -189,8 +189,8 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 		)
 	}
 	if providerUsesAnthropicKey(req.ProviderID) {
-		if strings.TrimSpace(req.ClaudeMaxSecretName) != "" {
-			env = append(env, EnvVar{Name: "CLAUDE_CONFIG_DIR", Value: claudeConfigMountPath})
+		if isClaudeMaxProvider(req.ProviderID) {
+			env = append(env, EnvVar{Name: "CLAUDE_CONFIG_DIR", Value: claudeMaxConfigDir})
 		} else {
 			claudeValue := strings.TrimSpace(req.RuntimeCredentialsClaudeValue)
 			if claudeValue == "" {
@@ -202,6 +202,10 @@ func appendRuntimeCredentialEnv(env []EnvVar, req JobRequest) []EnvVar {
 		}
 	}
 	return env
+}
+
+func isClaudeMaxProvider(providerID string) bool {
+	return strings.ToLower(strings.TrimSpace(providerID)) == "claude-max"
 }
 
 func providerUsesAnthropicKey(providerID string) bool {
@@ -301,22 +305,6 @@ func buildReplicaVolumes(req JobRequest) ([]Volume, []VolumeMount, bool) {
 			Name:          "workspace-prd",
 			ConfigMapName: req.PRDConfigMapName,
 			Optional:      false,
-		})
-	}
-	if strings.TrimSpace(req.ClaudeMaxSecretName) != "" {
-		volumes = append(volumes, Volume{
-			Name:       "claude-config",
-			SecretName: req.ClaudeMaxSecretName,
-			Items: []KeyToPath{
-				{Key: req.ClaudeMaxCredentialsJsonKey, Path: ".credentials.json"},
-				{Key: req.ClaudeMaxClaudeJsonKey, Path: ".claude.json"},
-				{Key: req.ClaudeMaxSettingsJsonKey, Path: "settings.json"},
-			},
-		})
-		volumeMounts = append(volumeMounts, VolumeMount{
-			Name:      "claude-config",
-			MountPath: claudeConfigMountPath,
-			ReadOnly:  true,
 		})
 	}
 	for i, skill := range req.SkillMounts {

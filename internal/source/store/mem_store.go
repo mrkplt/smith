@@ -7,17 +7,18 @@ import (
 )
 
 type MemStore struct {
-	mu        sync.RWMutex
-	states    map[string]LoopWithRevision
-	anomalies map[string]model.Anomaly
-	docs      map[string]model.Document
-	tasks     map[string]model.TaskContract
-	journal   map[string][]model.JournalEntry
-	handoffs  map[string][]model.Handoff
-	overrides map[string][]model.OperatorOverride
-	audit     []AuditRecord
-	locks     map[string]entry
-	revision  int64
+	mu                  sync.RWMutex
+	states              map[string]LoopWithRevision
+	anomalies           map[string]model.Anomaly
+	docs                map[string]model.Document
+	tasks               map[string]model.TaskContract
+	journal             map[string][]model.JournalEntry
+	handoffs            map[string][]model.Handoff
+	overrides           map[string][]model.OperatorOverride
+	audit               []AuditRecord
+	locks               map[string]entry
+	providerCredentials map[string]model.ProviderCredential
+	revision            int64
 
 	stateWatchers   []chan Event
 	docWatchers     []chan model.Document
@@ -27,15 +28,16 @@ type MemStore struct {
 
 func NewMemStore() *MemStore {
 	return &MemStore{
-		states:          make(map[string]LoopWithRevision),
-		anomalies:       make(map[string]model.Anomaly),
-		docs:            make(map[string]model.Document),
-		tasks:           make(map[string]model.TaskContract),
-		journal:         make(map[string][]model.JournalEntry),
-		handoffs:        make(map[string][]model.Handoff),
-		overrides:       make(map[string][]model.OperatorOverride),
-		locks:           make(map[string]entry),
-		journalWatchers: make(map[string][]chan model.JournalEntry),
+		states:              make(map[string]LoopWithRevision),
+		anomalies:           make(map[string]model.Anomaly),
+		docs:                make(map[string]model.Document),
+		tasks:               make(map[string]model.TaskContract),
+		journal:             make(map[string][]model.JournalEntry),
+		handoffs:            make(map[string][]model.Handoff),
+		overrides:           make(map[string][]model.OperatorOverride),
+		locks:               make(map[string]entry),
+		providerCredentials: make(map[string]model.ProviderCredential),
+		journalWatchers:     make(map[string][]chan model.JournalEntry),
 	}
 }
 
